@@ -7,4 +7,4 @@ dest_dir="notes/assets/notability"
 mkdir -p "$dest_dir"
 
 # Copy the file
-cp "/Users/michaelvolk/Library/CloudStorage/GoogleDrive-michaeljvolk7@gmail.com/My Drive/Notability/Projects/torchcell/Note Aug 21, 2023 at 1_27_15 PM.pdf" "${dest_dir}/notability.pdf"
+cp "/Users/michaelvolk/Library/CloudStorage/GoogleDrive-michaeljvolk7@gmail.com/My Drive/Notability/Projects/swanki/Note Aug 21, 2023 at 1_27_15 PM.pdf" "${dest_dir}/notability.pdf"

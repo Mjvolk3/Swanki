@@ -1,3 +1,8 @@
 node_modules
 
 .next
+.env
+
+swanki-out/*
+__pycache__
+*.pdf

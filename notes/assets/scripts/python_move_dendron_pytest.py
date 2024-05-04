@@ -11,7 +11,7 @@ load_dotenv()
 WORKSPACE_DIR = os.environ.get("WORKSPACE_DIR")
 VSCODE_PATH = os.environ.get("VSCODE_PATH")
 PYTHON_PKG_TEST_REL_PATH = os.environ.get("PYTHON_PKG_TEST_REL_PATH")
-PYTHON_PKG_REL_PATH = os.getenv("PYTHON_PKG_REL_PATH", "torchcell")
+PYTHON_PKG_REL_PATH = os.getenv("PYTHON_PKG_REL_PATH", "swanki")
 
 def convert_to_dendron_path(file_path):
     """Convert a file path to Dendron's period-delimited format."""
