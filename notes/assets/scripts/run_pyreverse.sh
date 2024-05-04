@@ -1,11 +1,11 @@
 #!/bin/bash
-source /Users/michaelvolk/opt/miniconda3/envs/torchcell/bin/activate
+source /Users/michaelvolk/opt/miniconda3/envs/swanki/bin/activate
 
 # Initialize conda for the current shell session
 conda init bash
 
 # Activate the conda environment
-conda activate torchcell
+conda activate swanki
 FILE_PATH=$1
 FILE_NAME=$(basename -- "$FILE_PATH")
 FILE_NAME_WITHOUT_EXT="${FILE_NAME%.*}"

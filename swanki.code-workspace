@@ -1,7 +1,7 @@
 {
     "folders": [
         {
-            "name": "dendron-template",
+            "name": "Swanki",
             "path": "."
         },
     ],
@@ -19,7 +19,7 @@
         "dendron.enableSelfContainedVaultWorkspace": true,
         "pasteImage.defaultName": "Y-MM-DD-HH-mm-ss",
         "workbench.colorCustomizations": {
-            "titleBar.activeBackground": "#be240182"
+            "titleBar.activeBackground": "#01bea282"
         },
         "markdownlint.config":{
             "MD007": { "indent": 2 },
@@ -44,8 +44,8 @@
         "python.testing.unittestEnabled": false,
         "python.testing.pytestEnabled": true,
         "git.autoRepositoryDetection": false,
-        "liveServer.settings.multiRootWorkspaceName": "Dendron-Template",
-        "mypy.dmypyExecutable": "/Users/michaelvolk/opt/miniconda3/envs/Dendron-Template/bin/dmypy",
+        "liveServer.settings.multiRootWorkspaceName": "swanki",
+        "mypy.dmypyExecutable": "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/dmypy",
         "mypy.enabled": true,
         "mypy.runUsingActiveInterpreter": false,
         "mypy.targets": [
@@ -161,7 +161,7 @@
             {
                 "label": "autoflake: clean imports",
                 "type": "shell",
-                "command": "/Users/michaelvolk/opt/miniconda3/envs/Dendron-Template/bin/autoflake",
+                "command": "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/autoflake",
                 "args": [
                     "--remove-all-unused-imports",
                     "--remove-duplicate-keys",
@@ -207,9 +207,9 @@
             {
                 "label": "pyreverse: UML class diagram",
                 "type": "shell",
-                "command": "/Users/michaelvolk/opt/miniconda3/envs/Dendron-Template/bin/python",
+                "command": "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/python",
                 "args": [
-                    "/Users/michaelvolk/opt/miniconda3/envs/Dendron-Template/bin/pyreverse",
+                    "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/pyreverse",
                     "-o",
                     "png",
                     "-p",
@@ -223,7 +223,7 @@
             {
                 "label": "isort: file",
                 "type": "shell",
-                "command": "/Users/michaelvolk/opt/miniconda3/envs/Dendron-Template/bin/isort ${file}",
+                "command": "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/isort ${file}",
                 "problemMatcher": [],
                 "presentation": {
                     "reveal": "always",
@@ -235,7 +235,7 @@
             {
                 "label": "tc: add frontmatter (py)",
                 "type": "shell",
-                "command": "/Users/michaelvolk/opt/miniconda3/envs/Dendron-Template/bin/python",
+                "command": "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/python",
                 "args": [
                     "${workspaceFolder}/notes/assets/scripts/add_frontmatter.py",
                     "${file}"
@@ -253,7 +253,7 @@
             {
                 "label": "tc: move file [note & test safe] (py)",
                 "type": "shell",
-                "command": "/Users/michaelvolk/opt/miniconda3/envs/Dendron-Template/bin/python",
+                "command": "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/python",
                 "args": [
                     "${workspaceFolder}/notes/assets/scripts/python_move_dendron_pytest.py",
                     "${file}",
@@ -267,7 +267,7 @@
             {
                 "label": "tc: test file (py)",
                 "type": "shell",
-                "command": "/Users/michaelvolk/opt/miniconda3/envs/Dendron-Template/bin/python",
+                "command": "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/python",
                 "args": [
                     "${workspaceFolder}/notes/assets/scripts/create_python_test_file.py",
                     "create",
@@ -286,7 +286,7 @@
             {
                 "label": "tc: delete file [note & test safe] (py)",
                 "type": "shell",
-                "command": "/Users/michaelvolk/opt/miniconda3/envs/Dendron-Template/bin/python",
+                "command": "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/python",
                 "args": [
                   "${workspaceFolder}/notes/assets/scripts/delete_file_and_open_related.py",
                   "${file}"
@@ -305,7 +305,7 @@
             {
                 "label": "tc: open related src file (dendron)",
                 "type": "shell",
-                "command": "/Users/michaelvolk/opt/miniconda3/envs/Dendron-Template/bin/python",
+                "command": "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/python",
                 "args": [
                     "${workspaceFolder}/notes/assets/scripts/from_note_open_related_src.py",
                     "${file}"
@@ -320,7 +320,7 @@
             {
                 "label": "pytest: coverage",
                 "type": "shell",
-                "command": "/Users/michaelvolk/opt/miniconda3/envs/Dendron-Template/bin/python /Users/michaelvolk/opt/miniconda3/envs/Dendron-Template/bin/pytest --cov=Dendron-Template --cov-report html tests/ ",
+                "command": "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/python /Users/michaelvolk/opt/miniconda3/envs/swanki/bin/pytest --cov=swanki --cov-report html tests/ ",
                 "problemMatcher": [],
             },
             // External 
@@ -336,7 +336,7 @@
                 "command": "osascript",
                 "args": [
                     "-e",
-                    "tell application \"Terminal\" to do script \"bash /Users/michaelvolk/Documents/projects/Dendron-Template/database/build/build_linux-arm.sh\""
+                    "tell application \"Terminal\" to do script \"bash /Users/michaelvolk/Documents/projects/swanki/database/build/build_linux-arm.sh\""
                 ],
                 "problemMatcher": [],
                 "group": {
@@ -350,7 +350,7 @@
                 "command": "osascript",
                 "args": [
                     "-e",
-                    "tell application \"Terminal\" to do script \"bash /Users/michaelvolk/Documents/projects/Dendron-Template/database/build/build-image-fresh_linux-arm.sh\""
+                    "tell application \"Terminal\" to do script \"bash /Users/michaelvolk/Documents/projects/swanki/database/build/build-image-fresh_linux-arm.sh\""
                 ],
                 "problemMatcher": [],
                 "group": {
@@ -388,7 +388,7 @@
                 "id": "newFilePath",
                 "type": "promptString",
                 "description": "Enter the new file path:",
-                "default": "Dendron-Template/"
+                "default": "swanki/"
             },
             {
                 "id" : "jobName",
@@ -433,7 +433,7 @@
                 "program": "${file}",
                 "console": "integratedTerminal",
                 "justMyCode": false,
-                "cwd": "${workspaceFolder:Dendron-Template}",
+                "cwd": "${workspaceFolder:swanki}",
                 "subProcess": true,
                 "pythonArgs": ["-Xfrozen_modules=off"],
                 "env": {"PYDEVD_DISABLE_FILE_VALIDATION": "1"},

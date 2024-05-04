@@ -1,4 +1,4 @@
-# /Users/michaelvolk/Documents/projects/torchcell/notes/assets/scripts/from_note_open_related_src.py
+# /Users/michaelvolk/Documents/projects/swanki/notes/assets/scripts/from_note_open_related_src.py
 import os
 import sys
 import subprocess
