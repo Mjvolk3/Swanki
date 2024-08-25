@@ -4,6 +4,8 @@ langchain
 openai
 tiktoken
 build
+twine
+python-semantic-release
 
 [dev]
 black

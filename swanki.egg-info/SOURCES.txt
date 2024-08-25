@@ -3,6 +3,7 @@ pyproject.toml
 env/requirements.txt
 swanki/__init__.py
 swanki/__main__.py
+swanki/__version__.py
 swanki/clean_md.py
 swanki/clean_transcript.py
 swanki/combine.py
