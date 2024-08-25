@@ -1,0 +1,11 @@
+ChatGPT figure/image summary: The image you provided appears to be Figure 6 from an academic paper or similar publication, showing four different schematic representations of coupling flow to a porous wall. Each panel (a, b, c, and d) illustrates a different boundary condition or modeling approach for the interaction between a fluid flow (represented by blue lines for velocity profiles) and a porous material surface (shown in the micrographs below each schematic). Here's the detail of each panel:
+
+a) Uncoupled/loosely coupled: There is a clear boundary layer edge with no modification to the straight velocity profile lines. Below it, a micrograph shows a highly porous material surface labeled as "Uncoupled/loosely coupled (FIAT/PATO)." The porous structure is untreated by the flow in the model, and the mass and energy balances are independent.
+
+b) Slip velocity: This boundary condition allows for some slip at the interface surface, depicted by the small red dash lines near the surface in the velocity profile lines, indicating a shift in the boundary layer. Below this schematic, another micrograph of the porous material is labeled "Slip velocity (Beavers & Joseph 1967)."
+
+c) Jump in shear stress: This condition shows a more pronounced adjustment to the velocity profile near the surface, with a "jump" in the shear forces at the interface, as noted by the thicker blue boundary layer line. Below the schematic, the associated micrograph is labeled "Jump in shear stress (Ochoa-Tapia & Whitaker 1995)."
+
+d) Fully coupled: Here, the system treats the boundary layer edge and porous material surface as fully integrated, with the velocity profiles adjusting smoothly into the porous surface without any jumps or slips. Below this schematic, a micrograph of the porous surface is labeled "Fully coupled (Weng & Martin 2014, Schrooyen 2015)."
+
+These schematics are combined with electron microscopy micrographs of a fiber-based porous material surface, illustrating the microstructure that would be involved in the theoretical modeling approaches. The use of such models is important in the context of analyzing how fluids interact with porous surfaces, a topic critical in materials science and engineering applications such as thermal protection systems for spacecraft.

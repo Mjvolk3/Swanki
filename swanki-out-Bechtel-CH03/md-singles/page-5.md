@@ -1,0 +1,15 @@
+\title{
+Discovering Cell Mechanisms
+}
+
+name, they did not completely eliminate chromatic aberrations. In 1886 the collaboration of Ernst Abbe, Otto Schott, and Carl Zeiss resulted in the introduction of apochromatic lenses, which substantially reduced these residual chromatic aberrations.) The procedure for viewing something under these early microscopes was rather direct and straightforward: "With most animal tissues the usual practice was to tease out or squash fresh material into a layer of sufficient thinness, and to study this directly under the microscope" (Hughes, 1959, p. 13). With the dramatic improvements in microscopes, even such crude methods of specimen preparation were sufficient for knowledge of cells to burgeon during the nineteenth century.
+
+\section*{Cytology in the Nineteenth Century}
+
+Numerous investigators made significant contributions to cytology as early as the first half of the nineteenth century including, for example, Johann Evangelista Purkinje and his student Gabriel Gustav Valentin, who made influential observations of neurons. However, it was Matthias Schleiden and Theodor Schwann who played the pivotal role by advancing what came to be known as the cell doctrine or cell theory. This unifying doctrine held that cells are the fundamental structural and functional units of life - adequate to comprise single-celled organisms but also serving as the building blocks of multicelled organisms. Ironically, many of the features of their accounts of cells that helped secure the initial acceptance of the cell doctrine proved false.
+
+Schleiden's research directly built on the finding by Robert Brown (1833), in his microscopic investigations of orchids, of the ubiquitous presence of "a single circular areola, generally somewhat more opaque than the membrane of the cell" (p. 710). \({ }^{6} \mathrm{He}\) found one such structure in each cell and named it the nucleus. Schleiden, referring to it as the cytoblast, construed the nucleus as the most important region of the cell and that from which the rest developed. Growth from a nucleus became, for him, the characteristic feature through which he identified cells in different tissues. Schleiden was a botanist and initially limited his statement of the cell doctrine to plants. \({ }^{7}\) The challenge
+
+\({ }^{6}\) Similar structures had been described previously in some animal tissues, e.g., in the epithelial cells by Felice Fontana in the 1780s and in the stigma of Bletia Tankervilliae by Franz Bauer in the 1790 s.
+
+\({ }^{7}\) In Beiträge zur phytogenesis, Schleiden construed whole animals as individuals but claimed that plants are formed of "fully individualized, independent, separate beings" - the cells (Schleiden, 1838). In Schleiden (1842) he mentioned approvingly, if tentatively, Schwann's extension of the cell doctrine to animals.

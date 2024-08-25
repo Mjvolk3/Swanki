@@ -1,0 +1,1 @@
+ChatGPT figure/image summary: The image is of a Creative Commons license logo, specifically the "CC BY" version. This indicates that the associated content can be shared, copied, distributed, transmitted, remixed, adapted, or built upon by others, even commercially, as long as they give appropriate credit to the original author(s) or licensor.

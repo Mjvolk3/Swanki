@@ -68,14 +68,12 @@ def generate_image_cards(
     source_dir: str,
     summary_dir: str,
     target_dir: str,
-    max_retries: int = 100,
+    image_urls: list,
+    md_file: str,
+    max_retries: int = 10,  # Increased max_retries to 10
     initial_delay: float = 1.0,
-    backoff_factor: float = 2.0,
+    backoff_factor: float = 1.5,  # Adjusted backoff_factor to 1.5
 ):
-    os.makedirs(target_dir, exist_ok=True)
-    md_files = sorted([f for f in os.listdir(source_dir) if f.endswith(".md")])
-    image_url_pattern = re.compile(r"!\[\]\((https://cdn.mathpix.com/[^)]+)\)")
-
     OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
     client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -141,81 +139,78 @@ def generate_image_cards(
     %
     """
 
-    for md_file in md_files:
-        file_path = os.path.join(source_dir, md_file)
-        curr_content = get_file_content(file_path)
-        if not curr_content:
-            print(f"Skipping {md_file} due to empty content or read error.")
+    file_path = os.path.join(source_dir, md_file)
+    curr_content = get_file_content(file_path)
+    if not curr_content:
+        print(f"Skipping {md_file} due to empty content or read error.")
+        return
+
+    for image_url in image_urls:
+        summary_file = f"page-{md_file.split('.')[0].split('-')[1]}_{image_urls.index(image_url) + 1}.md"
+        summary_path = os.path.join(summary_dir, summary_file)
+        summary = get_file_content(summary_path)
+        if not summary:
+            print(
+                f"No summary found for {image_url} in {summary_file}. Skipping card generation."
+            )
             continue
 
-        image_urls = image_url_pattern.findall(curr_content)
-        if not image_urls:
-            print(f"No images found in {md_file}. Skipping card generation.")
-            continue
+        # Extract surrounding text from the Markdown file
+        surrounding_text = extract_surrounding_text(
+            curr_content, image_url, num_sentences=3
+        )
 
-        for j, image_url in enumerate(image_urls):
-            summary_file = f"{os.path.splitext(md_file)[0]}_{j+1}.md"
-            summary_path = os.path.join(summary_dir, summary_file)
-            summary = get_file_content(summary_path)
-            if summary:
-                # Extract surrounding text from the Markdown file
-                surrounding_text = extract_surrounding_text(
-                    curr_content, image_url, num_sentences=3
-                )
+        for card_num in range(1, 3):  # Generate two cards for each image
+            retry_count = 0
+            retry_delay = initial_delay
 
-                retry_count = 0
-                retry_delay = initial_delay  # Start with the initial delay
+            while retry_count < max_retries:
+                try:
+                    completion = client.chat.completions.create(
+                        model="gpt-4o",
+                        messages=[
+                            {"role": "system", "content": system_role_content},
+                            {
+                                "role": "user",
+                                "content": f"Generate Anki card {card_num} using the VsCode Anki format based on the following image and associated text:\n\nImage: {image_url}\n\nAssociated Text: {surrounding_text}\n\nSummary: {summary}",
+                            },
+                        ],
+                    )
+                    print("Completion generated successfully.")
+                    card_content = completion.choices[0].message.content
 
-                while retry_count < max_retries:
-                    try:
-                        completion = client.chat.completions.create(
-                            model="gpt-4-1106-preview",
-                            messages=[
-                                {"role": "system", "content": system_role_content},
-                                {
-                                    "role": "user",
-                                    "content": f"Generate an Anki card using the VsCode Anki format based on the following image and associated text:\n\nImage: {image_url}\n\nAssociated Text: {surrounding_text}\n\nSummary: {summary}",
-                                },
-                            ],
-                        )
+                    # Validate the generated card content
+                    if validate_card_content(card_content):
+                        print("Valid card content generated successfully")
+                        # Write the card to a file in the target directory
+                        card_file = f"{os.path.splitext(md_file)[0]}_card_{image_urls.index(image_url) + 1}_{card_num}.md"
+                        card_path = os.path.join(target_dir, card_file)
 
-                        card_content = completion.choices[0].message.content
+                        print(f"Saving card {card_num} to: {card_path}")
 
-                        # Validate the generated card content
-                        if validate_card_content(card_content):
-                            # Write the card to a file in the target directory
-                            card_file = f"{os.path.splitext(md_file)[0]}_{j+1}_card.md"
-                            with open(
-                                os.path.join(target_dir, card_file),
-                                "w",
-                                encoding="utf-8",
-                            ) as file:
-                                file.write(card_content)
-                            break
-                        else:
-                            print(
-                                f"Invalid card content generated for {md_file}_{j+1}. Retrying..."
-                            )
-                            retry_count += 1
-                            time.sleep(retry_delay)
-                            retry_delay *= (
-                                backoff_factor  # Increase the delay exponentially
-                            )
-                    except Exception as e:
+                        os.makedirs(target_dir, exist_ok=True)
+
+                        with open(card_path, "w", encoding="utf-8") as file:
+                            file.write(card_content)
+                        break
+                    else:
                         print(
-                            f"Error generating card for {md_file}_{j+1}: {e}. Retrying..."
+                            f"Invalid card content generated for {md_file}, image {image_urls.index(image_url) + 1}, card {card_num}. Retrying..."
                         )
                         retry_count += 1
-                        time.sleep(retry_delay)
+                        time.sleep(retry_delay)  # Add a delay between retries
                         retry_delay *= (
                             backoff_factor  # Increase the delay exponentially
                         )
-
-                if retry_count == max_retries:
+                except Exception as e:
                     print(
-                        f"Failed to generate a valid card for {md_file}_{j+1} after {max_retries} retries. Skipping..."
+                        f"Error generating card {card_num} for {md_file}, image {image_urls.index(image_url) + 1}: {e}. Retrying..."
                     )
-            else:
+                    retry_count += 1
+                    time.sleep(retry_delay)  # Add a delay between retries
+                    retry_delay *= backoff_factor  # Increase the delay exponentially
+
+            if retry_count == max_retries:
                 print(
-                    f"No summary found for {image_url} in {summary_file}. Skipping card generation."
+                    f"Failed to generate a valid card {card_num} for {md_file}, image {image_urls.index(image_url) + 1} after {max_retries} retries. Skipping..."
                 )

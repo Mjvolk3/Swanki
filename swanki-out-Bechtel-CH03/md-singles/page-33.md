@@ -1,0 +1,14 @@
+\title{
+Discovering Cell Mechanisms
+}
+
+biochemistry changed when enzymes replaced protoplasm as the seat of vital chemistry" (1973, p. 193).
+
+Frederic Holmes \((1986\); 1992) emphasized a second factor that differentiates biochemistry from its predecessors, the conception of intermediary metabolism as involving sequences of specific chemical reactions. This established the goal of discovering each intermediate reaction. \({ }^{34}\) This had been a goal of many early chemists, but one that was difficult to realize when the units for chemical analysis remained the elements of which organic substances were composed. (Recall Liebig trying to describe the chemical operations in animals by balancing chemical formulae.) An important contribution of organic chemistry in the last part of the nineteenth century was to identify higher-level structural components of organic molecules whose addition, removal, or transfer characterized the basic reactions biochemistry would examine.
+
+By 1900, organic compounds relevant to metabolic processes could be characterized structurally. Characteristic groups such as hydroxyl, carboxyl, and amino groups were linked at specific sites to the carbon backbones of organic molecules. The general classes of reaction mechanisms in which each reactive group participated, and some of the influences of their relative placements on the carbon skeleton upon their reactivities, were known. This information provided strong foundations for interpreting the chemical changes linking any compounds that could be shown to take part in metabolic processes. (Holmes, 1992, p. 56)
+
+Biochemists also needed techniques for demonstrating intermediate reactions involving such structural units. Because the intermediate products generally did not accumulate but were immediately metabolized, it was a challenge to produce empirical evidence of the intermediate steps. Holmes identified Franz Knoop as taking a major step in 1904 when he fed animals compounds similar to normal foods but ones they could not fully metabolize. Knoop found that after feeding dogs specific aromatic derivatives of fatty acids, their urine would contain an aromatic acid that was shorter by an even number of carbon compounds (unless the fatty acid chain contained only one carbon, in which case it was not broken down). He proposed a mechanism in which fatty acids
+\footnotetext{
+34 Noting that Kohler had cited Hofmeister (1901) for emphasizing the importance of enzymes, Holmes (1992, p. 58) quoted additional passages in which Hofmeister stated that chemical reactions in cells "must take place in specific intermediate steps" which can be expressed "through chains of physical and chemical formulas."
+}

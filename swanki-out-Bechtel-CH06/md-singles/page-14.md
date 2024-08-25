@@ -1,0 +1,5 @@
+![](https://cdn.mathpix.com/cropped/2024_07_05_edfac8a1b9262797c06eg-1.jpg?height=1279&width=898&top_left_y=195&top_left_x=313)
+
+Figure 6.2. Sjöstrand and Rhodin's micrograph of mitochondria in guinea pig retina revealing what they called internal membranes and construed as separate structures, discontinuous with the outer mitochondrial membrane and with each other. Reproduced from F. S. Sjöstrand and J. Rhodin (1953), The ultrastructure of the proximal convoluted tubules of the mouse kidney as revealed by high resolution electron microscopy, Journal of Experimental Cell Research, 4, 426-56, Figure 2b, p. 434, with permission of Elsevier.
+
+That autumn he made a major splash at the Electron Microscope Society of America meetings by presenting new, very high resolution micrographs from guinea pig retina, later published in Nature (Sjöstrand, 1953b) that revealed Palade's cristae more clearly than Palade's own micrographs of the

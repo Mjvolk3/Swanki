@@ -1,0 +1,32 @@
+Section: Introduction to the Calculus of Variations
+
+Let's start by thinking of a function, which we will call "y of x." This function acts as an operator that takes any input value "x" and returns an output value "y." Now, imagine we have something a bit more complex called a functional. A functional, denoted as "F of y," is an operator that takes a function "y of x" as its input and returns a single output value "F." For instance, consider the length of a curve in a two-dimensional plane. The path of this curve can be defined by a function, and the length of this curve is a functional because it takes the function defining the path as input and returns a scalar value representing the curve's length. In machine learning, a familiar example of a functional is the entropy of a continuous variable "x." Given a probability density function "p of x," the entropy "H of p" returns a scalar value representing the entropy of "x" under that density.
+
+A typical problem in traditional calculus involves finding the value of "x" that maximizes or minimizes a function "y of x." In the calculus of variations, the objective is similar, but instead of finding a specific value, we seek a function "y of x" that maximizes or minimizes a functional "F of y." Essentially, out of all possible functions "y of x," we aim to find the one for which the functional "F of y" reaches its maximum or minimum value. This powerful mathematical technique can, for example, demonstrate that the shortest path between two points is a straight line or that the maximum entropy distribution is a Gaussian distribution.
+
+Section: Understanding Changes in Functionals
+
+Now, let's delve into how we understand changes in functionals. If you are familiar with ordinary calculus, you know that we can evaluate a derivative of "y" with respect to "x" by making a small change "epsilon" to "x" and expanding in powers of "epsilon." For instance, "y of x plus epsilon" can be approximated as "y of x" plus the derivative of "y" with respect to "x" times "epsilon," plus higher-order terms. Similarly, for a function of several variables, "y of x1, x2, and so on up to xD," the partial derivatives can be defined by how "y" changes with small perturbations in each variable. When we extend this to functionals, we consider how much a functional "F of y" changes when we make a small change "epsilon eta of x" to the function "y of x," where "eta of x" is an arbitrary function of "x."
+
+The concept of functional derivatives comes into play when we analyze these changes. For a functional "F of y," we denote its functional derivative with respect to "y of x" as "delta F over delta y of x." This derivative captures how "F of y" changes in response to small variations in "y of x." Mathematically, this is expressed by considering the change in "F of y of x plus epsilon eta of x," which can be approximated as "F of y of x" plus "epsilon" times the integral of "delta F over delta y of x" times "eta of x" with respect to "x," plus higher-order terms. For the functional to be stationary, the integral involving the functional derivative must vanish for any choice of "eta of x," leading us to the conclusion that the functional derivative itself must be zero.
+
+Section: The Euler-Lagrange Equation
+
+To make this more concrete, let's look at a functional defined by an integral over some function "G of y, y prime, and x," where "y prime" denotes the derivative of "y" with respect to "x." The functional can be written as "F of y equals the integral of G of y of x, y prime of x, and x with respect to x." When we introduce a small variation "epsilon eta of x" to "y of x," the change in the functional can be expressed as an integral involving the partial derivatives of "G." By integrating by parts and using the fact that "eta of x" vanishes at the boundaries, we can isolate the term involving "eta of x" and identify the functional derivative. Setting this derivative to zero yields the Euler-Lagrange equations, which are fundamental in finding the function "y of x" that maximizes or minimizes the functional.
+
+For example, if "G" is given by "y of x squared plus y prime of x squared," the Euler-Lagrange equation simplifies to a second-order differential equation: "y of x minus the second derivative of y with respect to x is zero." Solving this differential equation with appropriate boundary conditions gives us the function "y of x" that optimizes the functional. This framework can be extended to more complex scenarios, including cases where the functional depends on a probability distribution, requiring the use of Lagrange multipliers to handle constraints.
+
+In summary, the calculus of variations is a powerful tool that extends the principles of calculus to functionals. It enables us to find optimal functions that maximize or minimize a given criterion, with applications ranging from physics to machine learning.
+
+Section: Paper Summary
+
+1. **Function vs. Functional**: Functions take input values and return output values. Functionals take a function as input and return a scalar value.
+2. **Example of Functionals**: The length of a curve defined by a function or the entropy of a continuous variable under a probability density function.
+3. **Objective in Calculus of Variations**: Find the function that maximizes or minimizes a given functional.
+4. **Analog to Traditional Calculus**: Instead of finding a specific value that optimizes a function, seek a function that optimizes a functional.
+5. **Understanding Changes in Functionals**: Similar to derivatives in ordinary calculus, changes in functionals are analyzed by introducing small perturbations.
+6. **Functional Derivative**: Denoted as "delta F over delta y of x," it captures how a functional changes in response to small variations in the input function.
+7. **Stationarity Condition**: For a functional to be stationary, its functional derivative must be zero.
+8. **Euler-Lagrange Equation**: Derived from the condition that the functional derivative must be zero, this equation helps find the function that optimizes the functional.
+9. **Example of Euler-Lagrange Equation**: For a specific functional, it reduces to a second-order differential equation, solving which provides the optimal function.
+10. **Applications**: The calculus of variations has broad applications, including physics and machine learning, for finding optimal solutions.

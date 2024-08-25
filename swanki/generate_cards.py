@@ -24,6 +24,8 @@ def generate_text_cards(md_file_path: str, num_cards: int):
 
     If there are any proofs or derivations please include the step by step derivation.
 
+    Try to to focus on the text in the middle of the paper chunk. If you can't find good questions in the middle, then look at the beginning or end.
+
     Note that you can add tags separated by commas, that are period delimited going from broad topic to narrow topic. Add up to 2 periods if necessary, and make the words in-between slugified. Try to add up to 3 tags per question. Here are 3 example cards. The first card shows how to display latex and structure front and back of cards. The second shows how to create a cloze card. The card itself describes this. The last card shows how you can add extra information to the front of the card with the % sign:
   
   
@@ -57,16 +59,20 @@ def generate_text_cards(md_file_path: str, num_cards: int):
     - Leave the tags list empty
     - Don't use numbers in tags
     - Include information that should be on the back of the card before a % sign
+    - Make a card with reference to a figure since there is no image to reference
+    - Add any extra information
+    - Use '---' to delimit cards
     
     ADVICE:
-    - Try to avoid using % sign if possible
-    - Use % sign if there are a lot of equations needed for front of card context 
+    - Avoid using % sign if possible
+    - Only use % sign if there are a lot of equations needed for front of card context, otherwise just put the context on the front of the card in the ## section.
+    - Just print the cards 
     
     """
 
     completion = client.chat.completions.create(
         # model="gpt-4-0125-preview",
-        model="gpt-4-1106-preview",
+        model="gpt-4o",
         messages=[
             {"role": "system", "content": system_role_content},
             {

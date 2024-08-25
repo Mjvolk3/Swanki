@@ -1,0 +1,14 @@
+\title{
+Discovering Cell Mechanisms
+}
+
+mechanism. In such cases each manipulation should be precisely designed to target a specific internal operation, such that a distinctive effect on the behavior of the whole system will be obtained. \({ }^{24}\) In most cases, though, experiments designed to determine the internal operations in a mechanism involve intervening or measuring changes within the mechanism. The strongest evidence may arise when an investigator can directly intervene on and measure effects in the operation of a component in the mechanism. Sometimes this can be approximated by separating a component from a mechanism, experimenting on it under realistic conditions to determine what it could do, and fitting that information into a coherent account of how the whole mechanism performed its function. Biochemists, for example, may attempt to isolate from cells what they take to be the relevant enzymes and cofactors for a given reaction and then conduct experiments on the isolated components. Frequently it is not possible to isolate the factors responsible for an operation within a mechanism in this manner, in which case researchers have to settle for more indirect routes for gaining information.
+
+Regardless of whether it is structural or functional components that provide the initial target, two strategies for determining whether and how they figure in a mechanism are excitation and inhibition. The effects of these manipulations may then be registered in the overall behavior of the mechanism or more locally within the system. By inhibiting or removing a component, investigators force the system to operate without it. The hope is that from the altered behavior of the mechanism they can figure out what part or operation was involved. This is not always easy, as Richard Gregory argued:
+
+Although the effects of a particular type of ablation may be specific and repeatable, it does not follow that the causal connection is simple, or even that the region affected would, if we knew more, be regarded as functionally important for the output - such as memory or speech - which is observed to be upset. It could be the case that some important part of the mechanism subserving the behavior is upset by the damage although it is at most indirectly related, and it is just this which makes the discovery of a fault in a complex mechanism so difficult. (1961, p. 323)
+
+Moreover, in many cases, the removal of a component part produces a whole cascade of effects, leading the mechanism to no longer carry out anything like
+\footnotetext{
+24 Reaction time studies used in cognitive psychology provide an illustrative example. Different proposals for internal operations were linked with different timing expectations so that actual reaction time measures could decide between them.
+}

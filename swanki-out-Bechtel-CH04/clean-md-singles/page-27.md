@@ -1,0 +1,15 @@
+\title{
+Discovering Cell Mechanisms
+}
+
+investigate virus and protein structure. They prepared their material by fragmenting cells and drying the contents. Schmitt's group produced micrograph images of a number of cell fibers including collagen (Schmitt, Hall, \& Jakus, 1942), tropomyosin (Schmitt, Hall, \& Jakus, 1943), sperm tails, cilia, and flagella (Schmitt, 1944-5). The micrographs revealed a high degree of unusual and unexpected periodic and asymmetric order in the construction of these fibers.
+
+In general, working with thin material did not create any additional risk of artifact in electron microscopy (although risks loomed from the need to work in vacuum and to fix specimens). As noted, the electron micrographs often produced unexpected results since the resolution of electron micrographs was far beyond that of other imaging techniques. Here the definitiveness of the patterns found and their reliable production seems to have been sufficient to convince the investigators that they were not artifacts.
+
+(в) CUTTING THIN SECTIONS. The traditional means of preparing thin material for light microscopy was to cut thin slices from a tissue block with a microtome, such as the Cambridge Rocking Microtome, designed in 1885 by Charles Darwin's son Horace. The problem was that the microtomes designed for light microscopy could at best cut sections $1-2 \mathrm{~mm}$ thick, nearly an order of magnitude too thick for electron microscopy. During the 1940s numerous laboratories tried to create a microtome that could cut sufficiently thin sections, initially with little success. The problem is familiar to anyone who has tried to thinly slice a food like bread: it rips and tears. ${ }^{21}$
+
+One approach, ${ }^{22}$ suggested by theoretical calculations, was to use high speeds to reduce the stress on the knife edge and thereby produce cleaner slices (O'Brien \& McKinley, 1943). Fullam, together with Albert Gessler, the director of research at Interchemical, developed a microtome that worked at $57,000 \mathrm{rpm}$ and produced a cutting speed of 1,100 feet per second (Fullam
+
+21 Anderson (1956, p. 217) offered a more technical description of the problem: "The processes occurring at the cutting edge of the knife, for example, are poorly understood, but a knife edge with a large included angle must introduce large shearing stresses both in the section and in the face of the block as it rakes across its surface. . . . as it starts to float off onto the water in the trough, every section is visibly compressed in the direction of the movement of the knife. This compression is partly reversed as the section spreads out on the surface of the aqueous acetone or dioxane used to support it, but the uniformity of the spreading, especially on a micro scale is not known."
+
+22 Other approaches included cutting wedge-shape sections which would on one edge be sufficiently thin for electron microscopy (von Ardenne, 1939) and reducing the transmission ratio on standard microtomes (see Bretschneider, 1952, for a review of various microtomes introduced in the period).

@@ -1,0 +1,5 @@
+![](https://cdn.mathpix.com/cropped/2024_06_22_c8581d0800e96afbf730g-1.jpg?height=1170&width=944&top_left_y=206&top_left_x=299)
+
+Figure 3.3. Structure of a typical phospholipid molecule with a hydrophilic head and hydrophobic tail.
+
+Dutrochet (1826; 1828) characterized them as units of physiological exchange, selectively admitting nutrients along with the inflow of water, a process he termed endosmosis, and excreting waste with the diffusion out, which he termed exosmosis. Carl Wilhelm von Nägeli and Carl Cramer (1855) described osmosis in plant cells. Drawing on an analogy with osmometers that Moritz Traube had constructed using artificial semipermeable membranes, Wilhelm Pfeffer (1887) proposed that cells generally were surrounded by semipermeable membranes. Although early research on osmosis linked the ability of materials to cross membranes to their permeability in water, Charles Ernst Overton \((1895 ; 1896\); 1899) found in his attempts to get root hairs in plants to absorb substances that fat soluble substances passed through more

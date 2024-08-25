@@ -1,0 +1,7 @@
+ChatGPT figure/image summary: The image you've provided contains two circular diagrams labeled (a) and (b), which are color-coded heat maps from a simulation or analysis.
+
+Diagram (a) represents the predicted surface temperature of a structure, likely a heatshield, at a certain point in time after atmospheric entry (possibly of the Mars Science Laboratory mentioned in the text). The color scale on the left side of diagram (a) indicates the temperature in Kelvin, with red denoting higher temperatures and yellow to green denoting lower temperatures.
+
+Diagram (b) illustrates the differential recession of the same structure, which indicates the material loss due to ablation during atmospheric entry. The color scale on the right side of diagram (b) indicates the depth of material recession in meters, with darker blue representing more recession and lighter blue to green indicating less recession.
+
+Together, these diagrams are used to show the results of heat and material response simulations for space vehicles entering an atmosphere, providing insights into the thermal protection system's performance. The text states that these figures are adapted with permission from Meurisse et al. (2018) and are associated with the Mars Science Laboratory's heatshield during atmospheric entry.

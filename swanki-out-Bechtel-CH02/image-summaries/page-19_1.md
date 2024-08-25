@@ -1,0 +1,7 @@
+ChatGPT figure/image summary: The image shows a schematic representation of a feedback loop in the linkage between glycolysis and the citric acid cycle. It represents a simplified pathway in cellular metabolism, where phosphoenolpyruvate is converted into pyruvic acid (pyruvate), which then leads to the production of acetyl-CoA. In the final reaction of glycolysis, 2 molecules of ADP (adenosine diphosphate) are converted to 2 molecules of ATP (adenosine triphosphate) with the catalytic help of the enzyme pyruvate kinase.
+
+The conversion of pyruvic acid into acetyl-CoA results in the release of one molecule of carbon dioxide (CO₂) and the reduction of NAD⁺ (nicotinamide adenine dinucleotide) to NADH + H⁺, which typically enters the electron transport chain to help generate more ATP.
+
+The diagram also illustrates a feedback loop using a dotted arrow. This loop indicates that the accumulation of acetyl-CoA, which occurs when it is produced faster than it can be used in the citric acid cycle, will lead to the inhibition of pyruvate kinase. This inhibition prevents further conversion of glucose into the glycolytic pathway through the transformation of phosphoenolpyruvate to pyruvic acid, thus illustrating feedback regulation within the metabolic pathway.
+
+This representation uses both spatial layout and arrows to indicate the sequence of reactions (and regulatory feedback), a common approach to simplify complex biochemical processes for educational and explanatory purposes.
