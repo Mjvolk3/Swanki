@@ -26,7 +26,7 @@ dynamic = ["dependencies"]
 dev = ["black", "semantic-release", "pip-tools", "pytest"]
 
 [project.urls]
-Homepage = "https://github.com/Mjvolk3/Dendron-Template"
+Homepage = "https://github.com/Mjvolk3/Swanki"
 
 [project.scripts]
 swanki = "swanki.__main__:main"
