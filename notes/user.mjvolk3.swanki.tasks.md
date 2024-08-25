@@ -2,12 +2,16 @@
 id: wfacxevpjhl5s73ktns52b5
 title: Tasks
 desc: ''
-updated: 1720123109430
+updated: 1724625334175
 created: 1710035491559
 ---
 
 
 Video to anki application - [Lawrence Leemis](https://www.youtube.com/@LawrenceLeemis/playlists)
+
+## 2024.08.25
+
+- [x] Update pypi
 
 ## 2024.05.03
 
