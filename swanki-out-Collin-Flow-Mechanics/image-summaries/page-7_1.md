@@ -1,0 +1,9 @@
+ChatGPT figure/image summary: This image contains a schematic representation related to the volume averaging method (VAM) that's described in the paper. The figure shows a cross-sectional view of a two-phase system with distinct phase-mask functions represented for two different phases, labeled as α (alpha) and β (beta). The phase-mask functions, denoted as γα and γβ, have values that indicate the presence of a particular phase: they are marked as '1' within the domain of their respective phase, '1/2' at the interface, and '0' elsewhere.
+
+The image also demonstrates how the surface of interface, labeled as Σα, is represented with a normal vector nα pointing outward. There is an indication of a Dirac delta function δ(ξ − ξΣα) along the interface, and its gradient, shown symbolically and represented with arrows, indicates the direction and magnitude of change.
+
+At the bottom of the image, there are plots of the phase-mask functions as a function of position, showing the values transitioning from '1' to '0' along an arbitrary line A-A across the phases, which likely represents a 1D slice through the 3D volume depicted above.
+
+The right side of the image shows a magnified view of an interface with the wall velocity vector w represented by dashed lines with arrowheads, and the effect of the wall on the interface, producing a change in the phase-mask function over time (∂γα/∂t). The Dirac delta function and its interaction with the wall velocity and the normal vector are illustrated.
+
+Overall, the figure visualizes how one defines and uses phase-mask functions in the context of the VAM framework for dealing with multi-phase systems, which is important in the study of ablative porous materials discussed in the paper.

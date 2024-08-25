@@ -1,0 +1,14 @@
+```
+HOOC-- CH
+Succinic acid
+```
+Fumaric acid
+$\rightarrow \mathrm{HOOC}-\mathrm{CH}_{2}-\mathrm{CH}(\mathrm{OH})-\mathrm{COOH}$
+Malic acid
+
+As illustrated in Figure 3.12(b), Thunberg recognized that succinic acid was first oxidized (dehydrogenated) by the removal of two hydrogen atoms, yielding fumaric acid, which then gained from water two hydrogen atoms plus an oxygen atom, yielding malic acid. Thus, on this view the additional oxygen found in malic acid came not from molecular oxygen but from the water molecule that was added to fumaric acid. Molecular oxygen did not figure in the oxidation reaction directly but was the recipient of the liberated hydrogen and so reduced to water. On this revised account there were three main reactions: (1) oxidation of succinic acid, (2) hydration of fumaric acid, and (3) reduction of oxygen. To show that oxidation reaction could occur in animal tissue independently of the reduction of oxygen, Thunberg adopted Wieland's strategy of using methylene blue rather than molecular oxygen as the hydrogen acceptor. To conduct these experiments, he created a special device (later known as the Thunberg tube) from which all oxygen was removed. When a minced muscle preparation and methylene blue were placed in the tube, nothing happened; however, when succinic acid was added, the methylene blue was reduced, as indicated by its rapidly decolorization (Thunberg, 1916). He subsequently showed that the same was true of various other organic acids (lactic acid, fumaric acid, malic acid, citric acid, etc.): They were dehydrogenated when methylene blue was supplied. Thunberg (1920) determined that reactions involving different substrates were differentially affected by heat, which he took as evidence that different enzymes were responsible for each reaction.
+
+Warburg, in contrast, construed a reaction with oxygen as the key step in oxidation and argued that the activation of oxygen, which prepared it to combine with substrates, was the major catalytic event (thus employing the same model as Battelli and Stern). ${ }^{41}$ In his earliest work Warburg focused on cell membranes, whose existence had finally been convincingly demonstrated by
+\footnotetext{
+${ }^{41}$ Given his focus, Warburg's challenge was to measure the amount of oxygen taken up in a reaction. In his earliest research he used titrimetric methods but during a visit to Joseph Barcroft's laboratory at Cambridge in 1910 he observed the Haldane-Barcroft blood-gas manometer, a device which kept the volume of the gas constant so that pressure would change as gas was added or lost. Warburg modified their instrument to measure rates of gas exchange and used it in most of his subsequent research. The resulting device came to be known as the Warburg manometer and has been widely used in biochemical studies of reactions involving gas exchanges, such as oxidations (Warburg, 1923; Warburg, 1925a).
+}

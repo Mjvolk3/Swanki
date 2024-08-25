@@ -1,0 +1,5 @@
+\title{
+Creating New Instruments and Research Techniques
+}
+
+Neither classical cytology, relying primarily on light microscopy, nor biochemistry, relying on homogenates, had been able to enter the terra incognita in which resided the mechanisms responsible for cell phenomena. The new tools of cell fractionation and electron microscopy, however, provided the necessary resources. Electron microscopy made it possible to identify component parts in the cell much smaller than those identifiable by light microscopy. Cell fractionation made it possible to examine the operations of units of larger scale than could survive the homogenation process. Moreover, the techniques could be used together - fractions could be examined in the electron microscope, providing a means of relating the operational units identified by fractionation with component parts identified in electron microscopy of whole cells. The challenge for the scientists was to produce new results with these tools. In the next two chapters I turn to how scientists met this challenge.

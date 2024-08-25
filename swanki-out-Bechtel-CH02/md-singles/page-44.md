@@ -1,0 +1,13 @@
+\title{
+Discovering Cell Mechanisms
+}
+
+(b) when a prediction fails, the problem might lie either with the model of the mechanism or with auxiliary hypotheses invoked in making the prediction (credit assignment). Although these problems are not eliminated, they are mitigated when researchers test accounts of mechanisms because their focus is typically not on the mechanism as a whole, but on specific components. Evidence is sought that a given component actually figures in the generation of the phenomenon in the way proposed. Accordingly, predictions are diagnostic - specifically targeted to the effects such a component would have (e.g., that if one intervened in a way known to incapacitate that component, there would be a specific change in the way the mechanism as a whole would behave). \({ }^{25}\) If the part does not, for example, perform the operation hypothetically assigned to it, that is often evidence that unsuspected parts are involved and that the operation requires their orchestrated operation.
+
+An important aspect of discovering and testing mechanisms is that inquiry does not simply consist of postulating and testing a mechanism. Rather, research typically begins with an oversimplified account in which only a few components and aspects of their organization are specified. Over time, it is repeatedly revised and filled in (Bechtel \& Richardson, 1993). Machamer, Darden, and Craver (2000) refer to the simplified account as a sketch of a mechanism. Much of the discovery and testing involved in mechanistic explanation focuses on proposing components or forms of organization that are to be added to or used to revise parts of a sketch, and (often late in the process) localizing the worked-out component operations in the appropriate component part or parts. The entire process is typically a long-term endeavor (Bechtel, 2002a). The result looks much more like a research program (Lakatos, 1970) than like the classical account of theory-testing.
+
+\section*{8. CONCLUSION}
+
+This chapter has focused on providing a general framework within which to understand cell biologists' mission of trying to understand cellular mechanisms. My goal has been to articulate what mechanisms are and how they figure in explanations. Accordingly, I have emphasized the role of diagrams as well as text in representing mechanisms and how simulation underlies reasoning about them. Because mechanisms inherently bridge multiple levels of organization (the components, the mechanism as a whole, and any larger
+
+25 See, for example, Darden (1990; 1991; 1992) on anomaly resolution in scientific theorizing, a process she compares with the process of redesign of human made artifacts in engineering.

@@ -2,13 +2,16 @@
 id: wfacxevpjhl5s73ktns52b5
 title: Tasks
 desc: ''
-updated: 1714790416096
+updated: 1720123109430
 created: 1710035491559
 ---
 
+
+Video to anki application - [Lawrence Leemis](https://www.youtube.com/@LawrenceLeemis/playlists)
+
 ## 2024.05.03
 
-- [ ] Get all cards for a chapter of DL Bishop. Make sure all images get cards.
+- [x] Get all cards for a chapter of DL Bishop. Make sure all images get cards.
 
 ## 2024.03.21
 
@@ -21,5 +24,5 @@ created: 1710035491559
 ## 2024.03.09
 
 - [x] Create MVP
-- [ ] My thought is to take a purely functional route, Use part path for now based on first pdf, then can thinking about alternate routes by alternating a configuration.
-- [ ] Find out how to create structured output. [Langchain pydantic output parser](https://python.langchain.com/docs/modules/model_io/output_parsers/types/pydantic)
+- 🔲 My thought is to take a purely functional route, Use part path for now based on first pdf, then can thinking about alternate routes by alternating a configuration.
+- 🔲 Find out how to create structured output. [Langchain pydantic output parser](https://python.langchain.com/docs/modules/model_io/output_parsers/types/pydantic)

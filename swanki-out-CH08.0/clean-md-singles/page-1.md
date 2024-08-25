@@ -1,0 +1,5 @@
+![](https://cdn.mathpix.com/cropped/2024_05_26_f259a6e31b33764956acg-1.jpg?height=1248&width=1238&top_left_y=216&top_left_x=409)
+
+Our goal in this chapter is to find an efficient technique for evaluating the gradient of an error function $E(\mathbf{w})$ for a feed-forward neural network. We will see that this can be achieved using a local message-passing scheme in which information is sent backwards through the network and is known as error backpropagation, or sometimes simply as backprop.
+
+Historically, the backpropagation equations would have been derived by hand and then implemented in software alongside the forward propagation equations, with both steps taking time and being prone to mistakes. Modern neural network software environments, however, allow virtually any derivatives of interest to be calculated efficiently with only minimal effort beyond that of coding up the original network function. This idea, called automatic differentiation, plays a key role in modern deep learning. However, it is valuable to understand how the calculations are performed so that we are not relying on 'black box' software solutions. In this chapter we

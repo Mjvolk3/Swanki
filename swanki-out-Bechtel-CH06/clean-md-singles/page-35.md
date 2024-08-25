@@ -1,0 +1,16 @@
+\title{
+Discovering Cell Mechanisms
+}
+
+Charles Oberling (Bernhard, Gautier, \& Oberling, 1951; Bernhard et al., 1952) also reported finding ergastoplasmic filamentous or lamellar structures (see Haguenau, 1958, for a review).
+
+Noting Dalton's report of filaments in thin sections, Palade and Porter, when they started making micrographs of thin sections in 1950-1, investigated the relation between these and Porter's endoplasmic reticulum. They reported that with buffered osmium the " 'filaments' were in fact fine tubules, or strands of vesicles identical in size and form to those constituting the endoplasmic reticulum of cultured cells" (Annual Report, 1950-1, p. 147). In his 1953 paper with Blum describing their new microtome, Porter presented a micrograph of a thin section in which he identified
+
+numerous 'elongated elements' and many 'granules'. These vary from $50 \mathrm{m \mu}$ to $150 \mathrm{~m} \mu$ in diameter and much more in length. When they are examined carefully they are found to have a relatively 'transparent' center bounded by a single dense line apparently representing a membrane. These elements of the cytoplasm are easily recognized as the equivalent of the endoplasmic reticulum indicated previously in cultured cells (Porter \& Thompson, 1948) and identified with the basophilic component of the cytoplasm (Palade \& Porter, 1952; Porter, 1953). (Porter \& Blum, 1953, p. 699, emphasis added)
+
+Although Porter and Blum claimed the identification is easy, one thing that was clearly lost in the micrographs made of thin slices was the three-dimensional perspective offered with whole tissue-cultured cells. Without commenting on how this had already led to different interpretations of the endoplasmic reticulum, Porter and Blum stated, "In any further study of this endoplasmic reticulum it is important to determine its three-dimensional form in cells fixed in situ in their respective tissues. Obviously for this and similar problems serial sections of the cells are essential" (p. 700). They then presented a series of four serial sections and commented,
+
+it is observed that the system referred to as the endoplasmic reticulum is a complex of interconnected strands and sinusoids, the latter tending to be flattened in one dimension but otherwise very polymorphic. At certain sites in this parotid
+\footnotetext{
+are, as a rule, oriented in a position perpendicular to the basement membrane. An attempt has been made to determine whether they are filaments or actual lamellae" (Dalton, 1951a, p. 1167). From the fact that they stay in focus while the focus of the electron microscope is changed, Dalton concluded they are lamellar in form. In a review in 1953, Dalton argued, "In our preparations the components of this material were usually found as long, sometimes branching, parallel or concentric strands and never in cross section as solid or hollow spheres of the same diameter as the strands. This naturally suggested that they are lamellae rather than filaments or tubules" (p. 411).
+}

@@ -1,0 +1,14 @@
+\title{
+Discovering Cell Mechanisms
+}
+
+reason enough for many investigators to employ it as a basic tool in their attempts to understand cells.
+
+\section*{3. THE ELECTRON MICROSCOPE AND ELECTRON MICROSCOPY}
+
+Whereas cell fractionation enabled scientists to decompose cells into component parts in a way that permitted investigation of their function, the goal of microscopy was to visualize the component parts as they existed within the cell. (A secondary use of microscopy was to examine the fractionated parts of the cells to determine whether they corresponded to parts as they occurred in the intact cell.) Despite the advances that had been made using light microscopy in the nineteenth century, the wavelength of light presented a principled limit to the resolution that could be attained and rendered this instrument inadequate for studying the internal structure of cells. A number of variations on light microscopy developed in the 1940s, such as phase contrast \({ }^{15}\) and ultraviolet microscopy, extended its usefulness (for reviews, see Baker, 1951; Wyckoff, 1959), but the newly invented electron microscope offered the greatest opportunity. The wavelength of an electron depends upon its voltage, but even the relatively low-powered \(50 \mathrm{kV}\) microscopes developed in the 1930 s and 1940 s theoretically permitted resolution down to 5-10 \(\AA\) \((50-100 \mathrm{~m} \mu\) ), in contrast to the limits of approximately \(2,500 \AA(.25 \mu)\) with a light microscope using white light and \(1000 \AA\) with ultraviolet microscopes (Cosslett, 1955). Figure 4.4 shows schematically the difference in resolution between the light and electron microscope.
+
+The electron microscope relies on the same general optical principles as the light microscope. Each requires a source of illumination, a condenser lens for controlling it, an objective lens, and one or more additional lenses for providing high magnification. The main differences between light and electron microscopes stem from the use of an electron beam, rather than a beam of light, for the illumination. One important consequence is that researchers had to adjust to not looking through the microscope, but instead viewing an image on a fluorescent screen or in a photograph. Another is that the image results not from the absorption of light of various wavelengths, but from the scattering of electrons. Scattering depends not on the chemical constitution of the object imaged, but on the amount of matter present - the
+\footnotetext{
+15 In phase contrast microscopy, phase differences in the light refracted from various structures in the cell are converted into differences in amplitude, which can be seen as differences in image contrast. This technique is particularly useful for in vivo studies.
+}

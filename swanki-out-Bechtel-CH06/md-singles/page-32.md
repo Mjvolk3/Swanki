@@ -1,0 +1,3 @@
+![](https://cdn.mathpix.com/cropped/2024_07_05_cc05a12437f6d2dfd41eg-1.jpg?height=967&width=1783&top_left_y=206&top_left_x=253)
+
+Figure 6.8. A schematic representation of Peter Mitchell's chemiosmotic hypothesis for oxidative phosphorylation. Arrows from left to right depict temporally ordered energy transfers, not spatial relations. As the width of the arrow representing each process increases (decreases), energy is gained (spent).

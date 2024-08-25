@@ -1,0 +1,5 @@
+ChatGPT figure/image summary: The image contains two parts labeled (a) and (b):
+
+(a) Shows an illustration of an astronaut wearing a spacesuit with a labeled diagram of the full SWME (Sweat Management Equipment) module integrated into the spacesuit. Beside the astronaut image, there is a detailed schematic of the SWME module showing its internal components and how it operates. We can see pathways for the "Inlet water (warm)" and the "Outlet water (cold)" as well as the "Vapor flow." There are various components labeled, such as "BPV motor," "BPV Assembly," "Fiber Cartridge with Stainless Steel Frame," "Housing," "Inlet Header," "Outlet Header," and "Internal Volume Access Ports." The schematic provides a clear view of the mechanism designed to manage sweat by processing the water vapor.
+
+(b) Provides a simplified conceptual diagram of a single fiber in the NASA SWME module, showing the direction of atmospheric pressure (Patm) and the pressure control valve. This diagram helps to understand the operational principles of a critical component in the SWME system.

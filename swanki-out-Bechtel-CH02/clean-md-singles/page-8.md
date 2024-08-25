@@ -1,0 +1,16 @@
+\title{
+Discovering Cell Mechanisms
+}
+
+conception of mechanical activity had in practice long become commonplace. For example, nineteenth-century mechanistic accounts of physiological processes incorporated energy-intensive operations such as chemical bonding and catalysis.)
+
+\section*{3. CURRENT CONCEPTIONS OF MECHANISM}
+
+With increased attention given to the biological sciences in the last two decades, a number of philosophers of science have begun attending to mechanistic explanation. They have addressed the absence of an appropriate framework by offering initial proposals that overlap in some important respects but also vary in terminology, scope, and emphasis (see, for example, Bechtel \& Richardson, 1993; Glennan, 1996; Machamer, Darden, \& Craver, 2000). ${ }^{2}$ I first provide a basic characterization of mechanisms as found in nature and then elaborate it into a framework for mechanistic explanation:
+
+A mechanism is a structure performing a function in virtue of its components parts, component operations, and their organization. The orchestrated functioning of the mechanism is responsible for one or more phenomena.
+
+\section*{Moreover:}
+- The component parts of the mechanism are those that figure in producing a phenomenon of interest.
+
+2 With Robert Richardson, I characterized mechanistic explanations as accounting "for the behavior of a system in terms of the functions performed by the parts and the interactions of these parts . . A mechanistic explanation identifies these parts and their organization, showing how the behavior of the machine is a consequence of the parts and their organization" (Bechtel \& Richardson, 1993, p. 17). Whereas we focused on the "functions" (operations) that parts perform, Glennan emphasized the properties of parts in stating what he originally (1996) called laws and now (2002) calls "invariant change-relating generalizations." These are instantiated in "interactions" in which "a change in a property of one part brings about a change in a property of another part" (2002, p. S344). Machamer, Darden, and Craver characterize mechanisms as "entities and activities organized such that they are productive of regular changes from start or set-up to finish or termination conditions" (2000, p. 3), emphasizing the distinct metaphysical status of "entities" (parts) and "activities" (operations). Tabery (2004) has proposed a partial synthesis in which activity and property changes are seen as complementary. I discuss the use of the term operation rather than activity in note 7 below. Finally, Machamer et al. (p. 3) include a characterization of mechanisms as "productive of regular changes from start or set-up to finish or termination conditions." I am concerned that such an emphasis helps to retain a focus on linear processes whereas mechanisms, when they are embedded in larger mechanisms, are continuously responsive to conditions in the larger mechanism, for tractability scientists tend to focus on the conditions in which an operation is elicited and on its contribution to the behavior of the overall mechanism. However, they often have to counter this analytical perspective to appreciate the dynamics at work in the system.
