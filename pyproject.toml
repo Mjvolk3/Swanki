@@ -44,11 +44,11 @@ target-version = ["py311"]
 color = true
 skip_magic_trailing_comma = true # true in torchgeo
 
-[tool.mypy]
-python_version = "3.11"
-ignore_missing_imports = true
-show_error_codes = true
-files = ["swanki/**/*.py", "tests/**/*.py"]
+# [tool.mypy]
+# python_version = "3.11"
+# ignore_missing_imports = true
+# show_error_codes = true
+# files = ["swanki/**/*.py", "tests/**/*.py"]
 
 # Strict
 warn_unused_configs = true
@@ -80,7 +80,7 @@ dependencies = { file = ["env/requirements.txt"] }
 version = { attr = "swanki.__version__" }
 
 [tool.setuptools.package-data]
-swanki = ["py.typed", "knowledge_graphs/conf/*.yaml"]
+swanki = ["py.typed"]
 
 [tool.setuptools.packages.find]
 include = ["swanki*"]
