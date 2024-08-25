@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## v1.0.0 (2024-08-25)
+
+### Breaking
+
+* API: update to 1 ([`7ddbf9f`](https://github.com/Mjvolk3/Swanki/commit/7ddbf9fe5a4f90ad3d2549360ed6b10554e0f4f6))
+
 ## v0.0.1 (2024-08-25)
 
 ### Fix
