@@ -5,7 +5,8 @@ import time
 from openai import OpenAI
 from dotenv import load_dotenv
 
-load_dotenv()
+dotenv_path = os.path.join(os.getcwd(), '.env')
+load_dotenv(dotenv_path=dotenv_path)
 
 
 def get_file_content(file_path: str) -> str:

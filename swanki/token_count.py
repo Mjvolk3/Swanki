@@ -9,7 +9,8 @@ from dotenv import load_dotenv
 import os
 import tiktoken
 
-load_dotenv()
+dotenv_path = os.path.join(os.getcwd(), '.env')
+load_dotenv(dotenv_path=dotenv_path)
 
 def num_tokens_from_string(string: str, encoding_name: str) -> int:
     """Returns the number of tokens in a text string."""

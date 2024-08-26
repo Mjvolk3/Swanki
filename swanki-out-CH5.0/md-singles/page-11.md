@@ -1,9 +1,0 @@
-![](https://cdn.mathpix.com/cropped/2024_05_26_7631da1ff57256b30effg-1.jpg?height=645&width=1258&top_left_y=227&top_left_x=270)
-
-(a)
-
-![](https://cdn.mathpix.com/cropped/2024_05_26_7631da1ff57256b30effg-1.jpg?height=652&width=1255&top_left_y=959&top_left_x=271)
-
-(b)
-
-Figure 5.5 Schematic illustration of the joint probabilities \(p\left(x, \mathcal{C}_{k}\right)\) for each of two classes plotted against \(x\), together with the decision boundary \(x=\widehat{x}\). Values of \(x \geqslant \widehat{x}\) are classified as class \(\mathcal{C}_{2}\) and hence belong to decision region \(\mathcal{R}_{2}\), whereas points \(x<\widehat{x}\) are classified as \(\mathcal{C}_{1}\) and belong to \(\mathcal{R}_{1}\). Errors arise from the blue, green, and red regions, so that for \(x<\widehat{x}\), the errors are due to points from class \(\mathcal{C}_{2}\) being misclassified as \(\mathcal{C}_{1}\) (represented by the sum of the red and green regions). Conversely for points in the region \(x \geqslant \widehat{x}\), the errors are due to points from class \(\mathcal{C}_{1}\) being misclassified as \(\mathcal{C}_{2}\) (represented by the blue region). By varying the location \(\widehat{x}\) of the decision boundary, as indicated by the red double-headed arrow in (a), the combined areas of the blue and green regions remains constant, whereas the size of the red region varies. The optimal choice for \(\widehat{x}\) is where the curves for \(p\left(x, \mathcal{C}_{1}\right)\) and \(p\left(x, \mathcal{C}_{2}\right)\) cross, as shown in (b) and corresponding to \(\widehat{x}=x_{0}\), because in this case the red region disappears. This is equivalent to the minimum misclassification rate decision rule, which assigns each value of \(x\) to the class having the higher posterior probability \(p\left(\mathcal{C}_{k} \mid x\right)\).

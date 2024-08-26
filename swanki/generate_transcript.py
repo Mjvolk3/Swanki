@@ -46,7 +46,8 @@ def generate_transcript(transcript_input_file, output_file, model="gpt-4o"):
     from dotenv import load_dotenv
     from openai import OpenAI
 
-    load_dotenv()
+    dotenv_path = os.path.join(os.getcwd(), ".env")
+    load_dotenv(dotenv_path=dotenv_path)
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     client = OpenAI(api_key=OPENAI_API_KEY)
 

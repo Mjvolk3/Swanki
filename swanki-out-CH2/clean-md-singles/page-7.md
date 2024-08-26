@@ -1,8 +1,0 @@
-
-![](https://cdn.mathpix.com/cropped/2024_05_10_755c14c4a9b1412fbd69g-1.jpg?height=1056&width=1490&top_left_y=260&top_left_x=134)
-
-Figure 2.5 An illustration of a distribution over two variables, $X$, which takes nine possible values, and $Y$, which takes two possible values. The top left figure shows a sample of 60 points drawn from a joint probability distribution over these variables. The remaining figures show histogram estimates of the marginal distributions $p(X)$ and $p(Y)$, as well as the conditional distribution $p(X \mid Y=1)$ corresponding to the bottom row in the top left figure.
-
-In Figure 2.5, we show a simple example involving a joint distribution over two
-
-Section 3.5.1 variables to illustrate the concept of marginal and conditional distributions. Here a finite sample of $N=60$ data points has been drawn from the joint distribution and is shown in the top left. In the top right is a histogram of the fractions of data points having each of the two values of $Y$. From the definition of probability, these fractions would equal the corresponding probabilities $p(Y)$ in the limit when the sample size $N \rightarrow \infty$. We can view the histogram as a simple way to model a probability distribution given only a finite number of points drawn from that distribution. The remaining two plots in Figure 2.5 show the corresponding histogram estimates of $p(X)$ and $p(X \mid Y=1)$.
