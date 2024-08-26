@@ -6,7 +6,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Load environment variables
-load_dotenv()
+dotenv_path = os.path.join(os.getcwd(), '.env')
+load_dotenv(dotenv_path=dotenv_path)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 headers = {

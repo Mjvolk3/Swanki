@@ -8,7 +8,8 @@ def clean_transcript(transcript_output_file, clean_output_file, model="gpt-4o"):
     from dotenv import load_dotenv
     import tiktoken
 
-    load_dotenv()
+    dotenv_path = os.path.join(os.getcwd(), '.env')
+    load_dotenv(dotenv_path=dotenv_path)
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     client = OpenAI(api_key=OPENAI_API_KEY)
 

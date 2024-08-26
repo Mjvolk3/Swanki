@@ -1,5 +1,0 @@
-ChatGPT figure/image summary: The image is a diagrammatic representation of decision boundaries in a multi-class classification scenario. It illustrates a two-dimensional input space that has been partitioned into three distinct decision regions, each corresponding to a different class. These regions are labeled as \( R_i \), \( R_j \), and \( R_k \). The decision boundaries are indicated by the red lines, which demarcate the regions where a different class is the most likely classification.
-
-Superimposed on the diagram are two points, labeled as \( x_A \) and \( x_B \), connected by a blue line with an intermediate point \( \widehat{x} \) lying on this line. As per the explanatory text, this might indicate that any point along the line connecting points \( x_A \) and \( x_B \) is also within the same decision region, demonstrating the concept of convexity and single connectedness of the decision region \( R_k \) to which both points belong. 
-
-This visual is used to help explain why the decision regions of a discriminant comprising multiple linear functions form singly connected, convex shapes in the input space.

@@ -1,4 +1,0 @@
-
-![](https://cdn.mathpix.com/cropped/2024_05_26_d7ac92f7ef61188399a4g-1.jpg?height=1486&width=1518&top_left_y=302&top_left_x=144)
-
-Figure 4.7 Illustration of the dependence of bias and variance on model complexity governed by a regularization parameter $\lambda$, using the sinusoidal data from Chapter 1 . There are $L=100$ data sets, each having $N=25$ data points, and there are 24 Gaussian basis functions in the model so that the total number of parameters is $M=25$ including the bias parameter. The left column shows the result of fitting the model to the data sets for various values of $\ln \lambda$ (for clarity, only 20 of the 100 fits are shown). The right column shows the corresponding average of the 100 fits (red) along with the sinusoidal function from which the data sets were generated (green).

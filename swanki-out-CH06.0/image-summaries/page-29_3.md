@@ -1,7 +1,0 @@
-ChatGPT figure/image summary: The image displays two scatter plots side by side. Both scatter plots depict a range of data points distributed along the x-axis from 0 to 1 and along the y-axis from 0 to 1. 
-
-The plot on the left represents a simple forward problem where we can see green circular data points spread around a red curve that seems to represent a fitted model. The data points are scattered but follow roughly the shape of the curve, with some variance around it. 
-
-The plot on the right is for a corresponding inverse problem, where we see a similar scatter of green circular data points. However, in this plot, the data points form a distinctly multimodal distribution with two separate clusters of points, indicating two different regimes or solutions. The red curve, representing the fitted model, attempts to capture this multimodal nature but does not fit the data points as closely as in the left plot, indicating the complexity and the poor fit of the model to this non-Gaussian dataset. 
-
-The scatter plots are visualizations of datasets, with the red curve likely representing the output of a machine learning model trained to fit the data. The plots are used to demonstrate the difference in modeling performance between a straightforward regression problem (forward problem) and a more complex, multimodal problem (inverse problem).

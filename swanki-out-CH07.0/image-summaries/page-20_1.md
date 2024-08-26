@@ -1,7 +1,0 @@
-ChatGPT figure/image summary: The image depicts a schematic illustration of two techniques used in neural networks: batch normalization (a), and layer normalization (b). 
-
-In batch normalization (a), you can see a grid representing a mini-batch of data being passed through several hidden units. The arrows pointing from the grid to two vertical bars labeled with "μ" (mean) and "σ" (standard deviation) indicate that the mean and standard deviation are computed across the mini-batch separately for each hidden unit. This process normalizes the activations within each mini-batch.
-
-For layer normalization (b), the same grid representing a mini-batch of data is shown, but this time, the arrows point directly down from each individual square in the grid, which represents each individual hidden unit, to two horizontal bars labeled "μ" and "σ". This indicates that the mean and variance are computed across the hidden units separately for each individual data point within the batch. This ensures that normalization is done per layer and is independent of batch size, which can be particularly useful when working with recurrent neural networks or training on multiple GPUs.
-
-The illustration helps to visually represent the key concepts of batch and layer normalization as described in the accompanying text. These normalization methods are important for stabilizing the distribution of activations over different layers during training and can help improve convergence and performance of deep neural networks.

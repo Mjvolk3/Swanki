@@ -1,9 +1,0 @@
-ChatGPT figure/image summary: The image shows three separate plots, each representing a different type of basis function used in the context of a linear regression model or a simple neural network.
-
-On the left, the plot shows polynomial basis functions. These are curves that represent various polynomial equations, indicating the influence of different powers of a single input variable `x`. Essentially, the curves seem to represent the functions \( \phi_j(x) = x^j \) for different values of `j`, resulting in lines that vary from linear (a simple angled line) to higher-order polynomials (curved lines that can have multiple turning points).
-
-The center plot displays Gaussian basis functions. In this case, the curves illustrate the Gaussian function as described in the text, which takes the form \( \phi_j(x) = \exp \left\{-\frac{(x-\mu_j)^2}{2s^2}\right\} \), where \( \mu_j \) indicates the location and `s` the scale. Each curve looks like a bell-shaped Gaussian distribution, centered at different values of `x`, corresponding to different \( \mu_j \) values.
-
-On the right, the sigmoidal basis functions are illustrated. A sigmoidal basis function of the form \( \phi_j(x) = \sigma\left(\frac{x-\mu_j}{s}\right) \), where \( \sigma(a) = \frac{1}{1+\exp(-a)} \), is a logistic sigmoid function. Each curve in this plot represents a sigmoid function shifted along the x-axis (horizontal), indicating the different \( \mu_j \) values. The sigmoid functions display an "S"-shaped curve, transitioning smoothly from 0 to 1.
-
-All of these basis functions are used to transform input data into a space where a linear combination can be made to best fit the target data, as per a regression or machine learning model. Each type offers a different way of representing features and contributes differently to the model's ability to approximate complex functions.

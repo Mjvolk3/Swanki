@@ -1,13 +1,11 @@
 from openai import OpenAI
 from dotenv import load_dotenv
 import os
-import os
-import requests
-import os
 import requests
 import glob
 
-load_dotenv()
+dotenv_path = os.path.join(os.getcwd(), '.env')
+load_dotenv(dotenv_path=dotenv_path)
 
 
 def generate_text_cards(md_file_path: str, num_cards: int):

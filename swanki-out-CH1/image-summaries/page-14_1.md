@@ -1,7 +1,0 @@
-ChatGPT figure/image summary: The image displays a plot with two curves, one represented in red and labeled as "Training" and the other in blue labeled as "Test." The horizontal axis is labeled with '\(M\)' and ranges approximately from -30 to 0. The vertical axis is labeled with 'E_{RMS}', which likely stands for the root-mean-square error, and ranges from 0 to about 0.6. 
-
-The plot shows how the root-mean-square error (E_{RMS}) for both training and testing sets changes as the logarithm of the regularization parameter (denoted by 'ln λ') varies. The red curve represents the error on the training set, and the blue curve represents the error on the test set.
-
-The 'Training' curve begins high on the left side, decreases sharply as \(M\) increases (moving rightward on the axis), then rises again as \(M\) approaches zero. The 'Test' curve follows a similar trend, but it remains below the 'Training' curve for the left part of the graph, crosses the 'Training' curve at a certain point, and then becomes higher as it approaches the middle. After crossing over each other, both curves rise towards the right side of the graph.
-
-This plot is designed to illustrate the concept of model complexity and its effect on both training and validation errors. It underscores an essential concept in machine learning that choosing the appropriate level of model complexity can help balance fitting the training data well while still maintaining good generalization to new, unseen data.
