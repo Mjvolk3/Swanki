@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## v1.0.1 (2024-08-25)
+
+### Fix
+
+* BLD: update reqs ([`68bcc63`](https://github.com/Mjvolk3/Swanki/commit/68bcc6314e612ee99df924c61caccca3601af813))
+
 ## v1.0.0 (2024-08-25)
 
 ### Breaking
