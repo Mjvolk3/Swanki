@@ -1,8 +1,16 @@
 # CHANGELOG
 
+## v1.0.2 (2024-08-26)
+
+### Unknown
+
+* Merge remote-tracking branch &#39;refs/remotes/origin/main&#39; ([`cfc99c4`](https://github.com/Mjvolk3/Swanki/commit/cfc99c47a3c06a0fec0706b384e9929f32135687))
+
 ## v1.0.1 (2024-08-25)
 
 ### Fix
+
+* BLD: dotenv ([`e6c7b89`](https://github.com/Mjvolk3/Swanki/commit/e6c7b89100ce441d73bd899476fc69a94f51d8a2))
 
 * BLD: update reqs ([`68bcc63`](https://github.com/Mjvolk3/Swanki/commit/68bcc6314e612ee99df924c61caccca3601af813))
 
