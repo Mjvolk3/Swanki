@@ -1,5 +1,0 @@
-\title{
-Explaining Cellular Phenomena through Mechanisms
-}
-
-system in which the mechanism functions), I have developed the notion of levels of organization and discussed the respects in which mechanistic explanation is reductionistic. Because organization of biological systems is what distinguishes them from non-biological ones, I also discussed the kinds of organization found in biological mechanisms. I ended with the issue of the discovery and testing of models of mechanisms, a topic that takes us into the main objective of this book - the discovery of mechanisms within the cell. This was a project on which major advances were made in the period 194070. As I will discuss in Chapter 4, a major reason these advances occurred when they did was the development of new research techniques - cell fractionation and electron microscopy - that made discovery of cell mechanisms possible. But the project did not emerge from nowhere. In the next chapter I focus on the background prior to 1940 that both provided critical ideas that figured in the later period and also revealed the terra incognita that could not be explored until the new tools were available.

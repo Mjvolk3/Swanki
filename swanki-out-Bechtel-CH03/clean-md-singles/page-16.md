@@ -1,9 +1,0 @@
-![](https://cdn.mathpix.com/cropped/2024_06_22_5a73fcc97110dc2da6efg-1.jpg?height=613&width=1178&top_left_y=208&top_left_x=173)
-
-Figure 3.4. Danielli-Davson "sandwich" model of membrane structure. Following Gorter and Grendel (1925), phosopholipids are arranged into a bilayer in which each molecule's hydrophobic tail faces inward and hydrophilic head faces outward. Danielli and Davson (1935) added outer layers (jagged lines) composed of proteins.
-
-easily than water soluble ones. Finding that membranes thus acted like fatty oils, Overton inferred that they were partly composed of lipids. Overton's research served to settle the debate, establishing that membranes were a universal feature of cells.
-
-Substantial advances in the understanding of membranes continued in the first half of the twentieth century. In 1925 Evert Gorter and Grendel extracted lipid from red blood cells and concluded that there was just enough for the cell to be "covered by a layer of fatty substances that is two molecules thick" (1925, p. 443). Each molecule was a phospholipid in which the head had an affinity for water (hydrophilic) and the tail did not (hydrophobic), as illustrated both by chemical formula and abstractly in Figure 3.3. Gorter and Grendel proposed that the molecules are arranged such that the heads of the two layers face out in opposite directions while the tails face inward. This would result in the outside of the membrane being hydrophilic but the inside hydrophobic. Fat soluble substances like hydrocarbons can pass through such a membrane, whereas water soluble substances such as sodium and potassium ions and sugars cannot.
-
-In addition to lipids, investigators found proteins and carbohydrates in membranes. In 1935 James F. Danielli, a physical chemist, and Hugh Davson, a physiologist (Danielli \& Davson, 1935), advanced an extremely influential sandwich model in which, as shown in Figure 3.4, a protein layer covers

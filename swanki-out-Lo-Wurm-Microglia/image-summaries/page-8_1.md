@@ -1,7 +1,0 @@
-ChatGPT figure/image summary: The image provided is a schematic representation of the effects of Transforming Growth Factor beta (TGF-β) on the maturation of human-induced microglia-like cells (hiMGL), which is likely taken from a scientific publication or presentation. The diagram is divided into two sections: "Immature hiMGL" on the left and "TGFβ-induced hiMGL maturation" on the right. It visually summarizes how different sources of TGF-β, including recombinant TGF-β, neuronal TGF-β secretion, and fetal bovine serum (FBS), can influence the maturation process of hiMGL via TGFβR1 and TGFβR2 receptors.
-
-On the left, TGF-β influences the cells through Smad signaling (a cellular signaling pathway) and possibly non-Smad pathways, as indicated by the question marks that suggest a degree of uncertainty or other non-identified pathways in the process.
-
-On the right, the image shows the hiMGL after maturation, where it has developed various cell surface receptors and molecules like TMEM119, P2RY12, SIGLEC 11, SIGLEC 12, TGFβR1, CX3CR1, CD33, GPR84, and transcription factors like EGR1 and ETV5.
-
-The image's design suggests that it was created using a tool like BioRender, and according to the text, the figure can be found online as of March 17, 2021. The diagram serves as a visual guide to help understand the molecular mechanisms involved in the differentiation and maturation of hiMGLs in the context of neurological research.
