@@ -1,3 +1,5 @@
+.dendron.port
+.dendron.ws
 node_modules
 
 .next
