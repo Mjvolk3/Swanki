@@ -1,7 +1,0 @@
-ChatGPT figure/image summary: The image provided is a diagrammatic representation of two early models describing the metabolism of succinic acid to malic acid, highlighting different conceptualizations of oxidation and hydration reactions involved in the process.
-
-On the left side (a) is "Battelli and Stern (1907-14)" which illustrates their model. The model shows succinic acid undergoing oxidation with the help of an enzyme they named "succinoxydone" (an alternative to the traditional enzyme naming convention with the "-ase" suffix). In their model, oxygen (O2) is directly added to succinic acid to produce malic acid, which is the product of oxidation.
-
-On the right side (b) is "Thunberg (1916)" which depicts Thunberg's model. This model involves more steps and introduces an intermediate in the process. Succinic acid is first oxidized to fumaric acid by the action of the enzyme "succino-dehydrogenase," releasing two hydrogen atoms. These hydrogen atoms are then accepted by oxygen (in a reduction process), eventually forming water (via H2O2 - hydrogen peroxide). The fumaric acid undergoes hydration by adding a water molecule through the action of the enzyme "fumarase" to form malic acid, which is the product of hydration.
-
-The overall transformation described by Thunberg envisions fumaric acid as an intermediary between succinic and malic acids and incorporates coupled reduction-oxidation reactions with molecular oxygen serving as the hydrogen acceptor indirectly, thus confirming Wieland's conceptualization of oxidative processes.

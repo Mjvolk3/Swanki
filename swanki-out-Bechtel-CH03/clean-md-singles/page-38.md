@@ -1,9 +1,0 @@
-![](https://cdn.mathpix.com/cropped/2024_06_22_fcb24588ab701089e93eg-1.jpg?height=850&width=1191&top_left_y=206&top_left_x=160)
-
-Figure 3.8. Chemical structure of adenosine triphosphate (ATP). When the high-energy bonds $(\sim)$ are broken, a phosphate group is released as well as $14 \mathrm{kcal}$, about twice as much energy as released from an ordinary covalent bond (-).
-
-to the onset of rigor mortis resulted not in accumulation of lactic acid but rather in the breakdown of phosphocreatine. Around the same time, Cyrus Fiske and Yellapragrada Subbarow (1929) and Karl Lohmann (1929) discovered another phosphorus compound initially called adenylphyrophospate and now known as adenosine-triphosphate (ATP; its chemical structure is shown in Figure 3.8). It too would undergo rapid hydrolysis (losing one phosphate group at a time) with release of considerable energy. Together with Meyerhof, Lohmann demonstrated that ATP was one of the coenzymes contributing to Harden and Young's undifferentiated coferment of yeast juice (Meyerhof, Lohmann, \& Meyer, 1931). As well, Vladimir Englehardt (1932) established a linkage between ATP formation and aerobic respiration. ${ }^{36}$
-
-These discoveries of phosphocreatine and ATP pointed to a crucial role for phosphorylated compounds among the products of muscle glycolysis and
-
-${ }^{36}$ In studies on pigeon erythrocytes, Englehardt found that when he supplied cyanide, a respiratory inhibitor, ATP rapidly broke down and inorganic phosphate built up, but that ATP was resynthesized after the cells were washed. In non-respiring rabbit erythrocytes, on the other hand, the buildup occurred when he used fluoride to inhibit glycolysis.

@@ -1,5 +1,0 @@
-ChatGPT figure/image summary: The image depicts the molecular structure of a peptide bond formed between two amino acids. On the left-hand side of the structure, there is a hydrogen (H) atom bound to a nitrogen (N) atom that links to a carbon (C) atom, which has a hydrogen atom and another bond represented by a peptide bond dashed box. The carbon atom is double-bonded to an oxygen (O) atom. 
-
-Connected to this structure via the peptide bond (dotted box) is another amino acid on the right-hand side, which consists of a central carbon atom bound to an additional carbon with three hydrogen atoms (CH3, representing an alanine amino acid side chain), a hydrogen atom, an amino group (NH), and a carboxylic acid group (-COOH), indicated by a carbon atom double-bonded to an oxygen atom and singly bonded to an -OH group.
-
-The diagram is labeled "Peptide bond" to highlight the specific link between the two amino acids.

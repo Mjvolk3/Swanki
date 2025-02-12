@@ -1,4 +1,0 @@
-
-![](https://cdn.mathpix.com/cropped/2024_06_22_2dce45845c925e1a3007g-1.jpg?height=1650&width=980&top_left_y=112&top_left_x=280)
-
-Figure 3.2. Schwann's drawings of different cell types. The first three figures are of plant cells - onion parenchymatous cellular tissue (1) and Rhipsalis salicornoides pollen (2 and 3, supplied by Schleiden), Cyprinus erythrophthalmus (a ray-finned fish) chorda dorsalis (4) and cartilage (5-7), Rana esculenta (frog) cartilage (8), Pelobates fuscus (toad) cranial cartilage (9), fetal pig crystalline lens (10-12), pike lens (13), and grass epidermis (14). Reproduced from Plate I from T. Schwann (1839/1847), Microscopical researches into the accordance in the structure and growth of animals and plants (H. Smith, trans.). London: Sydenham Society.
