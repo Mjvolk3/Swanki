@@ -3,42 +3,20 @@ import subprocess
 import os
 import re
 
-
-# def clean_markdown_files(md_folder_path: str = "swanki-out/md-singles"):
-#     """
-#     This function cleans markdown files using sed commands and outputs the cleaned files to
-#     a new directory 'clean-md-singles'.
-#     """
-#     # Create a new directory for the cleaned markdown files
-#     clean_md_folder_path = os.path.join(
-#         os.path.dirname(md_folder_path), "clean-md-singles"
-#     )
-#     os.makedirs(clean_md_folder_path, exist_ok=True)
-
-#     # List all markdown files
-#     md_files = [f for f in os.listdir(md_folder_path) if f.endswith(".md")]
-
-#     for md_file in md_files:
-#         full_md_path = os.path.join(md_folder_path, md_file)
-#         full_clean_md_path = os.path.join(clean_md_folder_path, md_file)
-#         sed_command = f"sed -e 's/\\\\subsection{{\\(.*\\)}}/## \\1/g' -e 's/\\\\section{{\\(.*\\)}}/## \\1/g' -e 's/\\\\(/\\$/g' -e 's/\\\\)/\\$/g' -e 's/\\\\\\[/\\$\\$/g' -e 's/\\\\\\]/\\$\\$/g' {full_md_path} > {full_clean_md_path}"
-
-#         subprocess.run(sed_command, shell=True)
-
-import os
-import re
-
-import os
-import re
-
-def clean_markdown_files(md_folder_path: str = "swanki-out/md-singles"):
+def clean_markdown_files(output_dir: str = "swanki-out"):
     """
-    This function cleans markdown files by performing regex replacements in Python, removes lines 
-    that start with a reference pattern `[number]` in the References section, and removes excessive 
+    This function cleans markdown files by performing regex replacements in Python, removes lines
+    that start with a reference pattern `[number]` in the References section, and removes excessive
     empty lines following the references. The cleaned files are output to a new directory 'clean-md-singles'.
+
+    Args:
+        output_dir (str): The base output directory where all the files will be stored.
     """
+    # Construct paths for markdown and cleaned markdown directories
+    md_folder_path = os.path.join(output_dir, "md-singles")
+    clean_md_folder_path = os.path.join(output_dir, "clean-md-singles")
+
     # Create a new directory for the cleaned markdown files
-    clean_md_folder_path = os.path.join(os.path.dirname(md_folder_path), "clean-md-singles")
     os.makedirs(clean_md_folder_path, exist_ok=True)
 
     # List all markdown files
@@ -58,7 +36,7 @@ def clean_markdown_files(md_folder_path: str = "swanki-out/md-singles"):
                     references_section_found = True
 
                 # If the References section has started, remove lines that start with the pattern [number]
-                if references_section_found and re.match(r'^\[\d+\]', line):
+                if references_section_found and re.match(r"^\[\d+\]", line):
                     continue  # Skip adding this line to cleaned_content
 
                 # Logic to collapse multiple empty lines after references to a single empty line
@@ -68,16 +46,17 @@ def clean_markdown_files(md_folder_path: str = "swanki-out/md-singles"):
                     if post_references_empty_line_count > 1:
                         continue
                 else:
-                    post_references_empty_line_count = 0  # Reset counter if a non-empty line is found
+                    post_references_empty_line_count = (
+                        0  # Reset counter if a non-empty line is found
+                    )
 
                 # Perform replacements for LaTeX commands to Markdown
-                line = re.sub(r'\\subsection{(.*)}', r'## \1', line)
-                line = re.sub(r'\\section{(.*)}', r'## \1', line)
-                line = line.replace(r'\(', '$').replace(r'\)', '$')
-                line = line.replace(r'\[', '$$').replace(r'\]', '$$')
+                line = re.sub(r"\\subsection{(.*)}", r"## \1", line)
+                line = re.sub(r"\\section{(.*)}", r"## \1", line)
+                line = line.replace(r"\(", "$").replace(r"\)", "$")
+                line = line.replace(r"\[", "$$").replace(r"\]", "$$")
                 cleaned_content += line
 
         # Write the cleaned content to the new file
         with open(full_clean_md_path, "w", encoding="utf-8") as output_file:
             output_file.write(cleaned_content)
-

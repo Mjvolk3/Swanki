@@ -1,16 +1,19 @@
 import os
 import subprocess
 
-def convert_pdf_to_markdown(pdf_folder_path: str = "swanki-out/pdf-singles") -> None:
+def convert_pdf_to_markdown(output_dir: str = "swanki-out") -> None:
     """
     This function converts PDF files in the specified directory to markdown files using the mpx-cli tool,
     and outputs the markdown files to a new directory 'md-singles'.
     
     Args:
-        pdf_folder_path (str): The path to the directory containing the PDF files.
+        output_dir (str): The base output directory where all the files will be stored.
     """
+    # Construct paths for PDF and markdown directories
+    pdf_folder_path = os.path.join(output_dir, "pdf-singles")
+    md_folder_path = os.path.join(output_dir, "md-singles")
+    
     # Create a new directory for the markdown files if it doesn't exist
-    md_folder_path = os.path.join(os.path.dirname(pdf_folder_path), "md-singles")
     os.makedirs(md_folder_path, exist_ok=True)
     
     # List all the files in the PDF directory
@@ -33,3 +36,5 @@ def convert_pdf_to_markdown(pdf_folder_path: str = "swanki-out/pdf-singles") -> 
         # Execute the command
         subprocess.run(command, shell=True)
         
+if __name__ == "__main__":
+    pass

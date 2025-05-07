@@ -3,12 +3,32 @@ import tiktoken
 from openai import OpenAI
 
 
-def clean_transcript(transcript_output_file, clean_output_file, model="gpt-4o"):
-    import os
-    from dotenv import load_dotenv
-    import tiktoken
+import os
+import tiktoken
+from openai import OpenAI
 
-    dotenv_path = os.path.join(os.getcwd(), '.env')
+
+def clean_transcript(
+    transcript_output_file: str,
+    clean_output_file: str,
+    model: str = "gpt-4o",
+    output_dir: str = "swanki-out",
+):
+    """
+    Cleans and refines the generated transcript.
+
+    Args:
+        transcript_output_file (str): Path to the raw transcript file
+        clean_output_file (str): Path to save the cleaned transcript
+        model (str): OpenAI model to use for transcript cleaning
+        output_dir (str): Base output directory
+    """
+    # The output_dir parameter is included for consistency, but not used
+    # since transcript_output_file and clean_output_file are already complete paths
+
+    from dotenv import load_dotenv
+
+    dotenv_path = os.path.join(os.getcwd(), ".env")
     load_dotenv(dotenv_path=dotenv_path)
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     client = OpenAI(api_key=OPENAI_API_KEY)
@@ -52,16 +72,20 @@ def clean_transcript(transcript_output_file, clean_output_file, model="gpt-4o"):
                     10. Make sure that each section is at least 3 paragraphs long and try to use the sections 
                     11. Do not use any markdown formatting except for numbered lists or bullet points when necessary.
                     12. Section headers should never just say "Summary." Try to be as descriptive as possible in section headers.
-                    13. Do not repeat yourself. If you have already explained a concept, do not explain it again unless there is a new angle or insight to add.
+                    13. DO NOT repeat yourself. If you have already explained a concept, do not explain it again unless there is a new angle or insight to add.
                     14. Avoid Making lists of keys takeaways or bullet points. Instead, summarize the key points in a few sentences.
                     15. Translate math into spoken language. e.g. f(x) to 'f of x', x^2 to 'x squared', 'x^4' to 'x to the power of 4', > to 'greater than', < to 'less than', etc. Same with greater than or equal to, less than or equal to, etc. Symbols like λ, ∇ should be spelled out as 'lambda', 'nabla', etc. 
                     16. Again don't use '\(' or to bookend math '\)' just use symbols that can be spoken.
-                    17. Do Not includes sections on references or acknowledgments.
+                    17. Do NOT includes sections on references or acknowledgments.
+                    18. Insert natural pauses like this. `<break time="1.5s" />` . Insert a pause for 1.0 s at the end of paragraphs. Insert pause after very advanced technical explanation like the summary of equations pause for 1.5s.
 
-                    Please review the provided transcript chunk and ensure it adheres to these guidelines. Maintain a consistent style throughout the transcript, taking into account the existing audio transcript provided. It is essential to preserve the original content as much as possible while adhering to the guidelines. Do not reduce the size of the transcript. If necessary, you may slightly expand the content to ensure clarity and coherence.""",
+                    Please review the provided transcript chunk and ensure it adheres to these guidelines. Maintain a consistent style throughout the transcript, taking into account the existing audio transcript provided. It is essential to preserve the original content as much as possible while adhering to the guidelines. Do not reduce the size of the transcript. If necessary, you may slightly expand the content to ensure clarity and coherence but again it is important you DO NOT repeat yourself.""",
                 },
                 {"role": "assistant", "content": cleaned_transcript},
-                {"role": "user", "content": f"Current chunk to be cleaned and added to the transcript:\n\n{chunk}\n\nThis is the current audio transcript (for reference to maintain consistency and avoid duplication):\n\n{cleaned_transcript}\n\n Here is the Chunk to be cleaned and added to the transcript:\n\n{chunk}\n\n"},
+                {
+                    "role": "user",
+                    "content": f"Current chunk to be cleaned and added to the transcript:\n\n{chunk}\n\nThis is the current audio transcript (for reference to maintain consistency and avoid duplication):\n\n{cleaned_transcript}\n\n Here is the Chunk to be cleaned and added to the transcript:\n\n{chunk}\n\n",
+                },
             ],
             max_tokens=4096,  # Set max_tokens to the maximum allowed by the model
             n=1,
@@ -84,7 +108,7 @@ def clean_transcript(transcript_output_file, clean_output_file, model="gpt-4o"):
                 "role": "system",
                 "content": """You are an AI assistant that summarizes the main points of a given text. The text is an audio transcript for technical material from either a textbook or an academic paper.The summary should: 
                 1. Don't use any markdown formatting except for numbered lists and bullet points when necessary. The summary should start with 'Section: Chapter Summary' or if it is a paper 'Section: Paper Summary'. Do not use bolding, headers, or italics markdown formatting.
-                2. Don't list more that 12 items in the summary list. You can list fewer items if necessary. Choose the most important points to include in the summary.
+                2. Don't list more that 7 items in the summary list. You can list fewer items if necessary. Choose the most important technical points to include in the summary.
                 """,
             },
             {

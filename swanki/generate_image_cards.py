@@ -5,7 +5,7 @@ import time
 from openai import OpenAI
 from dotenv import load_dotenv
 
-dotenv_path = os.path.join(os.getcwd(), '.env')
+dotenv_path = os.path.join(os.getcwd(), ".env")
 load_dotenv(dotenv_path=dotenv_path)
 
 
@@ -71,10 +71,28 @@ def generate_image_cards(
     target_dir: str,
     image_urls: list,
     md_file: str,
-    max_retries: int = 10,  # Increased max_retries to 10
+    max_retries: int = 10,
     initial_delay: float = 1.0,
-    backoff_factor: float = 1.5,  # Adjusted backoff_factor to 1.5
+    backoff_factor: float = 1.5,
+    output_dir: str = "swanki-out",
 ):
+    """
+    Generates Anki cards based on images and their associated text.
+
+    Args:
+        source_dir (str): Directory containing markdown files with images
+        summary_dir (str): Directory containing image summaries
+        target_dir (str): Directory where generated cards will be stored
+        image_urls (list): List of image URLs to process
+        md_file (str): Markdown file name
+        max_retries (int): Maximum number of retries for failed requests
+        initial_delay (float): Initial delay between retries
+        backoff_factor (float): Factor to increase delay between retries
+        output_dir (str): Base output directory
+    """
+    # Similar to process_images_summaries, source_dir, summary_dir, and target_dir
+    # are already provided as complete paths in the main function
+
     OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
     client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -129,14 +147,26 @@ def generate_image_cards(
     
     % 
     
-    The graph is a such and such and a such and such.
+    The graph is a such and such and explains such and such.
     
     NEVER DO THE FOLLOWING:
-    - Use a header other than H2
-    - Leave the tags list empty
-    - Don't use the cloze syntax for creating close cards with images
-    - Don't use numbers in tags
+    - Never Use a header other than ## H2
+    - Never leave the tags list empty
+    - Never write tags in multiple bulleted lines
+    - Never use numbers in tags
+    - Never include information that should be on the back of the card before a % sign
+    - Never make a card with reference to a figure since there is no image to reference
+    - Never add any extra information
+    - Never use '---' to delimit cards. The next card can start with ## H2 header.
+    - Never use the cloze syntax for creating close cards with images
     
+    ALWAYS FOLLOW THESE:
+    - Always have only one bullet for tags
+    - Always avoid using % sign if possible
+    - Only use % sign if there are a lot of equations needed for front of card context, otherwise just put the context on the front of the card in the ## section.
+    - Always Remember anything before % sign is on front of cart
+    - Always just print the cards no extra text about what you are doing, who you are, what you are about to do, etc.
+    - Always try to keep cards short following the atomic principle of card creation, but make sure you include all necessary context for the card to be standalone. This is the most important part! If you include terms or information on the front of the card you must explain it it's meaning if it is necessary for understanding the question. If you introduce variables explain them. If you introduce special vocabulary necessary for understanding the question or demand, then explain it. Without proper context questions will be impossible to understand for the learner. y
     %
     """
 

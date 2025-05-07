@@ -31,6 +31,7 @@ Homepage = "https://github.com/Mjvolk3/Swanki"
 [project.scripts]
 swanki = "swanki.__main__:main"
 swanki-cut = "swanki.cut:main"
+swanki-combine-pdf = "swanki.combine_pdf:main"
 
 
 [tool.isort]
@@ -96,8 +97,21 @@ commit_parser = "scipy"
 
 [tool.semantic_release.commit_parser_options]
 allowed_tags = [
-   "API", "DEP", "ENH", "REV", "BUG", "MAINT", "BENCH",
-   "BLD", "DEV", "DOC", "STY", "TST", "REL", "FEAT", "TEST",
+    "API",
+    "DEP",
+    "ENH",
+    "REV",
+    "BUG",
+    "MAINT",
+    "BENCH",
+    "BLD",
+    "DEV",
+    "DOC",
+    "STY",
+    "TST",
+    "REL",
+    "FEAT",
+    "TEST",
 ]
 major_tags = ["API"]
 minor_tags = ["DEP", "DEV", "ENH", "REV", "FEAT"]

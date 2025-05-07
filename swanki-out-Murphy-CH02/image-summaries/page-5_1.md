@@ -1,7 +1,0 @@
-ChatGPT figure/image summary: The image shows two plots related to the standard normal distribution, often denoted by \(\mathcal{N}(0,1)\).
-
-On the left, labeled as (a), there is a plot of the cumulative distribution function (cdf) for the standard normal distribution. The x-axis represents the variable \(x\) ranging from approximately -3 to 3, and the y-axis represents the cumulative probability from 0 to 1. The curve smoothly increases from left to right, illustrating the probability that a random variable \(X\) drawn from the distribution will have a value less than or equal to \(x\).
-
-On the right, labeled as (b), we have a plot of the probability density function (pdf) corresponding to the same standard normal distribution. The x-axis covers the same range, while the y-axis represents the density of the probability. The characteristic bell-shaped curve is shown, peaking at 0 where the mean of the distribution is located. The shaded areas under the curve at both tails represent \(\alpha / 2\), corresponding to the tails of the distribution; these areas are symmetric around the mean. Thus, the unshaded region under the curve represents the probability mass of \(1 - \alpha\), which in the context provided would typically be the range within which the majority of the distribution's values fall (often used in confidence interval calculations).
-
-These plots are standard tools in statistics to illustrate the distribution's properties and are likely found in a chapter discussing normal distributions and related concepts such as cdf, pdf, and quantiles.

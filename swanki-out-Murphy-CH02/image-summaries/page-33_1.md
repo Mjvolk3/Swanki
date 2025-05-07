@@ -1,7 +1,0 @@
-ChatGPT figure/image summary: The image showcases two sub-figures labeled (a) and (b), which serve as illustrations related to the empirical probability density function (pdf) and cumulative distribution function (cdf) described in the context provided.
-
-Figure (a) represents the empirical pdf with a curve suggesting the underlying probability density being approximated. Overlaying the curve are vertical dashed lines, each topped with an arrow, pointing to the five samples each denoted by `x^{(n)}` where `n` runs from 1 to 5. These are used to approximate the pdf using delta functions, hence the shape of arrows (spikes) representing the delta functions at the respective sample points.
-
-Figure (b) presents the empirical cdf with a staircase function that steps upward at each of the five sample points `x^{(n)}`. Each step has a height of `1/5`, indicated by the fractional values next to the vertical dashed lines, consistent with the cumulative distribution stepping up by `1/N` at every sample when `N` is 5. The sample points are further emphasized with hollow circles, and the incremental steps are represented by filled circles.
-
-These two figures visually demonstrate the concepts of empirical probability distributions discussed in the text, specifically how a pdf and cdf can be approximated from a finite set of samples.

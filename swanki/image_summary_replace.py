@@ -4,9 +4,10 @@ import requests
 from dotenv import load_dotenv
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import unquote
 
 # Load environment variables
-dotenv_path = os.path.join(os.getcwd(), '.env')
+dotenv_path = os.path.join(os.getcwd(), ".env")
 load_dotenv(dotenv_path=dotenv_path)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
@@ -14,6 +15,13 @@ headers = {
     "Content-Type": "application/json",
     "Authorization": f"Bearer {OPENAI_API_KEY}",
 }
+
+
+def clean_image_url(url: str) -> str:
+    """
+    Cleans URLs by removing backslashes and decoding URL encoding.
+    """
+    return unquote(url.replace("\\", "").replace("\n", "").strip())
 
 
 def get_file_content(file_path: str) -> str:
@@ -36,8 +44,11 @@ def summarize_image(
     Implements exponential backoff in case of a 429 response (Too Many Requests).
     Returns a text summary of the image or an empty string if the summary cannot be generated.
     """
+    # Clean the URL before using it in the API request
+    cleaned_image_url = clean_image_url(image_url)
+
     payload = {
-        "model": "gpt-4-vision-preview",
+        "model": "gpt-4o",
         "messages": [
             {
                 "role": "user",
@@ -49,7 +60,7 @@ def summarize_image(
                     },
                     {
                         "type": "image_url",
-                        "image_url": {"url": image_url, "detail": "high"},
+                        "image_url": {"url": cleaned_image_url, "detail": "high"},
                     },
                 ],
             }
@@ -114,11 +125,26 @@ def summarize_image(
 
 
 def process_images_summaries(
-    source_dir: str, target_dir: str, max_retries: int = 3
+    source_dir: str,
+    target_dir: str,
+    max_retries: int = 3,
+    output_dir: str = "swanki-out",
 ) -> list:
     """
     Processes the images in the Markdown files, generates summaries, and returns a list of successful summaries.
+
+    Args:
+        source_dir (str): Directory containing markdown files with images
+        target_dir (str): Directory where image summaries will be stored
+        max_retries (int): Maximum number of retries for failed requests
+        output_dir (str): Base output directory
+
+    Returns:
+        list: List of tuples containing (image_url, md_file, summary_file) for successful summaries
     """
+    # No need to modify paths here since source_dir and target_dir are already provided
+    # as complete paths in the main function
+
     os.makedirs(target_dir, exist_ok=True)
     md_files = sorted([f for f in os.listdir(source_dir) if f.endswith(".md")])
 
@@ -148,7 +174,7 @@ def process_images_summaries(
             continue
 
         print(f"Found {len(image_urls)} images in {md_file}.")
-        print(f"Target directory: {target_dir}")  # Added debugging statement
+        print(f"Target directory: {target_dir}")
 
         page_number = md_file.split(".")[0].split("-")[
             1
@@ -166,18 +192,12 @@ def process_images_summaries(
                     )
                 else:
                     summary_text = f"ChatGPT figure/image summary: {summary}"
-                    print(
-                        f"Saving summary to: {summary_path}"
-                    )  # Added debugging statement
+                    print(f"Saving summary to: {summary_path}")
                     try:
-                        with open(
-                            summary_path, "w", encoding="utf-8"
-                        ) as file:  # Ensure UTF-8 encoding
+                        with open(summary_path, "w", encoding="utf-8") as file:
                             file.write(summary_text)
                     except Exception as e:
-                        print(
-                            f"Error writing summary to {summary_path}: {e}"
-                        )  # Added exception handling
+                        print(f"Error writing summary to {summary_path}: {e}")
                     print(f"Summary generated and written to {summary_file}")
                     successful_summaries.append((image_url, md_file, summary_file))
             else:
@@ -189,8 +209,8 @@ def process_images_summaries(
         if len(image_urls) > 0:
             print(f"Image summaries generated for {md_file}.")
 
-    print("Successful summaries:")  # Added debugging statement
+    print("Successful summaries:")
     for summary in successful_summaries:
-        print(summary)  # Added debugging statement
+        print(summary)
 
     return successful_summaries

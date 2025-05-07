@@ -3,7 +3,17 @@ import re
 import tiktoken
 
 
-def generate_transcript_input(clean_md_dir, image_summaries_dir, output_file):
+def generate_transcript_input(clean_md_dir: str, image_summaries_dir: str, output_file: str):
+    """
+    Generates input for transcript generation by combining clean markdown files with image summaries.
+    
+    Args:
+        clean_md_dir (str): Directory containing cleaned markdown files
+        image_summaries_dir (str): Directory containing image summaries
+        output_file (str): Path to save the generated transcript input
+    """
+    # These parameters are already complete paths provided by the main function
+    
     md_files = sorted([f for f in os.listdir(clean_md_dir) if f.endswith(".md")])
     transcript_input = ""
 
@@ -41,7 +51,19 @@ def generate_transcript_input(clean_md_dir, image_summaries_dir, output_file):
     return output_file
 
 
-def generate_transcript(transcript_input_file, output_file, model="gpt-4o"):
+def generate_transcript(transcript_input_file: str, output_file: str, model: str = "gpt-4o", output_dir: str = "swanki-out"):
+    """
+    Generates a transcript from the input file using OpenAI's API.
+    
+    Args:
+        transcript_input_file (str): Path to the transcript input file
+        output_file (str): Path to save the generated transcript
+        model (str): OpenAI model to use for transcript generation
+        output_dir (str): Base output directory
+    """
+    # The output_dir parameter is included for consistency, but not used
+    # since transcript_input_file and output_file are already complete paths
+    
     import os
     from dotenv import load_dotenv
     from openai import OpenAI

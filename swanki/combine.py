@@ -1,17 +1,16 @@
 import os
-
-
-import os
+import re
 
 
 def combine_mds(
-    text_cards_dir: str = "swanki-out/clean-md-singles",
-    image_cards_dir: str = "swanki-out/anki-image-cards",
-    output_dir: str = "swanki-out",
-    output_filename: str = "swanki-out.md"
+    text_cards_dir: str,
+    image_cards_dir: str,
+    output_dir: str,
+    output_filename: str = "swanki-out.md",
+    citation_key: str = None,
 ):
     """
-    Combine all generated Anki cards from the gen-md directory (text cards) and anki-image-cards directory (image cards)
+    Combine all generated Anki cards from the text cards directory and image cards directory
     into one Markdown file, in the order of text cards followed by image cards for each page.
 
     Args:
@@ -19,9 +18,13 @@ def combine_mds(
         image_cards_dir (str): The path to the directory containing the image-generated card Markdown files.
         output_dir (str): The path to the directory where the combined Markdown file will be saved.
         output_filename (str): The name of the combined Markdown file.
+        citation_key (str): Optional citation key to prefix questions.
     """
     # Ensure the output directory exists
     os.makedirs(output_dir, exist_ok=True)
+
+    # Add citation key if provided
+    citation_prefix = f"{citation_key}: " if citation_key else ""
 
     # Initialize a variable to hold the combined content
     combined_content = ""
@@ -35,9 +38,19 @@ def combine_mds(
         # Extract the page number from the text card filename
         page_number = text_card_file.split(".")[0].split("-")[1]
 
-        # Read and concatenate the content of the text-generated card Markdown file
+        # Read content of the text-generated card Markdown file
         with open(text_card_path, "r", encoding="utf-8") as file:
-            combined_content += file.read() + "\n\n"
+            content = file.read()
+
+            # Add citation key to each H2 heading if not already present
+            if citation_key:
+                content = re.sub(
+                    r"(## )((?!" + re.escape(citation_prefix) + r").*?)(\n)",
+                    r"\1" + citation_prefix + r"\2\3",
+                    content,
+                )
+
+            combined_content += content + "\n\n"
 
         # Find the corresponding image-generated card Markdown files for the current page
         os.makedirs(image_cards_dir, exist_ok=True)
@@ -51,7 +64,17 @@ def combine_mds(
         for image_card_file in image_card_files:
             image_card_path = os.path.join(image_cards_dir, image_card_file)
             with open(image_card_path, "r", encoding="utf-8") as file:
-                combined_content += file.read() + "\n\n"
+                content = file.read()
+
+                # Add citation key to each H2 heading if not already present
+                if citation_key:
+                    content = re.sub(
+                        r"(## )((?!" + re.escape(citation_prefix) + r").*?)(\n)",
+                        r"\1" + citation_prefix + r"\2\3",
+                        content,
+                    )
+
+                combined_content += content + "\n\n"
 
     # Write the combined content to the new Markdown file
     output_path = os.path.join(output_dir, output_filename)
