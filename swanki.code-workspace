@@ -4,6 +4,10 @@
             "name": "Swanki",
             "path": "."
         },
+        {
+            "name": "Swanki_Data",
+            "path": "../Swanki_Data"
+        },
     ],
     "settings": {
         "dendron.rootDir": ".",
@@ -391,19 +395,19 @@
         "configurations": [
             {
                 "name": "Python: Workspace Folder",
-                "type": "python",
+                "type": "debugpy",
                 "request": "launch",
                 "program": "${file}",
                 "console": "integratedTerminal",
                 "justMyCode": false,
-                "cwd": "${workspaceFolder:swanki}",
+                "cwd": "${workspaceFolder:Swanki}",
                 "subProcess": true,
                 "pythonArgs": ["-Xfrozen_modules=off"],
                 "env": {"PYDEVD_DISABLE_FILE_VALIDATION": "1"},
             },
             {
                 "name": "Python: yeast8",
-                "type": "python",
+                "type": "debugpy",
                 "request": "launch",
                 "program": "${file}",
                 "console": "integratedTerminal",
@@ -414,7 +418,7 @@
             },
             {
                 "name": "Python: torchgeo",
-                "type": "python",
+                "type": "debugpy",
                 "request": "launch",
                 "program": "${file}",
                 "console": "integratedTerminal",

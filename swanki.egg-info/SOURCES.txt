@@ -7,6 +7,7 @@ swanki/__version__.py
 swanki/clean_md.py
 swanki/clean_transcript.py
 swanki/combine.py
+swanki/combine_pdf.py
 swanki/cut.py
 swanki/extract_jpg_links.py
 swanki/generate_cards.py
@@ -17,9 +18,11 @@ swanki/image_reader.py
 swanki/image_summary_insert.py
 swanki/image_summary_replace.py
 swanki/mathpix.py
+swanki/podcast_test.py
 swanki/recombine_md.py
 swanki/split_pdf.py
 swanki/token_count.py
+swanki/transcript_to_audio.py
 swanki.egg-info/PKG-INFO
 swanki.egg-info/SOURCES.txt
 swanki.egg-info/dependency_links.txt

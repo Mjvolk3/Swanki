@@ -1,7 +1,0 @@
-ChatGPT figure/image summary: The image shows a visual representation of graph structures to illustrate the concept of graph isomorphism and the limitations of standard Graph Neural Networks (GNNs) in distinguishing non-isomorphic graphs. The graphic is divided into two parts:
-
-1. On the left side, there are two graphs that are isomorphic to each other; meaning that there is a one-to-one correspondence between the vertices of the two graphs that preserves the adjacency relation.
-
-2. On the right side, there are two graphs that are not isomorphic (they cannot be mapped onto each other while preserving their edge connections) yet a standard GNN would not be able to distinguish between them due to the limitations of the model. 
-
-These graphs are composed of nodes (represented by circles) that are connected by edges (the lines between circles), with nodes of different colors possibly representing different features or types. The text above the graphs states "These graphs are isomorphic" for the left pair, and "These graphs are not isomorphic but cannot be distinguished by standard GNNs" for the right pair, highlighting the challenge that GNNs face in identifying unique graph structures, known as the graph isomorphism problem.

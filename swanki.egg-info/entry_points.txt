@@ -1,3 +1,4 @@
 [console_scripts]
 swanki = swanki.__main__:main
+swanki-combine-pdf = swanki.combine_pdf:main
 swanki-cut = swanki.cut:main
