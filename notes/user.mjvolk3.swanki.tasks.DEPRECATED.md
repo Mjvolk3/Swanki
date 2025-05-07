@@ -1,17 +1,15 @@
 ---
 id: wfacxevpjhl5s73ktns52b5
-title: Tasks
+title: DEPRECATED
 desc: ''
-updated: 1746127831445
+updated: 1746652343188
 created: 1710035491559
 ---
-
-
 ## 2025.05.01
 
 - [x] Interactive with 8 bitdo works well with 🚘
 - [x] Review written cards for `@radivojevicMachineLearningAutomated2020`
-- [ ] We have issue with placement of % indicating front and back of cards. Really should be using pydantic model for controlled generation.
+- 🔲 We have issue with placement of % indicating front and back of cards. Really should be using pydantic model for controlled generation.
 
 ## 2025.04.26
 
