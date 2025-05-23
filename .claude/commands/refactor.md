@@ -711,3 +711,7 @@ swanki/
 6. **Multiple Outputs**: Users choose what to import to Anki
 
 This approach gives users full control while maintaining sensible defaults, and the structured output ensures reliability without heavy testing requirements.
+
+## Use load_dotenv to redirect saved data
+
+SWANKI_DATA=/Users/michaelvolk/Documents/projects/Swanki_Data
