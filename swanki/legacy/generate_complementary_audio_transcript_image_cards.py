@@ -9,7 +9,7 @@ from typing import List
 from dotenv import load_dotenv
 from openai import OpenAI
 import tiktoken
-from swanki.md_to_anki import split_cards, split_front_back
+from .md_to_anki import split_cards, split_front_back
 
 
 def clean_transcript(raw_file: str, clean_file: str) -> None:
