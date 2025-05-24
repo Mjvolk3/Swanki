@@ -1,7 +1,1 @@
 swanki
-swanki-out
-swanki-out-GNN_Nat_Rev_Primer
-swanki-out-Lo-Hammad-Testosterone
-swanki-out-Murphy-CH02
-swanki-out-Ray
-swanki-out-temp

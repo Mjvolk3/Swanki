@@ -5,6 +5,12 @@ langchain
 openai
 tiktoken
 PyPDF2
+hydra-core
+omegaconf
+pydantic>=2.0
+instructor
+pyyaml
+elevenlabs
 build
 twine
 python-semantic-release
