@@ -49,8 +49,21 @@ def cli_main(cfg: DictConfig) -> None:
     process_with_config(cfg)
 
 
+def send_to_anki_command():
+    """Send existing cards to Anki"""
+    from swanki.legacy.md_to_anki import main as md_to_anki_main
+    # Simply delegate to the legacy md_to_anki command
+    md_to_anki_main()
+
 def main():
     """Main entry point"""
+    # Check for special commands first
+    if '--send-to-anki' in sys.argv:
+        # Remove our flag and let md_to_anki handle the rest
+        sys.argv.remove('--send-to-anki')
+        send_to_anki_command()
+        return
+    
     # Check for help or legacy mode first
     if '--help' in sys.argv or '-h' in sys.argv:
         print("""Swanki - Modern PDF-to-Anki card generation with AI
@@ -63,6 +76,7 @@ Configuration Options:
   audio=<default|minimal|full>          Choose audio generation settings
   prompts=<default|technical>           Choose prompt style
   models=<default|openai_tts>           Choose model configuration
+  anki=<default|auto_send|custom_deck>  Choose Anki integration settings
   
 Examples:
   # Basic usage with defaults
@@ -71,6 +85,12 @@ Examples:
   # Comprehensive pipeline with full audio
   swanki pdf_path=paper.pdf citation_key=smith2023 pipeline=comprehensive audio=full
   
+  # Auto-send to Anki with custom deck
+  swanki pdf_path=paper.pdf citation_key=smith2023 anki=auto_send anki.deck_name="Research::Papers::{citation_key}"
+  
+  # Send existing cards to Anki manually
+  swanki --send-to-anki path/to/cards.md --send --host 127.0.0.1 --port 8765
+  
   # Override specific settings
   swanki pdf_path=paper.pdf citation_key=smith2023 processing.num_cards_per_page=5
   
@@ -78,6 +98,14 @@ Examples:
   swanki --legacy -f paper.pdf --citation-key @smith2023 --num-cards 3
   
 Configuration files are stored in: .swanki_config/ (in current directory)
+
+Template Variables:
+  {citation_key} - Replaced with the citation key provided
+  
+Example Deck Names:
+  "{citation_key}" -> "smith2023"
+  "Research::Papers::{citation_key}" -> "Research::Papers::smith2023"
+  "default::{citation_key}" -> "default::smith2023"
 """)
         sys.exit(0)
     

@@ -21,7 +21,8 @@ from ..processing import (
     PDFProcessor,
     MarkdownConverter,
     MarkdownCleaner,
-    ImageProcessor
+    ImageProcessor,
+    AnkiProcessor
 )
 
 # Import audio utilities
@@ -144,6 +145,12 @@ class Pipeline:
         ]):
             self.state.current_stage = "audio_generation"
             self.generate_audio(all_cards, doc_summary, outputs, cleaned_files)
+        
+        # 10. Send to Anki if configured
+        anki_config = self.config.get('anki', {}).get('anki', {})
+        if anki_config.get('enabled', False) and anki_config.get('auto_send', False):
+            self.state.current_stage = "anki_sending"
+            self.send_to_anki(all_cards, outputs, anki_config)
         
         self.state.outputs = outputs
         return outputs
@@ -610,3 +617,75 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
                 citation_key=self.citation_key,
             )
             print(f"Generated reading audio: {reading_audio_path.name}")
+    
+    def format_deck_name(self, template: str, citation_key: str) -> str:
+        """Format deck name template with variables."""
+        # Support template variables like {citation_key}
+        variables = {
+            'citation_key': citation_key or 'default'
+        }
+        
+        # Replace template variables
+        formatted = template
+        for var, value in variables.items():
+            formatted = formatted.replace(f"{{{var}}}", value)
+        
+        return formatted
+    
+    def prepare_anki_file(self, cards: List[PlainCard], deck_name: str, output_path: Path, include_audio: bool = True) -> Path:
+        """Prepare markdown file for Anki with proper deck header."""
+        anki_file = output_path.parent / f"anki-{output_path.name}"
+        
+        # First, read the existing output file to use its exact format
+        # This ensures we preserve the exact card format that was generated
+        with open(output_path, 'r') as f:
+            content = f.read()
+        
+        with open(anki_file, 'w') as f:
+            # Write deck name header (required by md_to_anki.py)
+            f.write(f"# {deck_name}\n\n")
+            
+            # Write the rest of the content as-is
+            # This preserves the exact tag format from the original file
+            f.write(content)
+        
+        return anki_file
+    
+    def send_to_anki(self, cards: List[PlainCard], outputs: Dict[str, Path], anki_config: Dict[str, Any]):
+        """Send cards to Anki using the modern AnkiProcessor."""
+        try:
+            # Format deck name with template variables
+            deck_template = anki_config.get('deck_name', '{citation_key}')
+            deck_name = self.format_deck_name(deck_template, self.citation_key)
+            
+            logger.info(f"Sending cards to Anki deck: {deck_name}")
+            
+            # Choose which output file to use as base
+            card_format = anki_config.get('card_format', 'with_audio')
+            if card_format == 'with_audio' and 'cards_audio' in outputs:
+                base_file = outputs['cards_audio']
+            else:
+                base_file = outputs['cards_plain']
+            
+            # Prepare Anki file with proper deck header
+            anki_file = self.prepare_anki_file(cards, deck_name, base_file, include_audio=(card_format == 'with_audio'))
+            
+            # Initialize AnkiProcessor
+            host = anki_config.get('host', '127.0.0.1')
+            port = anki_config.get('port', 8765)
+            anki_processor = AnkiProcessor(host, port)
+            
+            # Send cards to Anki
+            cards_added, cards_updated = anki_processor.send_cards_from_file(
+                file_path=anki_file,
+                deck_name=deck_name,
+                update_existing=anki_config.get('update_existing', True),
+                upload_media=anki_config.get('media_upload', True),
+                sync_after=anki_config.get('sync_after', False)
+            )
+            
+            logger.info(f"Successfully sent to Anki deck '{deck_name}': {cards_added} added, {cards_updated} updated")
+            
+        except Exception as e:
+            logger.error(f"Failed to send cards to Anki: {e}")
+            raise

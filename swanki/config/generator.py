@@ -32,10 +32,18 @@ class ConfigGenerator:
                 {"prompts": "default"}, 
                 {"models": "default"},
                 {"audio": "default"},
-                {"output": "default"}
+                {"output": "default"},
+                {"anki": "default"}
             ],
             "pdf_path": None,  # Will be provided by user
             "citation_key": None,  # Will be provided by user
+            # Add placeholder keys so Hydra knows about them
+            "pipeline": None,  # Will be overridden by defaults
+            "prompts": None,   # Will be overridden by defaults
+            "models": None,    # Will be overridden by defaults
+            "audio": None,     # Will be overridden by defaults
+            "output": None,    # Will be overridden by defaults
+            "anki": None,      # Will be overridden by defaults
             "hydra": {
                 "run": {
                     "dir": "outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}"
@@ -289,6 +297,40 @@ Known acronyms: {acronyms}"""
                 "organize_by_type": True,
                 "create_anki_deck": False,
                 "tag_format": "slugified"  # Options: "slugified", "spaces", "raw"
+            }
+        })
+        
+        # Anki configs
+        anki_dir = config_dir / "anki"
+        anki_dir.mkdir(exist_ok=True)
+        
+        cls._write_yaml(anki_dir / "default.yaml", {
+            "anki": {
+                "enabled": False,
+                "deck_name": "{citation_key}",  # Template variable support
+                "host": "127.0.0.1",
+                "port": 8765,
+                "auto_send": False,  # Whether to automatically send cards after generation
+                "update_existing": True,  # Whether to update existing cards
+                "media_upload": True,  # Whether to upload media files (images, audio)
+                "card_format": "with_audio"  # Options: "plain", "with_audio"
+            }
+        })
+        
+        cls._write_yaml(anki_dir / "auto_send.yaml", {
+            "anki": {
+                "enabled": True,
+                "auto_send": True,
+                "deck_name": "{citation_key}",
+                "card_format": "with_audio"
+            }
+        })
+        
+        cls._write_yaml(anki_dir / "custom_deck.yaml", {
+            "anki": {
+                "enabled": True,
+                "deck_name": "Research::Papers::{citation_key}",  # Custom hierarchy
+                "auto_send": False
             }
         })
     
