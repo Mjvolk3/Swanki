@@ -42,9 +42,12 @@ def generate_card_transcript(
     # Get the appropriate text
     if is_front:
         content = card.front.text
-        if citation_key and not content.startswith(f"@{citation_key}:"):
-            # For display, keep the original citation key format
-            content = f"@{citation_key}: {content}"
+        # Always prepend citation key for front of card, even if already present
+        if citation_key:
+            # Remove existing citation if present to avoid duplication
+            if content.startswith(f"@{citation_key}:"):
+                content = content[len(f"@{citation_key}:"):]
+            content = f"@{citation_key}: {content.strip()}"
     else:
         content = card.back.text
     
@@ -54,9 +57,9 @@ def generate_card_transcript(
             system_content = (
                 "You are converting a cloze deletion card to audio format. "
                 "Follow these rules precisely:\n"
-                "1. If there is a citation (like @authorYear), speak it naturally (e.g., 'Author, Year')\n"
-                "2. Replace any {{c1::hidden text}} with the word 'BLANK'\n"
-                "3. State the sentence naturally, saying 'BLANK' where content is hidden\n"
+                "1. ALWAYS start by speaking the citation naturally if present (e.g., @authorYear becomes 'Author, Year')\n"
+                "2. Replace any {{c1::hidden text}} with the word 'mask'\n"
+                "3. State the sentence naturally, saying 'mask' where content is hidden\n"
                 "4. Speak any math expressions in natural language\n"
                 "5. Keep your response concise and academic\n"
                 "6. Never include phrases like 'Question:' or 'Guidance:'\n"
@@ -66,7 +69,7 @@ def generate_card_transcript(
             system_content = (
                 "You are converting a flashcard question to audio format. "
                 "Follow these rules precisely:\n"
-                "1. If there is a citation (like @authorYear), speak it naturally (e.g., 'Author, Year')\n"
+                "1. ALWAYS start by speaking the citation naturally if present (e.g., @authorYear becomes 'Author, Year')\n"
                 "2. State only the question without any introductory phrases\n"
                 "3. Speak any math expressions in natural language\n"
                 "4. Keep your response concise and academic\n"
@@ -387,17 +390,28 @@ def generate_card_audio(
     """
     voice_id = voice_id or DEFAULT_VOICE_ID
     
+    # Check if this is a cloze card
+    is_cloze = "{{c" in card.front.text or "{c1::" in card.front.text
+    
     # Generate transcripts
     front_transcript = generate_card_transcript(
         card, is_front=True, client=openai_client, model=model, citation_key=citation_key
     )
-    back_transcript = generate_card_transcript(
-        card, is_front=False, client=openai_client, model=model, citation_key=citation_key
-    )
     
-    # Generate audio files
-    front_filename = f"{page_base}_{card_index}_front.mp3"
-    back_filename = f"{page_base}_{card_index}_back.mp3"
+    # Only generate back transcript for non-cloze cards
+    back_transcript = None
+    if not is_cloze:
+        back_transcript = generate_card_transcript(
+            card, is_front=False, client=openai_client, model=model, citation_key=citation_key
+        )
+    
+    # Generate audio files with citation key prefix to avoid conflicts
+    if citation_key:
+        front_filename = f"{citation_key}_{page_base}_{card_index}_front.mp3"
+        back_filename = f"{citation_key}_{page_base}_{card_index}_back.mp3"
+    else:
+        front_filename = f"{page_base}_{card_index}_front.mp3"
+        back_filename = f"{page_base}_{card_index}_back.mp3"
     
     front_path = audio_dir / front_filename
     back_path = audio_dir / back_filename
@@ -420,24 +434,29 @@ def generate_card_audio(
         for p in chunk_paths:
             p.unlink()
     
-    time.sleep(1)  # Rate limiting between cards
-    
-    # Generate back audio
-    back_chunks = chunk_text(back_transcript)
-    if len(back_chunks) == 1:
-        text_to_speech(back_chunks[0], voice_id, back_path, elevenlabs_api_key)
-    else:
-        # Generate chunks and combine
-        chunk_paths = []
-        for i, chunk in enumerate(back_chunks):
-            chunk_path = audio_dir / f"{page_base}_{card_index}_back_chunk{i}.mp3"
-            text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key)
-            chunk_paths.append(chunk_path)
-            time.sleep(1)  # Rate limiting
+    # Only generate back audio for non-cloze cards
+    if not is_cloze:
+        time.sleep(1)  # Rate limiting between cards
         
-        combine_audio(chunk_paths, back_path)
-        # Clean up chunks
-        for p in chunk_paths:
-            p.unlink()
+        # Generate back audio
+        back_chunks = chunk_text(back_transcript)
+        if len(back_chunks) == 1:
+            text_to_speech(back_chunks[0], voice_id, back_path, elevenlabs_api_key)
+        else:
+            # Generate chunks and combine
+            chunk_paths = []
+            for i, chunk in enumerate(back_chunks):
+                chunk_path = audio_dir / f"{page_base}_{card_index}_back_chunk{i}.mp3"
+                text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key)
+                chunk_paths.append(chunk_path)
+                time.sleep(1)  # Rate limiting
+            
+            combine_audio(chunk_paths, back_path)
+            # Clean up chunks
+            for p in chunk_paths:
+                p.unlink()
+    else:
+        # For cloze cards, return None for back filename
+        back_filename = None
     
     return front_filename, back_filename
