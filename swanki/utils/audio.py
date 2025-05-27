@@ -361,6 +361,130 @@ def generate_reading_audio(
     return output_path.name
 
 
+def generate_lecture_audio(
+    markdown_files: List[Path],
+    image_summaries: List[str],
+    output_path: Path,
+    openai_client: OpenAI,
+    elevenlabs_api_key: str,
+    voice_id: Optional[str] = None,
+    model: str = "gpt-4o",
+    citation_key: Optional[str] = None,
+    lecture_prompt_config: Optional[dict] = None,
+) -> str:
+    """Generate educational lecture-style audio from document content.
+    
+    Args:
+        markdown_files: List of cleaned markdown file paths
+        image_summaries: List of image summary strings
+        output_path: Path for the output MP3 file
+        openai_client: OpenAI client for transcript generation
+        elevenlabs_api_key: ElevenLabs API key
+        voice_id: Optional voice ID
+        model: OpenAI model to use
+        citation_key: Optional citation key
+        lecture_prompt_config: Optional custom prompt configuration
+        
+    Returns:
+        Filename of the generated audio
+    """
+    voice_id = voice_id or DEFAULT_VOICE_ID
+    
+    # Prepare content with embedded image summaries
+    full_content = ""
+    image_idx = 0
+    
+    for md_file in markdown_files:
+        content = md_file.read_text()
+        
+        # Replace image placeholders with summaries
+        while "![" in content and image_idx < len(image_summaries):
+            # Find next image reference
+            img_start = content.find("![")
+            img_end = content.find(")", img_start)
+            if img_end > img_start:
+                # Insert summary after the image
+                before = content[:img_end + 1]
+                after = content[img_end + 1:]
+                content = f"{before}\n\n{image_summaries[image_idx]}\n\n{after}"
+                image_idx += 1
+            else:
+                break
+        
+        full_content += content + "\n\n"
+    
+    # Get prompt configuration
+    if lecture_prompt_config:
+        system_prompt = lecture_prompt_config.get('lecture_system', 'You are an expert educator.')
+        user_template = lecture_prompt_config.get('lecture_generation', 'Create a lecture from: {content}')
+    else:
+        # Default prompts
+        system_prompt = "You are an expert educator creating an engaging audio lecture."
+        user_template = "Create a lecture from this content:\n{content}"
+    
+    # Format user content
+    if citation_key:
+        humanized_key = humanize_citation_key(citation_key)
+        user_content = user_template.format(
+            citation_key=humanized_key,
+            content=full_content
+        )
+    else:
+        user_content = user_template.format(content=full_content)
+    
+    # Process in chunks due to length (like legacy)
+    enc = tiktoken.get_encoding("cl100k_base")
+    tokens = enc.encode(user_content)
+    chunk_size = 4000  # From legacy
+    max_output_tokens = 3000  # From legacy
+    transcript_chunks = []
+    
+    for start in range(0, len(tokens), chunk_size):
+        chunk = enc.decode(tokens[start : start + chunk_size])
+        
+        # Format the chunk with the template if it's the first chunk
+        if start == 0:
+            chunk_content = user_content[:len(chunk)]
+        else:
+            chunk_content = chunk
+            
+        response = openai_client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": chunk_content},
+            ],
+            temperature=0.7,  # From legacy
+            max_tokens=max_output_tokens,
+        )
+        transcript_chunks.append(response.choices[0].message.content.strip())
+    
+    # Combine transcript chunks
+    full_transcript = "\n\n".join(transcript_chunks)
+    
+    # Generate audio in smaller chunks for stability
+    audio_chunks = chunk_text(full_transcript, max_chars=2000)
+    chunk_paths = []
+    
+    for i, chunk in enumerate(audio_chunks):
+        chunk_path = output_path.parent / f"{output_path.stem}_chunk{i}.mp3"
+        text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key)
+        chunk_paths.append(chunk_path)
+        time.sleep(1)  # Rate limiting
+    
+    # Combine all chunks
+    if len(chunk_paths) == 1:
+        # Just rename if single chunk
+        chunk_paths[0].rename(output_path)
+    else:
+        combine_audio(chunk_paths, output_path)
+        # Clean up chunks
+        for p in chunk_paths:
+            p.unlink()
+    
+    return output_path.name
+
+
 def generate_card_audio(
     card: PlainCard,
     card_index: int,

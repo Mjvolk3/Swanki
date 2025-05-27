@@ -26,7 +26,7 @@ from ..processing import (
 )
 
 # Import audio utilities
-from ..utils.audio import generate_card_audio, generate_summary_audio, generate_reading_audio
+from ..utils.audio import generate_card_audio, generate_summary_audio, generate_reading_audio, generate_lecture_audio
 
 # Import content utilities
 from ..utils.content import extract_images_from_markdown, detect_math_content, generate_image_card_prompts
@@ -141,10 +141,11 @@ class Pipeline:
         if any([
             audio_config.get('generate_complementary', False),
             audio_config.get('generate_summary', False),
-            audio_config.get('generate_reading', False)
+            audio_config.get('generate_reading', False),
+            audio_config.get('generate_lecture', False)
         ]):
             self.state.current_stage = "audio_generation"
-            self.generate_audio(all_cards, doc_summary, outputs, cleaned_files)
+            self.generate_audio(all_cards, doc_summary, outputs, cleaned_files, image_summaries)
         
         # 10. Send to Anki if configured
         anki_config = self.config.get('anki', {}).get('anki', {})
@@ -550,7 +551,8 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
         cards: List[PlainCard], 
         summary: DocumentSummary,
         outputs: Dict[str, Path],
-        cleaned_files: List[Path]
+        cleaned_files: List[Path],
+        image_summaries: List[ImageSummary]
     ):
         """Generate audio files based on configuration"""
         audio_config = self.config.get('audio', {}).get('audio', {})
@@ -631,6 +633,35 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
                 citation_key=self.citation_key,
             )
             print(f"Generated reading audio: {reading_audio_path.name}")
+        
+        # Generate lecture audio (educational style)
+        if audio_config.get('generate_lecture', False):
+            print("Generating lecture audio...")
+            lecture_audio_path = self.output_base / "document-lecture-audio.mp3"
+            
+            # Get lecture prompt configuration
+            prompts_config = self.config.get('prompts', {}).get('prompts', {})
+            audio_prompts = prompts_config.get('audio', {})
+            lecture_prompt_config = {
+                'lecture_system': audio_prompts.get('lecture_system'),
+                'lecture_generation': audio_prompts.get('lecture_generation')
+            }
+            
+            # Extract image summaries as strings
+            image_summary_strings = [img.summary for img in image_summaries]
+            
+            generate_lecture_audio(
+                markdown_files=cleaned_files,
+                image_summaries=image_summary_strings,
+                output_path=lecture_audio_path,
+                openai_client=openai_client,
+                elevenlabs_api_key=elevenlabs_api_key,
+                voice_id=voice_id,
+                model=model,
+                citation_key=self.citation_key,
+                lecture_prompt_config=lecture_prompt_config,
+            )
+            print(f"Generated lecture audio: {lecture_audio_path.name}")
     
     def format_deck_name(self, template: str, citation_key: str) -> str:
         """Format deck name template with variables."""
