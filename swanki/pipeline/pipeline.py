@@ -311,6 +311,7 @@ Image summaries:
             cards_prompts = prompts_config.get('cards', {})
             models_config = self.config.get('models', {}).get('models', {})
             llm_config = models_config.get('llm', {})
+            processing_config = self.config.get('processing', {}).get('processing', {})
             
             # Generate cards for this window
             response = self.instructor.chat.completions.create(
@@ -324,6 +325,7 @@ Image summaries:
                         "role": "user",
                         "content": cards_prompts.get('generate_cards', 'Create {num_cards} flashcards from this content.').format(
                             num_cards=num_cards * len(window_files),
+                            num_cloze=processing_config.get('cloze_cards_per_page', 2) * len(window_files),
                             title=doc_summary.title,
                             acronyms=doc_summary.acronyms,
                             technical_terms=doc_summary.technical_terms,
@@ -438,7 +440,7 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
                         elif image_on_back and not image_on_front:
                             card.back.image_path = image_info['original_path']
                         elif image_on_front and image_on_back:
-                            # Both allowed, use strategy
+                            # Both allowed, but NEVER put the same image on both sides
                             place_on_front = False
                             
                             if placement_strategy == "smart":
@@ -458,10 +460,15 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
                             elif placement_strategy == "prefer_back":
                                 place_on_front = False
                             
+                            # Place image on ONLY ONE side
                             if place_on_front:
                                 card.front.image_path = image_info['original_path']
+                                # Explicitly ensure it's not on the back
+                                card.back.image_path = None
                             else:
                                 card.back.image_path = image_info['original_path']
+                                # Explicitly ensure it's not on the front
+                                card.front.image_path = None
                     
                     image_cards.extend(response.cards)
                     
@@ -502,21 +509,25 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
                 ))
         outputs['cards_plain'] = plain_path
         
-        # Cards with audio placeholders
-        audio_path = output_dir / formats.get('cards_audio', 'cards-with-audio.md')
-        with open(audio_path, 'w') as f:
-            for i, card in enumerate(cards):
-                # Audio files will be generated with card index starting from 1
-                audio_front_uri = f"{self.citation_key}/gen-md-complementary-audio/page-{i+1}_1_front.mp3"
-                audio_back_uri = f"{self.citation_key}/gen-md-complementary-audio/page-{i+1}_1_back.mp3"
-                f.write(card.to_md(
-                    include_audio=True, 
-                    audio_front_uri=audio_front_uri,
-                    audio_back_uri=audio_back_uri,
-                    citation_key=self.citation_key,
-                    tag_format=tag_format
-                ))
-        outputs['cards_audio'] = audio_path
+        # Only create cards with audio if complementary audio is enabled
+        audio_config = self.config.get('audio', {}).get('audio', {})
+        if audio_config.get('generate_complementary', False):
+            # Cards with audio placeholders
+            audio_path = output_dir / formats.get('cards_audio', 'cards-with-audio.md')
+            with open(audio_path, 'w') as f:
+                for i, card in enumerate(cards):
+                    # Audio files will be generated with card index starting from 1
+                    # Include citation key in filename to avoid conflicts
+                    audio_front_uri = f"{self.citation_key}/gen-md-complementary-audio/{self.citation_key}_page-{i+1}_{i+1}_front.mp3"
+                    audio_back_uri = f"{self.citation_key}/gen-md-complementary-audio/{self.citation_key}_page-{i+1}_{i+1}_back.mp3"
+                    f.write(card.to_md(
+                        include_audio=True, 
+                        audio_front_uri=audio_front_uri,
+                        audio_back_uri=audio_back_uri,
+                        citation_key=self.citation_key,
+                        tag_format=tag_format
+                    ))
+            outputs['cards_audio'] = audio_path
         
         # Document summary
         summary_path = output_dir / formats.get('summary', 'document-summary.md')
@@ -581,7 +592,10 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
                     citation_key=self.citation_key,
                 )
                 
-                print(f"Generated audio for card {i+1}: {front_filename}, {back_filename}")
+                if back_filename:
+                    print(f"Generated audio for card {i+1}: {front_filename}, {back_filename}")
+                else:
+                    print(f"Generated audio for cloze card {i+1}: {front_filename} (no back audio)")
         
         # Generate summary audio
         if audio_config.get('generate_summary', False):
@@ -661,14 +675,18 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
             logger.info(f"Sending cards to Anki deck: {deck_name}")
             
             # Choose which output file to use as base
+            # Important: Only use audio cards if they actually exist
             card_format = anki_config.get('card_format', 'with_audio')
             if card_format == 'with_audio' and 'cards_audio' in outputs:
                 base_file = outputs['cards_audio']
             else:
+                # Fall back to plain cards if audio cards don't exist or not requested
                 base_file = outputs['cards_plain']
             
             # Prepare Anki file with proper deck header
-            anki_file = self.prepare_anki_file(cards, deck_name, base_file, include_audio=(card_format == 'with_audio'))
+            # Only include audio if it was actually generated
+            use_audio = (card_format == 'with_audio' and 'cards_audio' in outputs)
+            anki_file = self.prepare_anki_file(cards, deck_name, base_file, include_audio=use_audio)
             
             # Initialize AnkiProcessor
             host = anki_config.get('host', '127.0.0.1')

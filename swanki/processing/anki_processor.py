@@ -393,6 +393,22 @@ class AnkiProcessor:
         # Remove code fences around math
         text = MATH_FENCE_RE.sub(lambda m: m.group(1), text)
         
+        # Convert markdown code blocks to HTML for better Anki rendering
+        # This preserves syntax highlighting in Anki
+        code_block_pattern = r'```(\w+)?\n(.*?)```'
+        def replace_code_block(match):
+            lang = match.group(1) or ''
+            code = match.group(2)
+            # Escape HTML entities in code
+            code = code.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            # Use monospace font and preserve whitespace
+            return f'<pre><code class="{lang}">{code}</code></pre>'
+        
+        text = re.sub(code_block_pattern, replace_code_block, text, flags=re.DOTALL)
+        
+        # Convert inline code to HTML
+        text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
+        
         # Convert markdown math to MathJax
         text = re.sub(r"\$\$(.*?)\$\$", r"\\[\1\\]", text, flags=re.DOTALL)
         text = re.sub(r"(?<!\$)\$(?!\$)(.*?)(?<!\$)\$(?!\$)", r"\\(\1\\)", text, flags=re.DOTALL)

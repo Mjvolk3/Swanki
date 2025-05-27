@@ -43,9 +43,30 @@ class PlainCard(BaseModel):
         # Format tags
         formatted_tags = format_tags(self.tags, tag_format)
         
-        # Format based on whether audio is included
-        if include_audio and audio_front_uri and audio_back_uri:
-            # VSCode Anki format with audio
+        # Check if this is a cloze card
+        is_cloze = "{{c" in front_text or "{c1::" in front_text
+        
+        # Format based on card type and whether audio is included
+        if is_cloze:
+            # Cloze cards don't need back content or back audio
+            # Fix single braces to double braces
+            front_text = front_text.replace("{c1::", "{{c1::").replace("}}", "}")
+            if "}}" not in front_text:
+                front_text = front_text.replace("}", "}}")
+            
+            md = f"## {front_text}\n\n"
+            
+            # Add front image if present
+            if self.front.image_path:
+                md += f"![Image]({self.front.image_path})\n\n"
+            
+            if include_audio and audio_front_uri:
+                md += f"[audio-front]({audio_front_uri})\n\n"
+            
+            if formatted_tags:
+                md += f"#{', #'.join(formatted_tags)}\n\n"
+        elif include_audio and audio_front_uri and audio_back_uri:
+            # Regular cards with audio
             md = f"## {front_text}\n\n"
             
             # Add front image if present
