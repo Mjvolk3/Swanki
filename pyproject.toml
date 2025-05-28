@@ -17,10 +17,23 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 keywords = ["An example package", "starving artist"]
-# dependencies = []
-# requires-python = ">=3.11"
 requires-python = ">=3.10"
-dynamic = ["dependencies"]
+dependencies = [
+    "python-dotenv",
+    "langchain-community",
+    "langchain",
+    "openai",
+    "tiktoken",
+    "PyPDF2",
+    "hydra-core",
+    "omegaconf",
+    "pydantic>=2.0",
+    "instructor",
+    "pyyaml",
+    "elevenlabs",
+    "pydub",
+    "requests",
+]
 
 [project.optional-dependencies]
 dev = ["black", "semantic-release", "pip-tools", "pytest"]
@@ -75,10 +88,6 @@ match = "swanki/.*\\.py"
 # https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html
 [tool.setuptools.dynamic]
 dependencies = { file = ["env/requirements.txt"] }
-# Doesn't allow ordering
-# dependencies = {file = ["env/requirements.txt", "env/requirements_dependent.txt"]}
-
-# optional-dependencies = {dev = { file = ["requirements-dev.txt"] }}
 version = { attr = "swanki.__version__" }
 
 [tool.setuptools.package-data]
