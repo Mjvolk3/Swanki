@@ -23,7 +23,7 @@ pip install -e .
 
 ## Setting up Mathpix
 
-1. Sign up for a Mathpix account at https://mathpix.com/
+1. Sign up for a Mathpix account at [https://mathpix.com/](https://mathpix.com/)
 2. Install the Mathpix CLI:
    ```bash
    npm install -g @mathpix/mpx-cli
