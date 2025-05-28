@@ -1,16 +1,88 @@
+"""Configuration generator for Swanki's Hydra-based config system.
+
+This module provides the ConfigGenerator class which automatically creates
+default configuration files for the Swanki pipeline. It generates a complete
+set of Hydra configs covering all aspects of the processing pipeline.
+
+Classes
+-------
+ConfigGenerator
+    Auto-generates default Hydra configs if not present
+
+Examples
+--------
+>>> from swanki.config import ConfigGenerator
+>>> 
+>>> # Ensure configs exist (called automatically by CLI)
+>>> config_dir = ConfigGenerator.ensure_configs()
+>>> print(f"Configs available at: {config_dir}")
+Configs available at: /path/to/project/.swanki_config
+
+Notes
+-----
+Configuration structure:
+- Main config.yaml with defaults list
+- Subdirectories for each config group:
+  - pipeline/: Processing settings
+  - prompts/: AI prompt templates  
+  - models/: LLM and TTS settings
+  - audio/: Audio generation options
+  - output/: Output format settings
+  - anki/: Anki integration settings
+"""
+
 from pathlib import Path
 import yaml
 from typing import Dict, Any
 
 
 class ConfigGenerator:
-    """Auto-generates default Hydra configs if not present"""
+    """Auto-generates default Hydra configs if not present.
+    
+    Creates a complete configuration structure for Swanki with sensible
+    defaults. Configs are created in a .swanki_config directory in the
+    current working directory.
+    
+    Attributes
+    ----------
+    DEFAULT_CONFIG_DIR : Path
+        Default directory name for configs (.swanki_config)
+    
+    Methods
+    -------
+    ensure_configs()
+        Ensure config directory exists with all defaults
+    
+    Examples
+    --------
+    >>> # Automatically called by CLI
+    >>> config_dir = ConfigGenerator.ensure_configs()
+    >>> 
+    >>> # Configs are now available for Hydra
+    >>> # Users can override by editing files in .swanki_config/
+    """
     
     DEFAULT_CONFIG_DIR = Path(".swanki_config")
     
     @classmethod
     def ensure_configs(cls) -> Path:
-        """Ensure config directory exists with all defaults"""
+        """Ensure config directory exists with all defaults.
+        
+        Creates the configuration directory and generates all default
+        configuration files if they don't already exist. Called automatically
+        by the CLI before Hydra initialization.
+        
+        Returns
+        -------
+        Path
+            Path to the configuration directory
+        
+        Notes
+        -----
+        - Only creates configs if directory doesn't exist
+        - Won't overwrite existing user modifications
+        - Creates in current working directory
+        """
         config_dir = Path.cwd() / cls.DEFAULT_CONFIG_DIR
         
         if not config_dir.exists():
@@ -22,7 +94,26 @@ class ConfigGenerator:
     
     @classmethod
     def _generate_all_defaults(cls, config_dir: Path):
-        """Generate all default configuration files"""
+        """Generate all default configuration files.
+        
+        Creates the complete configuration structure with all config
+        groups and their variants.
+        
+        Parameters
+        ----------
+        config_dir : Path
+            Root configuration directory
+        
+        Notes
+        -----
+        Config groups created:
+        - pipeline: Processing parameters (default, comprehensive, fast)
+        - prompts: AI prompts (default, technical)
+        - models: LLM/TTS settings (default, openai_tts)
+        - audio: Audio generation (default, cards, summary, reading, full)
+        - output: Output formats (default)
+        - anki: Anki integration (default, auto_send, custom_deck)
+        """
         
         # Main config
         cls._write_yaml(config_dir / "config.yaml", {
@@ -336,6 +427,19 @@ Known acronyms: {acronyms}"""
     
     @staticmethod
     def _write_yaml(path: Path, data: Dict[str, Any]):
-        """Write YAML file with nice formatting"""
+        """Write YAML file with nice formatting.
+        
+        Parameters
+        ----------
+        path : Path
+            Output file path
+        data : Dict[str, Any]
+            Configuration data to write
+        
+        Notes
+        -----
+        - Uses default_flow_style=False for readable output
+        - Preserves key order with sort_keys=False
+        """
         with open(path, 'w') as f:
             yaml.dump(data, f, default_flow_style=False, sort_keys=False)
