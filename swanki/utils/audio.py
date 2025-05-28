@@ -1,4 +1,58 @@
-"""Audio generation utilities for creating TTS audio from card transcripts."""
+"""Audio generation utilities for creating TTS audio from card transcripts.
+
+This module provides functions for generating audio files from flashcards
+and document content using OpenAI for transcript generation and ElevenLabs
+for text-to-speech conversion. Supports various audio types including card
+audio, summary narration, full document reading, and educational lectures.
+
+Functions
+---------
+generate_card_audio(card, card_index, ...)
+    Generate audio for flashcard front/back
+generate_summary_audio(summary_text, ...)
+    Generate audio for document summary
+generate_reading_audio(full_content, ...)
+    Generate audio for full document reading
+generate_lecture_audio(markdown_files, ...)
+    Generate educational lecture-style audio
+generate_card_transcript(card, is_front, ...)
+    Generate optimized transcript for TTS
+chunk_text(text, max_chars)
+    Split text into manageable chunks
+text_to_speech(text, voice_id, ...)
+    Convert text to speech using ElevenLabs
+combine_audio(files, output)
+    Combine multiple audio files
+
+Constants
+---------
+DEFAULT_VOICE_ID : str
+    Default ElevenLabs voice ID
+
+Examples
+--------
+>>> from swanki.utils.audio import generate_card_audio
+>>> from swanki.models.cards import PlainCard, CardContent
+>>> from openai import OpenAI
+>>> from pathlib import Path
+>>> 
+>>> card = PlainCard(
+...     front=CardContent(text="What is Python?"),
+...     back=CardContent(text="A high-level programming language")
+... )
+>>> 
+>>> client = OpenAI()
+>>> api_key = "your-elevenlabs-key"
+>>> 
+>>> front_file, back_file = generate_card_audio(
+...     card=card,
+...     card_index=1,
+...     page_base="page-1",
+...     audio_dir=Path("audio"),
+...     openai_client=client,
+...     elevenlabs_api_key=api_key
+... )
+"""
 import os
 import re
 import time
@@ -26,15 +80,45 @@ def generate_card_transcript(
 ) -> str:
     """Generate audio transcript for a card side.
     
-    Args:
-        card: The card to generate transcript for
-        is_front: Whether this is the front (True) or back (False) of the card
-        client: OpenAI client
-        model: Model to use for generation
-        citation_key: Optional citation key to include
-        
-    Returns:
-        The generated transcript text
+    Creates an optimized transcript for text-to-speech conversion,
+    handling different card types (regular vs cloze) and properly
+    formatting math expressions and citations.
+    
+    Parameters
+    ----------
+    card : PlainCard
+        The card to generate transcript for
+    is_front : bool
+        Whether this is the front (True) or back (False) of the card
+    client : OpenAI
+        OpenAI client for transcript generation
+    model : str, optional
+        Model to use for generation (default is "gpt-4o")
+    citation_key : str, optional
+        Citation key to include in front transcript
+    
+    Returns
+    -------
+    str
+        The generated transcript text optimized for TTS
+    
+    Notes
+    -----
+    - Cloze deletions are replaced with "mask" for audio
+    - Math expressions are converted to natural language
+    - Citations are humanized (e.g., @smith2023 -> "Smith, 2023")
+    - Different prompts used for question vs answer generation
+    
+    Examples
+    --------
+    >>> transcript = generate_card_transcript(
+    ...     card=card,
+    ...     is_front=True,
+    ...     client=openai_client,
+    ...     citation_key="einstein1905"
+    ... )
+    >>> print(transcript)
+    'Einstein, 1905: What is the theory of special relativity?'
     """
     # Check if this is a cloze card
     is_cloze = "{{c" in card.front.text
@@ -129,7 +213,30 @@ def generate_card_transcript(
 
 
 def chunk_text(text: str, max_chars: int = 3000) -> List[str]:
-    """Split text into chunks of up to max_chars without breaking words or sentences."""
+    """Split text into chunks without breaking words or sentences.
+    
+    Intelligently splits text at paragraph and sentence boundaries
+    to create chunks suitable for TTS processing.
+    
+    Parameters
+    ----------
+    text : str
+        Text to split into chunks
+    max_chars : int, optional
+        Maximum characters per chunk (default is 3000)
+    
+    Returns
+    -------
+    List[str]
+        List of text chunks
+    
+    Examples
+    --------
+    >>> long_text = "This is paragraph one.\n\nThis is paragraph two..." * 100
+    >>> chunks = chunk_text(long_text, max_chars=500)
+    >>> all(len(chunk) <= 500 for chunk in chunks)
+    True
+    """
     paragraphs = text.split("\n\n")
     chunks: List[str] = []
     current = ""
@@ -167,7 +274,31 @@ def text_to_speech(
     output_path: Path, 
     api_key: str
 ) -> None:
-    """Convert a text chunk to speech and save as MP3."""
+    """Convert a text chunk to speech and save as MP3.
+    
+    Uses ElevenLabs API to generate high-quality speech from text.
+    
+    Parameters
+    ----------
+    text : str
+        Text to convert to speech
+    voice_id : str
+        ElevenLabs voice ID
+    output_path : Path
+        Path for output MP3 file
+    api_key : str
+        ElevenLabs API key
+    
+    Notes
+    -----
+    Uses the following voice settings:
+    - stability: 0.5
+    - similarity_boost: 0.75
+    - style: 0.2
+    - speaker_boost: True
+    - model: eleven_multilingual_v2
+    - format: mp3_44100_192
+    """
     client = ElevenLabs(api_key=api_key)
     settings = VoiceSettings(
         stability=0.5, 
@@ -190,7 +321,23 @@ def text_to_speech(
 
 
 def combine_audio(files: List[Path], output: Path) -> None:
-    """Combine multiple MP3 files into one with smooth fades."""
+    """Combine multiple MP3 files into one with smooth transitions.
+    
+    Merges audio files with crossfade to avoid abrupt transitions.
+    
+    Parameters
+    ----------
+    files : List[Path]
+        List of MP3 files to combine in order
+    output : Path
+        Path for combined output file
+    
+    Notes
+    -----
+    - Uses 200ms crossfade between segments
+    - Exports at 192k bitrate
+    - Requires pydub and ffmpeg
+    """
     segments = [AudioSegment.from_mp3(str(f)) for f in files]
     combined = segments[0]
     
@@ -211,17 +358,42 @@ def generate_summary_audio(
 ) -> str:
     """Generate audio for document summary.
     
-    Args:
-        summary_text: The summary text to convert to audio
-        output_path: Path for the output MP3 file
-        openai_client: OpenAI client for transcript generation
-        elevenlabs_api_key: ElevenLabs API key
-        voice_id: Optional voice ID
-        model: OpenAI model to use
-        citation_key: Optional citation key
-        
-    Returns:
-        Filename of the generated audio
+    Creates narration-style audio optimized for academic summaries,
+    with proper handling of technical terms and citations.
+    
+    Parameters
+    ----------
+    summary_text : str
+        The summary text to convert to audio
+    output_path : Path
+        Path for the output MP3 file
+    openai_client : OpenAI
+        OpenAI client for transcript generation
+    elevenlabs_api_key : str
+        ElevenLabs API key
+    voice_id : str, optional
+        Voice ID (defaults to DEFAULT_VOICE_ID)
+    model : str, optional
+        OpenAI model to use (default is "gpt-4o")
+    citation_key : str, optional
+        Citation key to announce at beginning
+    
+    Returns
+    -------
+    str
+        Filename of the generated audio file
+    
+    Examples
+    --------
+    >>> filename = generate_summary_audio(
+    ...     summary_text="This paper presents a new algorithm...",
+    ...     output_path=Path("summary.mp3"),
+    ...     openai_client=client,
+    ...     elevenlabs_api_key="key",
+    ...     citation_key="smith2023"
+    ... )
+    >>> print(filename)
+    'summary.mp3'
     """
     voice_id = voice_id or DEFAULT_VOICE_ID
     
@@ -288,17 +460,48 @@ def generate_reading_audio(
 ) -> str:
     """Generate audio for full document reading.
     
-    Args:
-        full_content: The full document content to convert to audio
-        output_path: Path for the output MP3 file
-        openai_client: OpenAI client for transcript generation
-        elevenlabs_api_key: ElevenLabs API key
-        voice_id: Optional voice ID
-        model: OpenAI model to use
-        citation_key: Optional citation key
-        
-    Returns:
-        Filename of the generated audio
+    Creates a complete audio narration of the document, suitable for
+    listening to the entire content. Handles long documents by chunking
+    and combining audio segments.
+    
+    Parameters
+    ----------
+    full_content : str
+        The full document content to convert to audio
+    output_path : Path
+        Path for the output MP3 file
+    openai_client : OpenAI
+        OpenAI client for transcript generation
+    elevenlabs_api_key : str
+        ElevenLabs API key
+    voice_id : str, optional
+        Voice ID (defaults to DEFAULT_VOICE_ID)
+    model : str, optional
+        OpenAI model to use (default is "gpt-4o")
+    citation_key : str, optional
+        Citation key to announce at beginning
+    
+    Returns
+    -------
+    str
+        Filename of the generated audio file
+    
+    Notes
+    -----
+    - Converts LaTeX and math to natural speech
+    - Expands acronyms and technical terms
+    - Skips image references but reads captions
+    - Processes in 3000-token chunks for stability
+    - Audio chunks limited to 2000 chars for quality
+    
+    Examples
+    --------
+    >>> filename = generate_reading_audio(
+    ...     full_content=document_text,
+    ...     output_path=Path("reading.mp3"),
+    ...     openai_client=client,
+    ...     elevenlabs_api_key="key"
+    ... )
     """
     voice_id = voice_id or DEFAULT_VOICE_ID
     
@@ -374,19 +577,59 @@ def generate_lecture_audio(
 ) -> str:
     """Generate educational lecture-style audio from document content.
     
-    Args:
-        markdown_files: List of cleaned markdown file paths
-        image_summaries: List of image summary strings
-        output_path: Path for the output MP3 file
-        openai_client: OpenAI client for transcript generation
-        elevenlabs_api_key: ElevenLabs API key
-        voice_id: Optional voice ID
-        model: OpenAI model to use
-        citation_key: Optional citation key
-        lecture_prompt_config: Optional custom prompt configuration
-        
-    Returns:
-        Filename of the generated audio
+    Creates an engaging educational presentation from the document,
+    incorporating image descriptions and emphasizing key concepts.
+    Uses higher temperature for more dynamic narration.
+    
+    Parameters
+    ----------
+    markdown_files : List[Path]
+        List of cleaned markdown file paths in order
+    image_summaries : List[str]
+        List of image summary strings to embed
+    output_path : Path
+        Path for the output MP3 file
+    openai_client : OpenAI
+        OpenAI client for transcript generation
+    elevenlabs_api_key : str
+        ElevenLabs API key
+    voice_id : str, optional
+        Voice ID (defaults to DEFAULT_VOICE_ID)
+    model : str, optional
+        OpenAI model to use (default is "gpt-4o")
+    citation_key : str, optional
+        Citation key to include in lecture
+    lecture_prompt_config : dict, optional
+        Custom prompt configuration with keys:
+        - 'lecture_system': System prompt
+        - 'lecture_generation': User prompt template
+    
+    Returns
+    -------
+    str
+        Filename of the generated audio file
+    
+    Notes
+    -----
+    - Embeds image summaries at appropriate locations
+    - Uses temperature 0.7 for engaging delivery
+    - Processes in 4000-token chunks
+    - Supports custom prompts via config
+    
+    Examples
+    --------
+    >>> config = {
+    ...     'lecture_system': 'You are a professor...',
+    ...     'lecture_generation': 'Create a lecture on {content}'
+    ... }
+    >>> filename = generate_lecture_audio(
+    ...     markdown_files=[Path("page1.md"), Path("page2.md")],
+    ...     image_summaries=["Figure 1 shows..."],
+    ...     output_path=Path("lecture.mp3"),
+    ...     openai_client=client,
+    ...     elevenlabs_api_key="key",
+    ...     lecture_prompt_config=config
+    ... )
     """
     voice_id = voice_id or DEFAULT_VOICE_ID
     
@@ -495,22 +738,61 @@ def generate_card_audio(
     voice_id: Optional[str] = None,
     model: str = "gpt-4o",
     citation_key: Optional[str] = None,
-) -> Tuple[str, str]:
+) -> Tuple[str, Optional[str]]:
     """Generate audio files for both sides of a card.
     
-    Args:
-        card: The card to generate audio for
-        card_index: Index of the card (1-based)
-        page_base: Base name for the page (e.g., "page-1")
-        audio_dir: Directory to save audio files
-        openai_client: OpenAI client for transcript generation
-        elevenlabs_api_key: ElevenLabs API key
-        voice_id: Optional voice ID, defaults to DEFAULT_VOICE_ID
-        model: OpenAI model to use
-        citation_key: Optional citation key
-        
-    Returns:
-        Tuple of (front_audio_path, back_audio_path) relative to audio_dir
+    Creates audio files for flashcard content, handling both regular
+    and cloze cards appropriately. Cloze cards only generate front audio.
+    
+    Parameters
+    ----------
+    card : PlainCard
+        The card to generate audio for
+    card_index : int
+        Index of the card (1-based) for naming
+    page_base : str
+        Base name for the page (e.g., "page-1")
+    audio_dir : Path
+        Directory to save audio files
+    openai_client : OpenAI
+        OpenAI client for transcript generation
+    elevenlabs_api_key : str
+        ElevenLabs API key
+    voice_id : str, optional
+        Voice ID (defaults to DEFAULT_VOICE_ID)
+    model : str, optional
+        OpenAI model to use (default is "gpt-4o")
+    citation_key : str, optional
+        Citation key for file naming and content
+    
+    Returns
+    -------
+    Tuple[str, Optional[str]]
+        Tuple of (front_filename, back_filename). For cloze cards,
+        back_filename is None.
+    
+    Examples
+    --------
+    >>> front, back = generate_card_audio(
+    ...     card=my_card,
+    ...     card_index=1,
+    ...     page_base="page-1",
+    ...     audio_dir=Path("audio"),
+    ...     openai_client=client,
+    ...     elevenlabs_api_key="key",
+    ...     citation_key="doe2024"
+    ... )
+    >>> print(front)
+    'doe2024_page-1_1_front.mp3'
+    >>> print(back)
+    'doe2024_page-1_1_back.mp3'
+    
+    Notes
+    -----
+    - Files are named with citation key prefix to avoid conflicts
+    - Rate limiting is applied between API calls
+    - Large transcripts are chunked and combined
+    - Temporary chunk files are cleaned up after combination
     """
     voice_id = voice_id or DEFAULT_VOICE_ID
     

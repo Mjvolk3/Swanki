@@ -32,6 +32,7 @@ Homepage = "https://github.com/Mjvolk3/Swanki"
 swanki = "swanki.__main__:main"
 swanki-cut = "swanki.cut:main"
 swanki-combine-pdf = "swanki.combine_pdf:main"
+swanki-to-anki = "swanki.send_to_anki:main"
 
 
 [tool.isort]

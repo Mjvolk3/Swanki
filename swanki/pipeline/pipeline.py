@@ -1,3 +1,39 @@
+"""Main processing pipeline for Swanki.
+
+This module contains the Pipeline class which orchestrates the entire
+workflow of converting PDFs to Anki flashcards. It coordinates all
+processing steps including PDF conversion, markdown cleaning, image
+processing, card generation, audio creation, and Anki integration.
+
+The pipeline is configuration-driven using Hydra configs and supports
+various processing options and output formats.
+
+Classes
+-------
+Pipeline
+    Main orchestrator for PDF to Anki card conversion
+
+Examples
+--------
+>>> from swanki import Pipeline, ConfigGenerator
+>>> from pathlib import Path
+>>> 
+>>> # Generate configuration
+>>> config_gen = ConfigGenerator()
+>>> config = config_gen.generate(
+...     pdf_path="paper.pdf",
+...     output_dir="output",
+...     deck_name="MyDeck"
+... )
+>>> 
+>>> # Create and run pipeline
+>>> pipeline = Pipeline(config)
+>>> outputs = pipeline.process_full(
+...     pdf_path=Path("paper.pdf"),
+...     citation_key="Smith2023"
+... )
+"""
+
 from pathlib import Path
 from typing import Dict, Any, List
 from omegaconf import DictConfig
@@ -33,9 +69,84 @@ from ..utils.content import extract_images_from_markdown, detect_math_content, g
 
 
 class Pipeline:
-    """Main processing pipeline with Hydra configuration"""
+    """Main processing pipeline with configuration-driven workflow.
+    
+    Orchestrates the complete PDF to Anki card conversion process,
+    managing all intermediate steps and outputs. Supports various
+    configuration options for customizing the processing behavior.
+    
+    Parameters
+    ----------
+    config : Dict[str, Any]
+        Hydra configuration dictionary containing all processing options
+    
+    Attributes
+    ----------
+    config : Dict[str, Any]
+        Configuration dictionary
+    instructor : instructor.Instructor
+        Patched OpenAI client for structured outputs
+    state : ProcessingState or None
+        Current processing state tracker
+    data_dir : Path
+        Base directory for output data
+    output_base : Path
+        Current output directory for this run
+    citation_key : str
+        Citation key for the current document
+    
+    Methods
+    -------
+    process_full(pdf_path, citation_key)
+        Run the complete processing pipeline
+    split_pdf(pdf_path)
+        Split PDF into individual pages
+    convert_to_markdown(pages)
+        Convert PDF pages to markdown
+    clean_markdown(markdown_files)
+        Clean and format markdown files
+    process_images(markdown_files)
+        Extract and summarize images
+    generate_document_summary(markdown_files, image_summaries)
+        Generate comprehensive document summary
+    generate_cards_with_window(markdown_files, doc_summary, window_size, skip, num_cards)
+        Generate cards using sliding window
+    generate_image_cards(markdown_files, doc_summary, ...)
+        Generate cards from images
+    generate_outputs(cards, summary, output_dir)
+        Generate output files in various formats
+    generate_audio(cards, summary, outputs, cleaned_files, image_summaries)
+        Generate audio files for cards and content
+    send_to_anki(cards, outputs, anki_config)
+        Send cards to Anki via AnkiConnect
+    
+    Examples
+    --------
+    >>> config = {
+    ...     'pipeline': {'processing': {'window_size': 2}},
+    ...     'audio': {'audio': {'generate_complementary': True}},
+    ...     'anki': {'anki': {'enabled': True, 'auto_send': True}}
+    ... }
+    >>> pipeline = Pipeline(config)
+    >>> outputs = pipeline.process_full(
+    ...     pdf_path=Path("research_paper.pdf"),
+    ...     citation_key="Johnson2024"
+    ... )
+    """
     
     def __init__(self, config: Dict[str, Any]):
+        """Initialize the pipeline with configuration.
+        
+        Parameters
+        ----------
+        config : Dict[str, Any]
+            Hydra configuration dictionary with processing options
+        
+        Notes
+        -----
+        Loads environment variables including SWANKI_DATA for output directory.
+        Initializes OpenAI client with instructor for structured outputs.
+        """
         self.config = config
         self.instructor = instructor.patch(OpenAI())
         self.state = None
@@ -45,7 +156,42 @@ class Pipeline:
         self.data_dir = Path(os.getenv('SWANKI_DATA', 'swanki-out'))
         
     def process_full(self, pdf_path: Path, citation_key: str) -> Dict[str, Path]:
-        """Process PDF with configuration-driven pipeline"""
+        """Process PDF through the complete pipeline.
+        
+        Executes all processing steps from PDF to final outputs, including
+        splitting, conversion, cleaning, card generation, audio creation,
+        and optional Anki integration.
+        
+        Parameters
+        ----------
+        pdf_path : Path
+            Path to the input PDF file
+        citation_key : str
+            Citation key for naming outputs and referencing
+        
+        Returns
+        -------
+        Dict[str, Path]
+            Dictionary mapping output types to file paths:
+            - 'cards_plain': Plain markdown cards
+            - 'cards_audio': Cards with audio links (if enabled)
+            - 'summary': Document summary
+        
+        Raises
+        ------
+        RuntimeError
+            If PDF conversion fails or no markdown content generated
+        
+        Examples
+        --------
+        >>> pipeline = Pipeline(config)
+        >>> outputs = pipeline.process_full(
+        ...     pdf_path=Path("/docs/paper.pdf"),
+        ...     citation_key="Einstein1905"
+        ... )
+        >>> print(outputs['cards_plain'])
+        PosixPath('swanki-out/Einstein1905/cards-plain.md')
+        """
         
         # Initialize state
         self.state = ProcessingState(
@@ -157,13 +303,55 @@ class Pipeline:
         return outputs
     
     def split_pdf(self, pdf_path: Path) -> List[Path]:
-        """Split PDF into individual pages using PDFProcessor"""
+        """Split PDF into individual pages.
+        
+        Uses PDFProcessor to split a multi-page PDF into separate
+        single-page PDF files for easier processing.
+        
+        Parameters
+        ----------
+        pdf_path : Path
+            Path to the input PDF file
+        
+        Returns
+        -------
+        List[Path]
+            List of paths to individual page PDFs
+        
+        See Also
+        --------
+        PDFProcessor : Handles PDF splitting operations
+        """
         pdf_processor = PDFProcessor(self.output_base)
         pdf_files = pdf_processor.split_pdf(pdf_path)
         return pdf_files
     
     def convert_to_markdown(self, pages: List[Path]) -> List[Path]:
-        """Convert individual PDF pages to markdown using MarkdownConverter"""
+        """Convert PDF pages to markdown format.
+        
+        Converts individual PDF pages to markdown using the Mathpix
+        service. Handles conversion errors gracefully and logs progress.
+        
+        Parameters
+        ----------
+        pages : List[Path]
+            List of single-page PDF files to convert
+        
+        Returns
+        -------
+        List[Path]
+            List of paths to generated markdown files
+        
+        Raises
+        ------
+        RuntimeError
+            If no pages could be converted successfully
+        
+        Notes
+        -----
+        Uses os.system for better TTY handling with the mpx command.
+        Creates output in 'md-singles' subdirectory.
+        """
         
         # Create output directory
         md_singles_dir = self.output_base / "md-singles"
@@ -204,13 +392,50 @@ class Pipeline:
         return sorted(markdown_files)
     
     def clean_markdown(self, markdown_files: List[Path]) -> List[Path]:
-        """Clean markdown files using MarkdownCleaner"""
+        """Clean and standardize markdown files.
+        
+        Applies various cleaning operations to markdown files including
+        removing artifacts, fixing formatting, and standardizing structure.
+        
+        Parameters
+        ----------
+        markdown_files : List[Path]
+            List of markdown files to clean
+        
+        Returns
+        -------
+        List[Path]
+            List of paths to cleaned markdown files
+        
+        See Also
+        --------
+        MarkdownCleaner : Handles markdown cleaning operations
+        """
         cleaner = MarkdownCleaner(self.output_base)
         cleaned_files = cleaner.clean_all_markdown_files()
         return cleaned_files
     
     def process_images(self, markdown_files: List[Path]) -> List[ImageSummary]:
-        """Process images and generate summaries using ImageProcessor"""
+        """Extract and summarize images from markdown.
+        
+        Processes all images found in markdown files, generating
+        AI-powered summaries and extracting relevant metadata.
+        
+        Parameters
+        ----------
+        markdown_files : List[Path]
+            List of markdown files to process
+        
+        Returns
+        -------
+        List[ImageSummary]
+            List of image summaries with metadata
+        
+        See Also
+        --------
+        ImageProcessor : Handles image extraction and summarization
+        ImageSummary : Data model for image information
+        """
         # Initialize processor with OpenAI client if available
         processor = ImageProcessor(self.output_base, self.instructor)
         
@@ -237,7 +462,33 @@ class Pipeline:
         markdown_files: List[Path],
         image_summaries: List[ImageSummary]
     ) -> DocumentSummary:
-        """Generate comprehensive document summary"""
+        """Generate comprehensive document summary.
+        
+        Creates a structured summary of the entire document including
+        title, authors, key contributions, methodology, and definitions
+        of acronyms and technical terms.
+        
+        Parameters
+        ----------
+        markdown_files : List[Path]
+            List of cleaned markdown files
+        image_summaries : List[ImageSummary]
+            List of image summaries to include
+        
+        Returns
+        -------
+        DocumentSummary
+            Structured document summary with metadata
+        
+        Notes
+        -----
+        Uses configured prompts and LLM model for generation.
+        Summary must be 200-500 words as validated by DocumentSummary.
+        
+        See Also
+        --------
+        DocumentSummary : Data model for document summaries
+        """
         # Combine all markdown content
         combined_content = "\\n\\n".join([
             f.read_text() for f in markdown_files
@@ -296,7 +547,46 @@ Image summaries:
         skip: int,
         num_cards: int
     ) -> List[PlainCard]:
-        """Generate cards using sliding window approach"""
+        """Generate flashcards using sliding window approach.
+        
+        Processes markdown files in overlapping windows to generate
+        cards with better context. This helps create more coherent
+        cards that can reference content across page boundaries.
+        
+        Parameters
+        ----------
+        markdown_files : List[Path]
+            List of markdown files to process
+        doc_summary : DocumentSummary
+            Document summary for context
+        window_size : int
+            Number of files to process together
+        skip : int
+            Number of files to skip between windows
+        num_cards : int
+            Number of cards to generate per page
+        
+        Returns
+        -------
+        List[PlainCard]
+            Generated flashcards
+        
+        Examples
+        --------
+        >>> # Process files in groups of 2, moving 1 file at a time
+        >>> cards = pipeline.generate_cards_with_window(
+        ...     markdown_files=files,
+        ...     doc_summary=summary,
+        ...     window_size=2,
+        ...     skip=1,
+        ...     num_cards=3
+        ... )
+        
+        Notes
+        -----
+        The sliding window approach ensures cards can reference
+        content that spans multiple pages, improving coherence.
+        """
         all_cards = []
         
         for i in range(0, len(markdown_files) - window_size + 1, skip):
@@ -353,7 +643,57 @@ Image summaries:
         placement_strategy: str = "smart",
         front_back_ratio: float = 0.5
     ) -> List[PlainCard]:
-        """Generate cards specifically for images found in the markdown files"""
+        """Generate flashcards from document images.
+        
+        Creates cards that test understanding of visual content like
+        figures, graphs, and diagrams. Supports various strategies
+        for placing images on card fronts or backs.
+        
+        Parameters
+        ----------
+        markdown_files : List[Path]
+            Markdown files containing image references
+        doc_summary : DocumentSummary
+            Document summary for context
+        cards_per_image : int, optional
+            Number of cards to generate per image (default is 3)
+        image_on_front : bool, optional
+            Allow images on card fronts (default is True)
+        image_on_back : bool, optional
+            Allow images on card backs (default is True)
+        require_math : bool, optional
+            Only process images with math content (default is False)
+        placement_strategy : {'smart', 'alternate', 'random', 'prefer_front', 'prefer_back'}, optional
+            Strategy for image placement (default is 'smart')
+        front_back_ratio : float, optional
+            Ratio for random placement strategy (default is 0.5)
+        
+        Returns
+        -------
+        List[PlainCard]
+            Generated image-based flashcards
+        
+        Notes
+        -----
+        Image placement strategies:
+        - 'smart': Place on front if question references the image
+        - 'alternate': Alternate between front and back
+        - 'random': Random placement with specified ratio
+        - 'prefer_front': Always place on front
+        - 'prefer_back': Always place on back
+        
+        Images are never placed on both sides of the same card.
+        
+        Examples
+        --------
+        >>> # Generate 2 cards per image, smart placement
+        >>> image_cards = pipeline.generate_image_cards(
+        ...     markdown_files=files,
+        ...     doc_summary=summary,
+        ...     cards_per_image=2,
+        ...     placement_strategy='smart'
+        ... )
+        """
         image_cards = []
         
         for file_path in markdown_files:
@@ -491,7 +831,33 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
         summary: DocumentSummary,
         output_dir: Path
     ) -> Dict[str, Path]:
-        """Generate multiple output files based on config"""
+        """Generate output files in configured formats.
+        
+        Creates various output files including plain cards, cards with
+        audio links, and document summary based on configuration.
+        
+        Parameters
+        ----------
+        cards : List[PlainCard]
+            Generated flashcards
+        summary : DocumentSummary
+            Document summary
+        output_dir : Path
+            Directory for output files
+        
+        Returns
+        -------
+        Dict[str, Path]
+            Mapping of output types to file paths:
+            - 'cards_plain': Plain markdown cards
+            - 'cards_audio': Cards with audio (if enabled)
+            - 'summary': Document summary
+        
+        Notes
+        -----
+        Audio card output is only generated if complementary audio
+        generation is enabled in configuration.
+        """
         outputs = {}
         
         # Get output config
@@ -554,7 +920,42 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
         cleaned_files: List[Path],
         image_summaries: List[ImageSummary]
     ):
-        """Generate audio files based on configuration"""
+        """Generate audio files for various content types.
+        
+        Creates audio files based on configuration including card audio,
+        summary narration, full document reading, and educational lectures.
+        
+        Parameters
+        ----------
+        cards : List[PlainCard]
+            Flashcards for audio generation
+        summary : DocumentSummary
+            Document summary for narration
+        outputs : Dict[str, Path]
+            Output file paths
+        cleaned_files : List[Path]
+            Cleaned markdown files for reading
+        image_summaries : List[ImageSummary]
+            Image summaries for lecture content
+        
+        Raises
+        ------
+        RuntimeError
+            If required API keys are not set in environment
+        
+        Notes
+        -----
+        Requires ELEVEN_LABS_API_KEY and OPENAI_API_KEY environment
+        variables. Generates different audio types based on config:
+        - Complementary: Front/back audio for each card
+        - Summary: Narration of document summary
+        - Reading: Full document text-to-speech
+        - Lecture: Educational presentation style
+        
+        See Also
+        --------
+        utils.audio : Audio generation utility functions
+        """
         audio_config = self.config.get('audio', {}).get('audio', {})
         
         # Get API keys
@@ -664,7 +1065,27 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
             print(f"Generated lecture audio: {lecture_audio_path.name}")
     
     def format_deck_name(self, template: str, citation_key: str) -> str:
-        """Format deck name template with variables."""
+        """Format deck name template with variables.
+        
+        Replaces template variables in deck name with actual values.
+        
+        Parameters
+        ----------
+        template : str
+            Deck name template (e.g., '{citation_key}_cards')
+        citation_key : str
+            Citation key to substitute
+        
+        Returns
+        -------
+        str
+            Formatted deck name
+        
+        Examples
+        --------
+        >>> pipeline.format_deck_name("{citation_key}_2024", "Smith")
+        'Smith_2024'
+        """
         # Support template variables like {citation_key}
         variables = {
             'citation_key': citation_key or 'default'
@@ -678,7 +1099,32 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
         return formatted
     
     def prepare_anki_file(self, cards: List[PlainCard], deck_name: str, output_path: Path, include_audio: bool = True) -> Path:
-        """Prepare markdown file for Anki with proper deck header."""
+        """Prepare markdown file for Anki import.
+        
+        Creates a properly formatted markdown file with deck header
+        required by the Anki markdown importer.
+        
+        Parameters
+        ----------
+        cards : List[PlainCard]
+            Cards to include
+        deck_name : str
+            Name of the Anki deck
+        output_path : Path
+            Base output file path
+        include_audio : bool, optional
+            Whether to include audio links (default is True)
+        
+        Returns
+        -------
+        Path
+            Path to prepared Anki file
+        
+        Notes
+        -----
+        Adds '# DeckName' header required by md_to_anki.py.
+        Preserves exact card formatting from original output.
+        """
         anki_file = output_path.parent / f"anki-{output_path.name}"
         
         # First, read the existing output file to use its exact format
@@ -697,7 +1143,42 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
         return anki_file
     
     def send_to_anki(self, cards: List[PlainCard], outputs: Dict[str, Path], anki_config: Dict[str, Any]):
-        """Send cards to Anki using the modern AnkiProcessor."""
+        """Send generated cards to Anki via AnkiConnect.
+        
+        Uploads cards to Anki using the AnkiConnect API, supporting
+        deck creation, card updates, and media file uploads.
+        
+        Parameters
+        ----------
+        cards : List[PlainCard]
+            Flashcards to send
+        outputs : Dict[str, Path]
+            Output file paths
+        anki_config : Dict[str, Any]
+            Anki configuration options:
+            - deck_name: Template for deck name (supports {citation_key})
+            - card_format: 'plain' or 'with_audio'
+            - update_existing: Update existing cards
+            - media_upload: Upload media files
+            - sync_after: Sync after upload
+            - host: AnkiConnect host
+            - port: AnkiConnect port
+        
+        Raises
+        ------
+        Exception
+            If connection to Anki fails or upload errors occur
+        
+        Notes
+        -----
+        Requires Anki to be running with AnkiConnect addon installed.
+        Creates deck if it doesn't exist. Handles both new cards and
+        updates to existing cards based on configuration.
+        
+        See Also
+        --------
+        AnkiProcessor : Handles AnkiConnect communication
+        """
         try:
             # Format deck name with template variables
             deck_template = anki_config.get('deck_name', '{citation_key}')

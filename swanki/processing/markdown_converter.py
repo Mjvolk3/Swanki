@@ -2,7 +2,27 @@
 
 This module handles the conversion of PDF pages to markdown format using
 the Mathpix OCR service, which is especially good at handling mathematical
-content and complex layouts.
+content and complex layouts. Supports parallel processing for efficiency.
+
+Classes
+-------
+MarkdownConverter
+    Handles PDF to Markdown conversion using Mathpix CLI
+
+Examples
+--------
+>>> from swanki.processing import MarkdownConverter
+>>> from pathlib import Path
+>>> 
+>>> converter = MarkdownConverter(output_base=Path("output"))
+>>> markdown_files = converter.convert_all_pdfs()
+>>> print(f"Converted {len(markdown_files)} files")
+Converted 10 files
+
+Notes
+-----
+Requires Mathpix CLI (mpx) to be installed and configured.
+See https://mathpix.com/docs/ocr/cli for installation instructions.
 """
 from pathlib import Path
 from typing import List, Optional, Dict, Any
@@ -15,14 +35,61 @@ logger = logging.getLogger(__name__)
 
 
 class MarkdownConverter:
-    """Handles PDF to Markdown conversion using Mathpix CLI."""
+    """Handles PDF to Markdown conversion using Mathpix CLI.
+    
+    Converts PDF files to markdown format with special handling for
+    mathematical content, tables, and complex layouts. Supports both
+    single file and batch conversion with parallel processing.
+    
+    Parameters
+    ----------
+    output_base : Path
+        Base directory for all output files
+    max_workers : int, optional
+        Maximum number of parallel conversion workers (default is 4)
+    
+    Attributes
+    ----------
+    output_base : Path
+        Base output directory
+    pdf_singles_dir : Path
+        Directory containing single-page PDFs
+    md_singles_dir : Path
+        Directory for markdown output files
+    max_workers : int
+        Number of parallel workers
+    
+    Methods
+    -------
+    convert_all_pdfs()
+        Convert all PDFs in pdf-singles directory
+    convert_single_pdf(pdf_path)
+        Convert a specific PDF file
+    get_conversion_options()
+        Get current Mathpix conversion options
+    
+    Examples
+    --------
+    >>> converter = MarkdownConverter(Path("output"), max_workers=8)
+    >>> 
+    >>> # Convert all PDFs
+    >>> all_files = converter.convert_all_pdfs()
+    >>> 
+    >>> # Convert single file
+    >>> single = converter.convert_single_pdf(Path("page-1.pdf"))
+    """
     
     def __init__(self, output_base: Path, max_workers: int = 4):
         """Initialize markdown converter.
         
-        Args:
-            output_base: Base directory for all output files
-            max_workers: Maximum number of parallel conversion workers
+        Parameters
+        ----------
+        output_base : Path
+            Base directory for all output files. Expects 'pdf-singles'
+            subdirectory to exist with PDF files to convert.
+        max_workers : int, optional
+            Maximum number of parallel conversion workers (default is 4).
+            Higher values can speed up batch conversion.
         """
         self.output_base = output_base
         self.pdf_singles_dir = output_base / "pdf-singles"
@@ -32,11 +99,35 @@ class MarkdownConverter:
     def convert_all_pdfs(self) -> List[Path]:
         """Convert all PDF files in pdf-singles directory to markdown.
         
-        Returns:
-            List of paths to created markdown files
-            
-        Raises:
-            RuntimeError: If Mathpix CLI is not available
+        Processes all 'page-*.pdf' files found in the pdf-singles directory,
+        converting them to markdown format in parallel. Output files are
+        saved to the md-singles directory.
+        
+        Returns
+        -------
+        List[Path]
+            List of paths to successfully created markdown files,
+            sorted by filename
+        
+        Raises
+        ------
+        RuntimeError
+            If Mathpix CLI (mpx) is not available or not configured
+        
+        Examples
+        --------
+        >>> converter = MarkdownConverter(Path("output"))
+        >>> files = converter.convert_all_pdfs()
+        >>> for f in files:
+        ...     print(f.name)
+        page-1.md
+        page-2.md
+        page-3.md
+        
+        Notes
+        -----
+        Failed conversions are logged but don't stop the batch process.
+        The method will return successfully converted files only.
         """
         # Check if mpx-cli is available
         if not self._check_mathpix_cli():
@@ -76,22 +167,45 @@ class MarkdownConverter:
     def convert_single_pdf(self, pdf_path: Path) -> Optional[Path]:
         """Convert a single PDF file to markdown.
         
-        Args:
-            pdf_path: Path to the PDF file to convert
-            
-        Returns:
-            Path to the created markdown file, or None if conversion failed
+        Parameters
+        ----------
+        pdf_path : Path
+            Path to the PDF file to convert
+        
+        Returns
+        -------
+        Path or None
+            Path to the created markdown file if successful,
+            None if conversion failed
+        
+        Examples
+        --------
+        >>> converter = MarkdownConverter(Path("output"))
+        >>> md_file = converter.convert_single_pdf(Path("page.pdf"))
+        >>> if md_file:
+        ...     print(f"Created: {md_file}")
+        ... else:
+        ...     print("Conversion failed")
         """
         return self._convert_single_pdf(pdf_path)
     
     def _convert_single_pdf(self, pdf_path: Path) -> Optional[Path]:
         """Internal method to convert a single PDF to markdown.
         
-        Args:
-            pdf_path: Path to the PDF file
-            
-        Returns:
+        Parameters
+        ----------
+        pdf_path : Path
+            Path to the PDF file
+        
+        Returns
+        -------
+        Path or None
             Path to created markdown file, or None if failed
+        
+        Notes
+        -----
+        Uses shell=True for proper PATH resolution and suppresses
+        stderr to avoid clearLine error messages from mpx CLI.
         """
         if not pdf_path.exists():
             logger.error(f"PDF file not found: {pdf_path}")
@@ -138,8 +252,15 @@ class MarkdownConverter:
     def _check_mathpix_cli(self) -> bool:
         """Check if Mathpix CLI is available.
         
-        Returns:
+        Returns
+        -------
+        bool
             True if mpx command is available, False otherwise
+        
+        Notes
+        -----
+        Checks for 'mpx --version' command availability.
+        Does not verify API credentials.
         """
         try:
             # Use shell=True to ensure PATH is properly resolved
@@ -156,8 +277,27 @@ class MarkdownConverter:
     def get_conversion_options(self) -> Dict[str, Any]:
         """Get current Mathpix conversion options.
         
-        Returns:
-            Dictionary of conversion options
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary of conversion options including:
+            - math_inline_delimiters: Delimiters for inline math
+            - math_display_delimiters: Delimiters for display math
+            - formats: Output formats to generate
+            - ocr: Whether to use OCR
+            - enable_tables: Whether to detect tables
+        
+        Examples
+        --------
+        >>> converter = MarkdownConverter(Path("output"))
+        >>> options = converter.get_conversion_options()
+        >>> print(options['math_inline_delimiters'])
+        ['$', '$']
+        
+        Notes
+        -----
+        These options could be made configurable via the
+        constructor in future versions.
         """
         # These could be made configurable in the future
         return {

@@ -2,6 +2,31 @@
 
 This module provides AnkiConnect integration for sending cards to Anki,
 replacing the legacy md_to_anki.py functionality with a cleaner API.
+Supports creating decks, adding/updating cards, and uploading media files.
+
+Classes
+-------
+AnkiProcessor
+    Process and send cards to Anki using AnkiConnect
+
+Examples
+--------
+>>> from swanki.processing import AnkiProcessor
+>>> from pathlib import Path
+>>> 
+>>> processor = AnkiProcessor(host="127.0.0.1", port=8765)
+>>> if processor.check_connection():
+...     cards_added, cards_updated = processor.send_cards_from_file(
+...         file_path=Path("cards.md"),
+...         deck_name="My::Deck",
+...         update_existing=True
+...     )
+...     print(f"Added: {cards_added}, Updated: {cards_updated}")
+
+Notes
+-----
+Requires Anki to be running with the AnkiConnect addon installed.
+See https://ankiweb.net/shared/info/2055492159 for installation.
 """
 
 import base64
@@ -26,21 +51,80 @@ HR_SPLIT_RE = re.compile(r"^[*-]{3,}\s*$")
 
 
 class AnkiProcessor:
-    """Process and send cards to Anki using AnkiConnect."""
+    """Process and send cards to Anki using AnkiConnect.
+    
+    Handles all Anki integration including deck creation, card addition
+    and updates, media file uploads, and synchronization. Supports both
+    Basic and Cloze card types with automatic detection.
+    
+    Parameters
+    ----------
+    host : str, optional
+        AnkiConnect host address (default is "127.0.0.1")
+    port : int, optional
+        AnkiConnect port number (default is 8765)
+    
+    Attributes
+    ----------
+    host : str
+        AnkiConnect host
+    port : int
+        AnkiConnect port
+    url : str
+        Full AnkiConnect URL
+    
+    Methods
+    -------
+    check_connection()
+        Verify AnkiConnect is available
+    send_cards_from_file(file_path, deck_name, ...)
+        Send cards from markdown file to Anki
+    
+    Examples
+    --------
+    >>> processor = AnkiProcessor()
+    >>> 
+    >>> # Check connection
+    >>> if not processor.check_connection():
+    ...     print("Please start Anki with AnkiConnect")
+    >>> 
+    >>> # Send cards
+    >>> added, updated = processor.send_cards_from_file(
+    ...     Path("flashcards.md"),
+    ...     "Biology::Cell Structure"
+    ... )
+    """
     
     def __init__(self, host: str = "127.0.0.1", port: int = 8765):
         """Initialize AnkiProcessor.
         
-        Args:
-            host: AnkiConnect host address
-            port: AnkiConnect port
+        Parameters
+        ----------
+        host : str, optional
+            AnkiConnect host address (default is "127.0.0.1")
+        port : int, optional
+            AnkiConnect port number (default is 8765)
         """
         self.host = host
         self.port = port
         self.url = f"http://{host}:{port}"
         
     def check_connection(self) -> bool:
-        """Check if AnkiConnect is available."""
+        """Check if AnkiConnect is available.
+        
+        Returns
+        -------
+        bool
+            True if AnkiConnect is reachable, False otherwise
+        
+        Examples
+        --------
+        >>> processor = AnkiProcessor()
+        >>> if processor.check_connection():
+        ...     print("Anki is running")
+        ... else:
+        ...     print("Please start Anki")
+        """
         try:
             response = requests.post(
                 self.url,
@@ -60,18 +144,51 @@ class AnkiProcessor:
     ) -> Tuple[int, int]:
         """Send cards from a markdown file to Anki.
         
-        Args:
-            file_path: Path to markdown file
-            deck_name: Target deck name (supports :: for hierarchy)
-            update_existing: Whether to update existing cards
-            upload_media: Whether to upload media files
-            sync_after: Whether to sync Anki after sending
-            
-        Returns:
-            Tuple of (cards_added, cards_updated)
-            
-        Raises:
-            RuntimeError: If AnkiConnect is not available
+        Parses a markdown file for flashcards and sends them to Anki.
+        Automatically detects card types (Basic or Cloze) and handles
+        media uploads.
+        
+        Parameters
+        ----------
+        file_path : Path
+            Path to markdown file containing cards
+        deck_name : str
+            Target deck name (use :: for nested decks, e.g., "Parent::Child")
+        update_existing : bool, optional
+            Whether to update existing cards (default is True)
+        upload_media : bool, optional
+            Whether to upload referenced media files (default is True)
+        sync_after : bool, optional
+            Whether to sync Anki after sending (default is False)
+        
+        Returns
+        -------
+        Tuple[int, int]
+            Number of cards (added, updated)
+        
+        Raises
+        ------
+        RuntimeError
+            If AnkiConnect is not available
+        
+        Examples
+        --------
+        >>> processor = AnkiProcessor()
+        >>> added, updated = processor.send_cards_from_file(
+        ...     Path("biology_cards.md"),
+        ...     "Science::Biology::Cells",
+        ...     update_existing=True,
+        ...     upload_media=True
+        ... )
+        >>> print(f"Sent {added} new cards, updated {updated} existing")
+        
+        Notes
+        -----
+        Card format in markdown:
+        - Cards start with ## (H2 header)
+        - Front/back separated by % or ---
+        - Tags as #tag1, #tag2 or - #tag
+        - Cloze cards detected by {{c1::text}} syntax
         """
         # Check connection
         if not self.check_connection():
@@ -144,7 +261,18 @@ class AnkiProcessor:
         return cards_added, cards_updated
     
     def _create_deck(self, deck_name: str) -> bool:
-        """Create a deck if it doesn't exist."""
+        """Create a deck if it doesn't exist.
+        
+        Parameters
+        ----------
+        deck_name : str
+            Name of deck to create (supports :: hierarchy)
+        
+        Returns
+        -------
+        bool
+            True if successful, False otherwise
+        """
         try:
             response = requests.post(
                 self.url,
@@ -160,7 +288,24 @@ class AnkiProcessor:
             return False
     
     def _add_note(self, deck_name: str, model_name: str, fields: Dict[str, str], tags: List[str]) -> Optional[int]:
-        """Add a new note to Anki."""
+        """Add a new note to Anki.
+        
+        Parameters
+        ----------
+        deck_name : str
+            Target deck name
+        model_name : str
+            Note type ("Basic" or "Cloze")
+        fields : Dict[str, str]
+            Field values for the note
+        tags : List[str]
+            Tags to apply to the note
+        
+        Returns
+        -------
+        int or None
+            Note ID if successful, None if failed
+        """
         note = {
             "deckName": deck_name,
             "modelName": model_name,
@@ -253,7 +398,26 @@ class AnkiProcessor:
             return False
     
     def _extract_cards(self, lines: List[str]) -> List[Dict[str, Any]]:
-        """Extract cards from markdown lines."""
+        """Extract cards from markdown lines.
+        
+        Parses markdown content to extract flashcards, including
+        front/back content and tags.
+        
+        Parameters
+        ----------
+        lines : List[str]
+            Lines from the markdown file
+        
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of card dictionaries with 'front', 'back', and 'tags'
+        
+        Notes
+        -----
+        Cards are identified by ## headers. Tags can be in multiple
+        formats: #tag1, #tag2 or - #tag or bullet lists.
+        """
         # Find all H2 headers (card starts)
         card_indices = [i for i, line in enumerate(lines) if line.startswith("## ")]
         if not card_indices:
@@ -436,7 +600,26 @@ class AnkiProcessor:
         return False
     
     def _upload_media_files(self, file_path: Path) -> int:
-        """Upload media files referenced in the markdown."""
+        """Upload media files referenced in the markdown.
+        
+        Finds and uploads all audio and image files referenced
+        in the markdown content.
+        
+        Parameters
+        ----------
+        file_path : Path
+            Path to the markdown file
+        
+        Returns
+        -------
+        int
+            Number of files successfully uploaded
+        
+        Notes
+        -----
+        Searches for media files relative to the markdown file
+        location and up to 3 parent directories.
+        """
         base_dir = file_path.parent
         uploaded = 0
         

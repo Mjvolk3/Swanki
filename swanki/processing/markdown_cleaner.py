@@ -2,6 +2,22 @@
 
 This module cleans up markdown files after conversion from PDF, handling
 LaTeX syntax conversion, reference removal, and general formatting cleanup.
+Provides pattern-based cleaning with support for custom patterns.
+
+Classes
+-------
+MarkdownCleaner
+    Handles markdown file cleaning and post-processing
+
+Examples
+--------
+>>> from swanki.processing import MarkdownCleaner
+>>> from pathlib import Path
+>>> 
+>>> cleaner = MarkdownCleaner(output_base=Path("output"))
+>>> cleaned_files = cleaner.clean_all_markdown_files()
+>>> print(f"Cleaned {len(cleaned_files)} files")
+Cleaned 10 files
 """
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
@@ -12,7 +28,53 @@ logger = logging.getLogger(__name__)
 
 
 class MarkdownCleaner:
-    """Handles markdown file cleaning and post-processing."""
+    """Handles markdown file cleaning and post-processing.
+    
+    Applies various cleaning operations to markdown files including
+    LaTeX syntax conversion, reference removal, and formatting fixes.
+    Uses regex patterns for transformations.
+    
+    Parameters
+    ----------
+    output_base : Path
+        Base directory for all output files
+    
+    Attributes
+    ----------
+    output_base : Path
+        Base output directory
+    md_singles_dir : Path
+        Directory containing raw markdown files
+    clean_md_singles_dir : Path
+        Directory for cleaned markdown output
+    PATTERNS : Dict[str, Tuple[str, str]]
+        Regex patterns for cleaning operations
+    
+    Methods
+    -------
+    clean_all_markdown_files()
+        Clean all markdown files in directory
+    clean_single_file(md_path)
+        Clean a single markdown file
+    add_custom_pattern(name, pattern, replacement)
+        Add custom cleaning pattern
+    get_cleaning_stats(original, cleaned)
+        Get statistics about cleaning
+    
+    Examples
+    --------
+    >>> cleaner = MarkdownCleaner(Path("output"))
+    >>> 
+    >>> # Clean all files
+    >>> cleaned = cleaner.clean_all_markdown_files()
+    >>> 
+    >>> # Add custom pattern
+    >>> cleaner.add_custom_pattern(
+    ...     "custom_cite",
+    ...     r"\\cite{(.*?)}",
+    ...     r"[\1]"
+    ... )
+    """
     
     # Regex patterns for cleaning
     PATTERNS = {
@@ -31,8 +93,11 @@ class MarkdownCleaner:
     def __init__(self, output_base: Path):
         """Initialize markdown cleaner.
         
-        Args:
-            output_base: Base directory for all output files
+        Parameters
+        ----------
+        output_base : Path
+            Base directory for all output files. Expects 'md-singles'
+            subdirectory with markdown files to clean.
         """
         self.output_base = output_base
         self.md_singles_dir = output_base / "md-singles"
@@ -41,8 +106,28 @@ class MarkdownCleaner:
     def clean_all_markdown_files(self) -> List[Path]:
         """Clean all markdown files in the md-singles directory.
         
-        Returns:
-            List of paths to cleaned markdown files
+        Processes all .md files found in md-singles, applying cleaning
+        patterns and saving results to clean-md-singles directory.
+        
+        Returns
+        -------
+        List[Path]
+            List of paths to successfully cleaned markdown files
+        
+        Examples
+        --------
+        >>> cleaner = MarkdownCleaner(Path("output"))
+        >>> files = cleaner.clean_all_markdown_files()
+        >>> for f in files:
+        ...     print(f.name)
+        page-1.md
+        page-2.md
+        
+        Notes
+        -----
+        Failed cleanings are logged but don't stop the process.
+        Original files are preserved; cleaned versions are saved
+        in a separate directory.
         """
         # Create output directory
         self.clean_md_singles_dir.mkdir(parents=True, exist_ok=True)
@@ -67,11 +152,26 @@ class MarkdownCleaner:
     def clean_single_file(self, md_path: Path) -> Optional[Path]:
         """Clean a single markdown file.
         
-        Args:
-            md_path: Path to the markdown file to clean
-            
-        Returns:
-            Path to the cleaned markdown file, or None if cleaning failed
+        Applies all cleaning patterns to the file and saves the
+        cleaned version in the clean-md-singles directory.
+        
+        Parameters
+        ----------
+        md_path : Path
+            Path to the markdown file to clean
+        
+        Returns
+        -------
+        Path or None
+            Path to the cleaned markdown file if successful,
+            None if cleaning failed
+        
+        Examples
+        --------
+        >>> cleaner = MarkdownCleaner(Path("output"))
+        >>> cleaned = cleaner.clean_single_file(Path("page.md"))
+        >>> if cleaned:
+        ...     print(f"Cleaned: {cleaned}")
         """
         if not md_path.exists():
             logger.error(f"Markdown file not found: {md_path}")
@@ -98,11 +198,23 @@ class MarkdownCleaner:
     def _apply_cleaning(self, content: str) -> str:
         """Apply all cleaning operations to markdown content.
         
-        Args:
-            content: Original markdown content
-            
-        Returns:
+        Parameters
+        ----------
+        content : str
+            Original markdown content
+        
+        Returns
+        -------
+        str
             Cleaned markdown content
+        
+        Notes
+        -----
+        Operations include:
+        - LaTeX command conversion
+        - Reference section handling
+        - Multiple empty line reduction
+        - Trailing whitespace removal
         """
         # Split into lines for line-by-line processing
         lines = content.split('\n')
@@ -146,11 +258,15 @@ class MarkdownCleaner:
     def _apply_regex_replacements(self, line: str) -> str:
         """Apply regex pattern replacements to a single line.
         
-        Args:
-            line: Original line content
-            
-        Returns:
-            Line with replacements applied
+        Parameters
+        ----------
+        line : str
+            Original line content
+        
+        Returns
+        -------
+        str
+            Line with all pattern replacements applied
         """
         for pattern_name, (pattern, replacement) in self.PATTERNS.items():
             if pattern_name == 'reference_citation':
@@ -165,10 +281,27 @@ class MarkdownCleaner:
     def add_custom_pattern(self, name: str, pattern: str, replacement: str):
         """Add a custom cleaning pattern.
         
-        Args:
-            name: Name for the pattern
-            pattern: Regex pattern to match
-            replacement: Replacement string
+        Allows extending the cleaner with additional regex patterns
+        for project-specific cleaning needs.
+        
+        Parameters
+        ----------
+        name : str
+            Unique name for the pattern
+        pattern : str
+            Regex pattern to match
+        replacement : str
+            Replacement string (can use capture groups)
+        
+        Examples
+        --------
+        >>> cleaner = MarkdownCleaner(Path("output"))
+        >>> # Convert custom LaTeX command
+        >>> cleaner.add_custom_pattern(
+        ...     "custom_bold",
+        ...     r"\\mybold{(.*?)}",
+        ...     r"**\1**"
+        ... )
         """
         self.PATTERNS[name] = (pattern, replacement)
         logger.info(f"Added custom cleaning pattern: {name}")
@@ -176,12 +309,32 @@ class MarkdownCleaner:
     def get_cleaning_stats(self, original: str, cleaned: str) -> Dict[str, int]:
         """Get statistics about the cleaning process.
         
-        Args:
-            original: Original content
-            cleaned: Cleaned content
-            
-        Returns:
-            Dictionary with cleaning statistics
+        Provides metrics to evaluate the cleaning impact.
+        
+        Parameters
+        ----------
+        original : str
+            Original content before cleaning
+        cleaned : str
+            Content after cleaning
+        
+        Returns
+        -------
+        Dict[str, int]
+            Dictionary containing:
+            - original_lines: Line count before cleaning
+            - cleaned_lines: Line count after cleaning
+            - original_chars: Character count before
+            - cleaned_chars: Character count after
+            - removed_chars: Characters removed
+        
+        Examples
+        --------
+        >>> cleaner = MarkdownCleaner(Path("output"))
+        >>> original = "\\section{Title}\n\\textbf{Bold}"
+        >>> cleaned = cleaner._apply_cleaning(original)
+        >>> stats = cleaner.get_cleaning_stats(original, cleaned)
+        >>> print(f"Removed {stats['removed_chars']} characters")
         """
         return {
             'original_lines': len(original.split('\n')),

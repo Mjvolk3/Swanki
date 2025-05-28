@@ -1,4 +1,32 @@
-"""Formatting utilities for tags and other text processing."""
+"""Formatting utilities for tags and other text processing.
+
+This module provides utilities for formatting tags, detecting tags from text,
+and converting citation keys to human-readable format. Supports various tag
+formats and citation key patterns.
+
+Functions
+---------
+format_tags(tags, format_type)
+    Format tags according to specified style
+detect_tags_from_text(text)
+    Extract tags from text content
+humanize_citation_key(citation_key)
+    Convert citation key to readable format
+
+Examples
+--------
+>>> from swanki.utils.formatting import format_tags
+>>> 
+>>> tags = ["Machine Learning", "Deep-Learning", "AI"]
+>>> formatted = format_tags(tags, "slugified")
+>>> print(formatted)
+['machine-learning', 'deep-learning', 'ai']
+
+>>> from swanki.utils.formatting import humanize_citation_key
+>>> 
+>>> print(humanize_citation_key("smithMachineLearning2023"))
+'Smith, Machine Learning, 2023'
+"""
 import re
 from typing import List
 
@@ -6,15 +34,48 @@ from typing import List
 def format_tags(tags: List[str], format_type: str = "slugified") -> List[str]:
     """Format tags according to the specified format type.
     
-    Args:
-        tags: List of tags to format
-        format_type: Type of formatting to apply
-            - "slugified": Convert to lowercase, replace spaces with hyphens
-            - "spaces": Keep spaces as-is
-            - "raw": No formatting, return as-is
-            
-    Returns:
+    Applies consistent formatting to tags for use in flashcards and
+    organization. Supports multiple formatting styles.
+    
+    Parameters
+    ----------
+    tags : List[str]
+        List of tags to format
+    format_type : {'slugified', 'spaces', 'raw'}, optional
+        Type of formatting to apply (default is "slugified"):
+        - "slugified": Lowercase, spaces to hyphens, special chars removed
+        - "spaces": Clean up extra spaces only
+        - "raw": No formatting, return as-is
+    
+    Returns
+    -------
+    List[str]
         List of formatted tags
+    
+    Examples
+    --------
+    >>> tags = ["Neural Networks", "Deep Learning", "AI/ML"]
+    >>> 
+    >>> # Slugified format (default)
+    >>> format_tags(tags)
+    ['neural-networks', 'deep-learning', 'aiml']
+    >>> 
+    >>> # Preserve spaces
+    >>> format_tags(tags, "spaces")
+    ['Neural Networks', 'Deep Learning', 'AI/ML']
+    >>> 
+    >>> # Raw format
+    >>> format_tags(tags, "raw")
+    ['Neural Networks', 'Deep Learning', 'AI/ML']
+    
+    Notes
+    -----
+    Slugified format:
+    - Converts to lowercase
+    - Replaces spaces with hyphens
+    - Removes special characters except dots and hyphens
+    - Collapses multiple hyphens
+    - Strips leading/trailing hyphens
     """
     if format_type == "raw":
         return tags
@@ -44,11 +105,44 @@ def format_tags(tags: List[str], format_type: str = "slugified") -> List[str]:
 def detect_tags_from_text(text: str) -> List[str]:
     """Detect tags from text based on # and comma delimited formats.
     
-    Args:
-        text: Text to extract tags from
-        
-    Returns:
-        List of detected tags
+    Extracts tags from text using multiple detection strategies including
+    hashtag format and comma-delimited lists.
+    
+    Parameters
+    ----------
+    text : str
+        Text to extract tags from
+    
+    Returns
+    -------
+    List[str]
+        List of unique detected tags (order preserved)
+    
+    Examples
+    --------
+    >>> # Hashtag format
+    >>> text1 = "This is about #machinelearning and #deeplearning"
+    >>> detect_tags_from_text(text1)
+    ['machinelearning', 'deeplearning']
+    >>> 
+    >>> # Comma-delimited format
+    >>> text2 = "Tags: python, data science, visualization"
+    >>> detect_tags_from_text(text2)
+    ['python', 'data science', 'visualization']
+    >>> 
+    >>> # Mixed format
+    >>> text3 = "#AI #ML\nCategories: neural networks, optimization"
+    >>> detect_tags_from_text(text3)
+    ['AI', 'ML', 'neural networks', 'optimization']
+    
+    Notes
+    -----
+    Detection strategies:
+    1. Hashtags: #tag1 #tag2 (# prefix removed)
+    2. Label lines: "Tags:", "Labels:", "Categories:" followed by comma list
+    3. Comma lists: Short lines with commas, no periods
+    
+    Duplicates are removed while preserving first occurrence order.
     """
     tags = []
     
@@ -89,21 +183,54 @@ def detect_tags_from_text(text: str) -> List[str]:
 def humanize_citation_key(citation_key: str) -> str:
     """Convert a citation key to human-readable format for audio.
     
-    Examples:
-        luoWhenCausalInference2020 -> "Luo, When Causal Inference, 2020"
-        smithMachineLearning2023 -> "Smith, Machine Learning, 2023"
-        johnsonEtAl2022 -> "Johnson et al, 2022"
-        oReilly2019 -> "O'Reilly, 2019"
-        mcDonald2024 -> "McDonald, 2024"
-        
-    Args:
-        citation_key: Citation key in camelCase format
-        
-    Returns:
-        Human-readable version of the citation key
+    Transforms camelCase citation keys into natural spoken format,
+    handling special name patterns and formatting conventions.
+    
+    Parameters
+    ----------
+    citation_key : str
+        Citation key in camelCase format (e.g., "smithMachineLearning2023")
+    
+    Returns
+    -------
+    str
+        Human-readable version with proper capitalization and punctuation
+    
+    Examples
+    --------
+    >>> humanize_citation_key("luoWhenCausalInference2020")
+    'Luo, When Causal Inference, 2020'
+    
+    >>> humanize_citation_key("smithMachineLearning2023")
+    'Smith, Machine Learning, 2023'
+    
+    >>> humanize_citation_key("johnsonEtAl2022")
+    'Johnson et al, 2022'
+    
+    >>> humanize_citation_key("oReilly2019")
+    "O'Reilly, 2019"
+    
+    >>> humanize_citation_key("mcDonald2024")
+    'McDonald, 2024'
+    
+    >>> humanize_citation_key("vanDijkTheoryPractice2021")
+    'van Dijk, Theory Practice, 2021'
+    
+    Notes
+    -----
+    Special handling for:
+    - "EtAl" -> "et al"
+    - Name prefixes: mc/Mac, o/O', de, van, von
+    - Year extraction from end
+    - Proper comma placement after author name
+    - Multiple consecutive capitals (e.g., "USA")
     """
     if not citation_key:
         return ""
+    
+    # Remove @ prefix if present
+    if citation_key.startswith('@'):
+        citation_key = citation_key[1:]
     
     # Handle common patterns
     # First, handle "EtAl" -> "et al"

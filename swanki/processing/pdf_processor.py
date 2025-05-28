@@ -2,7 +2,23 @@
 
 This module provides functionality to split multi-page PDF documents into
 individual single-page PDF files, which is the first step in the Swanki
-processing pipeline.
+processing pipeline. The split pages are then converted to markdown for
+further processing.
+
+Classes
+-------
+PDFProcessor
+    Handles PDF splitting and page extraction operations
+
+Examples
+--------
+>>> from swanki.processing import PDFProcessor
+>>> from pathlib import Path
+>>> 
+>>> processor = PDFProcessor(output_base=Path("output"))
+>>> pages = processor.split_pdf(Path("paper.pdf"))
+>>> print(f"Split into {len(pages)} pages")
+Split into 10 pages
 """
 from pathlib import Path
 from typing import List, Optional
@@ -13,13 +29,55 @@ logger = logging.getLogger(__name__)
 
 
 class PDFProcessor:
-    """Handles PDF splitting and page extraction operations."""
+    """Handles PDF splitting and page extraction operations.
+    
+    Provides methods to split multi-page PDFs into individual pages,
+    extract specific pages, and query PDF metadata. All output files
+    are organized in a dedicated directory structure.
+    
+    Parameters
+    ----------
+    output_base : Path
+        Base directory for all output files
+    
+    Attributes
+    ----------
+    output_base : Path
+        Base output directory
+    pdf_singles_dir : Path
+        Directory for single-page PDFs (output_base/pdf-singles)
+    
+    Methods
+    -------
+    split_pdf(pdf_path)
+        Split PDF into individual page files
+    get_page_count(pdf_path)
+        Get number of pages in a PDF
+    extract_page(pdf_path, page_number)
+        Extract a specific page from a PDF
+    
+    Examples
+    --------
+    >>> processor = PDFProcessor(Path("./output"))
+    >>> 
+    >>> # Split entire PDF
+    >>> pages = processor.split_pdf(Path("document.pdf"))
+    >>> 
+    >>> # Get page count
+    >>> count = processor.get_page_count(Path("document.pdf"))
+    >>> 
+    >>> # Extract specific page
+    >>> page_5 = processor.extract_page(Path("document.pdf"), 5)
+    """
     
     def __init__(self, output_base: Path):
         """Initialize PDF processor with output directory.
         
-        Args:
-            output_base: Base directory for all output files
+        Parameters
+        ----------
+        output_base : Path
+            Base directory for all output files. A 'pdf-singles'
+            subdirectory will be created here for output.
         """
         self.output_base = output_base
         self.pdf_singles_dir = output_base / "pdf-singles"
@@ -27,15 +85,39 @@ class PDFProcessor:
     def split_pdf(self, pdf_path: Path) -> List[Path]:
         """Split a PDF into individual page files.
         
-        Args:
-            pdf_path: Path to the input PDF file
-            
-        Returns:
-            List of paths to the created single-page PDF files
-            
-        Raises:
-            FileNotFoundError: If input PDF doesn't exist
-            ValueError: If PDF is empty or corrupted
+        Creates one PDF file per page from the input document. Files are
+        named 'page-1.pdf', 'page-2.pdf', etc. and stored in the
+        pdf-singles directory.
+        
+        Parameters
+        ----------
+        pdf_path : Path
+            Path to the input PDF file
+        
+        Returns
+        -------
+        List[Path]
+            List of paths to the created single-page PDF files,
+            ordered by page number
+        
+        Raises
+        ------
+        FileNotFoundError
+            If input PDF doesn't exist
+        ValueError
+            If PDF is empty, corrupted, or processing fails
+        
+        Examples
+        --------
+        >>> processor = PDFProcessor(Path("output"))
+        >>> pages = processor.split_pdf(Path("research.pdf"))
+        >>> print(pages[0])
+        output/pdf-singles/page-1.pdf
+        
+        Notes
+        -----
+        The output directory is created if it doesn't exist.
+        Existing files with the same names will be overwritten.
         """
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF file not found: {pdf_path}")
@@ -79,11 +161,22 @@ class PDFProcessor:
     def get_page_count(self, pdf_path: Path) -> int:
         """Get the number of pages in a PDF.
         
-        Args:
-            pdf_path: Path to the PDF file
-            
-        Returns:
+        Parameters
+        ----------
+        pdf_path : Path
+            Path to the PDF file
+        
+        Returns
+        -------
+        int
             Number of pages in the PDF
+        
+        Examples
+        --------
+        >>> processor = PDFProcessor(Path("output"))
+        >>> count = processor.get_page_count(Path("paper.pdf"))
+        >>> print(f"PDF has {count} pages")
+        PDF has 25 pages
         """
         reader = PdfReader(pdf_path)
         return len(reader.pages)
@@ -91,12 +184,36 @@ class PDFProcessor:
     def extract_page(self, pdf_path: Path, page_number: int) -> Optional[Path]:
         """Extract a specific page from a PDF.
         
-        Args:
-            pdf_path: Path to the input PDF
-            page_number: Page number to extract (1-based)
-            
-        Returns:
-            Path to the extracted page PDF, or None if page doesn't exist
+        Extracts a single page and saves it as a separate PDF file.
+        Useful for re-processing specific pages.
+        
+        Parameters
+        ----------
+        pdf_path : Path
+            Path to the input PDF
+        page_number : int
+            Page number to extract (1-based indexing)
+        
+        Returns
+        -------
+        Path or None
+            Path to the extracted page PDF if successful,
+            None if page number is out of range
+        
+        Examples
+        --------
+        >>> processor = PDFProcessor(Path("output"))
+        >>> # Extract page 5
+        >>> page_path = processor.extract_page(Path("doc.pdf"), 5)
+        >>> if page_path:
+        ...     print(f"Extracted: {page_path}")
+        ... else:
+        ...     print("Page does not exist")
+        
+        Notes
+        -----
+        Page numbering starts at 1, not 0. The output file
+        will be named 'page-{page_number}.pdf'.
         """
         reader = PdfReader(pdf_path)
         

@@ -2,6 +2,27 @@
 
 This module processes images found in markdown files, generates summaries
 for them using AI, and manages image-related operations in the pipeline.
+Supports extracting images from markdown, generating AI summaries, and
+downloading remote images.
+
+Classes
+-------
+ImageProcessor
+    Handles image extraction, summarization, and processing
+
+Examples
+--------
+>>> from swanki.processing import ImageProcessor
+>>> from pathlib import Path
+>>> from openai import OpenAI
+>>> 
+>>> processor = ImageProcessor(
+...     output_base=Path("output"),
+...     openai_client=OpenAI()
+... )
+>>> images = processor.process_all_images()
+>>> print(f"Processed {len(images)} images")
+Processed 15 images
 """
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
@@ -17,14 +38,73 @@ logger = logging.getLogger(__name__)
 
 
 class ImageProcessor:
-    """Handles image extraction, summarization, and processing."""
+    """Handles image extraction, summarization, and processing.
+    
+    Processes images found in markdown files by extracting them,
+    generating AI-powered summaries using GPT-4 Vision, and managing
+    image files. Supports both local and remote images.
+    
+    Parameters
+    ----------
+    output_base : Path
+        Base directory for all output files
+    openai_client : OpenAI, optional
+        OpenAI client for image summarization. If not provided,
+        will attempt to create one from environment variables.
+    
+    Attributes
+    ----------
+    output_base : Path
+        Base output directory
+    clean_md_singles_dir : Path
+        Directory containing cleaned markdown files
+    image_summaries_dir : Path
+        Directory for image summaries
+    images_dir : Path
+        Directory for downloaded images
+    openai_client : OpenAI or None
+        Client for AI summarization
+    
+    Methods
+    -------
+    process_all_images()
+        Process all images in cleaned markdown files
+    process_images_in_file(md_path)
+        Process images in a single markdown file
+    download_remote_images(images)
+        Download remote images to local storage
+    
+    Examples
+    --------
+    >>> processor = ImageProcessor(Path("output"))
+    >>> 
+    >>> # Process all images
+    >>> all_images = processor.process_all_images()
+    >>> 
+    >>> # Process single file
+    >>> images = processor.process_images_in_file(Path("page-1.md"))
+    >>> 
+    >>> # Download remote images
+    >>> processor.download_remote_images(images)
+    """
     
     def __init__(self, output_base: Path, openai_client: Optional[OpenAI] = None):
         """Initialize image processor.
         
-        Args:
-            output_base: Base directory for all output files
-            openai_client: Optional OpenAI client for image summarization
+        Parameters
+        ----------
+        output_base : Path
+            Base directory for all output files. Will create subdirectories
+            for image summaries and downloaded images.
+        openai_client : OpenAI, optional
+            OpenAI client for image summarization. If None, will attempt
+            to create from OPENAI_API_KEY environment variable.
+        
+        Notes
+        -----
+        If no OpenAI client is provided and no API key is found,
+        image summarization will be skipped but other processing
+        will continue.
         """
         self.output_base = output_base
         self.clean_md_singles_dir = output_base / "clean-md-singles"
@@ -46,8 +126,27 @@ class ImageProcessor:
     def process_all_images(self) -> List[Dict[str, any]]:
         """Process all images found in cleaned markdown files.
         
-        Returns:
-            List of image information dictionaries
+        Processes all markdown files in the clean-md-singles directory,
+        extracting images and generating summaries for each.
+        
+        Returns
+        -------
+        List[Dict[str, any]]
+            List of image information dictionaries containing:
+            - url: Image URL or path
+            - alt_text: Alternative text
+            - context: Surrounding text context
+            - summary: Generated AI summary (if available)
+            - source_file: Source markdown filename
+        
+        Examples
+        --------
+        >>> processor = ImageProcessor(Path("output"))
+        >>> images = processor.process_all_images()
+        >>> for img in images:
+        ...     print(f"{img['source_file']}: {img['alt_text']}")
+        page-1.md: Figure 1
+        page-2.md: Graph showing results
         """
         # Create output directories
         self.image_summaries_dir.mkdir(parents=True, exist_ok=True)
@@ -67,11 +166,23 @@ class ImageProcessor:
     def process_images_in_file(self, md_path: Path) -> List[Dict[str, any]]:
         """Process all images in a single markdown file.
         
-        Args:
-            md_path: Path to the markdown file
-            
-        Returns:
-            List of image information dictionaries
+        Extracts images from the markdown file, generates AI summaries,
+        and optionally inserts summaries back into the content.
+        
+        Parameters
+        ----------
+        md_path : Path
+            Path to the markdown file to process
+        
+        Returns
+        -------
+        List[Dict[str, any]]
+            List of processed image information dictionaries
+        
+        Notes
+        -----
+        If summaries are generated, creates a new file with
+        '_with_summaries' suffix containing the updated content.
         """
         if not md_path.exists():
             logger.error(f"Markdown file not found: {md_path}")
@@ -113,12 +224,22 @@ class ImageProcessor:
     def _extract_images_from_markdown(self, content: str, source_path: Path) -> List[Dict[str, any]]:
         """Extract all images from markdown content.
         
-        Args:
-            content: Markdown content
-            source_path: Path to the source markdown file
-            
-        Returns:
-            List of image information dictionaries
+        Parameters
+        ----------
+        content : str
+            Markdown content to parse
+        source_path : Path
+            Path to the source markdown file
+        
+        Returns
+        -------
+        List[Dict[str, any]]
+            List of image information dictionaries with metadata
+        
+        Notes
+        -----
+        Extracts images in markdown format: ![alt](url)
+        Captures 200 characters of context before and after each image.
         """
         images = []
         
@@ -166,13 +287,25 @@ class ImageProcessor:
         return cleaned
     
     def _generate_image_summary(self, image_info: Dict[str, any]) -> Optional[str]:
-        """Generate a summary for an image using GPT-4V.
+        """Generate a summary for an image using GPT-4 Vision.
         
-        Args:
-            image_info: Dictionary with image information
-            
-        Returns:
-            Generated summary text, or None if generation failed
+        Uses AI to analyze the image and generate a descriptive summary
+        based on the visual content and surrounding context.
+        
+        Parameters
+        ----------
+        image_info : Dict[str, any]
+            Dictionary containing image URL and context
+        
+        Returns
+        -------
+        str or None
+            Generated summary text (2-4 sentences), or None if failed
+        
+        Notes
+        -----
+        Requires OpenAI client with GPT-4 Vision access.
+        Uses low temperature (0.3) for consistent summaries.
         """
         if not self.openai_client:
             return None
@@ -239,11 +372,31 @@ Keep the summary concise but informative (2-4 sentences)."""
     def download_remote_images(self, images: List[Dict[str, any]]) -> List[Dict[str, any]]:
         """Download remote images to local storage.
         
-        Args:
-            images: List of image information dictionaries
-            
-        Returns:
-            Updated list with local paths added
+        Downloads images from HTTP/HTTPS URLs and saves them locally,
+        adding local_path to the image information.
+        
+        Parameters
+        ----------
+        images : List[Dict[str, any]]
+            List of image information dictionaries
+        
+        Returns
+        -------
+        List[Dict[str, any]]
+            Updated list with 'local_path' added for downloaded images
+        
+        Examples
+        --------
+        >>> processor = ImageProcessor(Path("output"))
+        >>> images = [{'url': 'https://example.com/img.png', ...}]
+        >>> updated = processor.download_remote_images(images)
+        >>> print(updated[0]['local_path'])
+        output/images/image_page-1.md_0.png
+        
+        Notes
+        -----
+        Determines file extension from Content-Type header.
+        Continues processing if individual downloads fail.
         """
         import requests
         

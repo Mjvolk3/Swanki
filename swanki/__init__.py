@@ -1,4 +1,49 @@
-# swanki/__init__.py
+"""Swanki: Automated flashcard generation from academic PDFs.
+
+Swanki is a Python package that transforms academic PDFs into Anki flashcards with
+AI-generated content. It processes PDFs by extracting text and images, generating
+summaries, creating question-answer pairs, and optionally adding audio narration.
+
+The package provides both a modern pipeline-based API and legacy functions for
+backward compatibility.
+
+Main Components
+---------------
+Pipeline : class
+    Main interface for processing PDFs through the complete workflow
+ConfigGenerator : class
+    Configuration management for the processing pipeline
+
+Legacy Functions
+----------------
+The package maintains backward compatibility with legacy functions for:
+- PDF processing (splitting, converting to markdown)
+- Content generation (cards, transcripts, audio)
+- Image processing (extraction, summarization)
+
+Examples
+--------
+Basic usage with the modern API:
+
+>>> from swanki import Pipeline, ConfigGenerator
+>>> 
+>>> # Generate configuration
+>>> config_gen = ConfigGenerator()
+>>> config = config_gen.generate(
+...     pdf_path="paper.pdf",
+...     output_dir="output",
+...     deck_name="MyDeck"
+... )
+>>> 
+>>> # Process PDF
+>>> pipeline = Pipeline(config)
+>>> pipeline.run()
+
+Notes
+-----
+For new projects, use the Pipeline API. Legacy functions are maintained
+for backward compatibility but may be deprecated in future versions.
+"""
 
 # New refactored components
 from .config import ConfigGenerator
