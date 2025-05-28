@@ -8,7 +8,7 @@ conda activate env-param
 #dendron visualize --out assets
 
 # export pod
-dendron exportPodV2 --podId paper --fname paper --vault Parameter_Estimation
+dendron exportPodV2 --podId paper --fname paper --vault Swanki
 
 # Find a and replace asset paths. Prepend `./` to 'assets' so they can be recognized by Pandoc
 echo 'Correcting paths for Pandoc'
@@ -16,7 +16,7 @@ sed -i '' 's/](assets/](.\/assets/g' *.md
 
 # Pandoc to construct documents
 # table of contents option
-# pandoc -f gfm --toc -B pod_export/Parameter_Estimation/paper/title.md pod_export/Parameter_Estimation/Paper.md -o paper.pdf --reference-doc=reference.docx
+# pandoc -f gfm --toc -B pod_export/Swanki/paper/title.md pod_export/Swanki/Paper.md -o paper.pdf --reference-doc=reference.docx
 
 # For thesis: pandoc -s notes/export/paper.docx notes/export/paper0.docx -o out.docx --reference-doc=notes/ms_word_ref/paper-reference.docx --citeproc --bibliography notes/bib/bib.bib --metadata csl=notes/bib/nature.csl --toc
 
@@ -33,21 +33,40 @@ if [ ! -d "$export_dir" ]; then
     mkdir "$export_dir"
 fi
 
+echo "PWD:"
+echo ${PWD}
+
 # docx_0 - If output looks wrong change/modify paper-reference.docx
-pandoc -s assets/publish/Parameter_Estimation/Paper.md -o assets/publish/export/paper_0.docx --reference-doc=assets/publish/ms_word_ref/paper-reference.docx --citeproc --bibliography assets/publish/bib/bib.bib --metadata csl=assets/publish/bib/nature.csl
+pandoc -s assets/publish/Swanki/Paper.md -o assets/publish/export/paper_0.docx --reference-doc=assets/publish/ms_word_ref/paper-reference.docx --citeproc --bibliography assets/publish/bib/bib.bib --metadata csl=assets/publish/bib/nature.csl --metadata title="Paper"
 
 
-# pdf_0 - If output looks wrong can change PDF engine. pdflatex is default
-pandoc -s --pdf-engine pdflatex assets/publish/Parameter_Estimation/Paper.md -o assets/publish/export/paper_0.pdf --citeproc --bibliography assets/publish/bib/bib.bib --metadata csl=assets/publish/bib/nature.csl -V geometry:"top=2cm, bottom=1.5cm, left=2cm, right=2cm" --strip-comments --metadata link-citations
+# pdf_0 - Using xelatex with mermaid-filter and header includes (similar to bib_tex_pdf.sh)
+pandoc -F mermaid-filter \
+  --metadata link-citations=true \
+  --metadata title="Paper" \
+  -s assets/publish/Swanki/Paper.md \
+  -o assets/publish/export/paper_0.pdf \
+  --pdf-engine=xelatex \
+  --citeproc \
+  --bibliography assets/publish/bib/bib.bib \
+  --metadata csl=assets/publish/bib/nature.csl \
+  -V geometry:"top=2cm, bottom=1.5cm, left=2cm, right=2cm" \
+  --include-in-header=assets/publish/tex-templates/header-includes.tex \
+  --strip-comments \
+  --dpi=600
 
 # pdf_1 - PDF engine wkhtmltopdf
-pandoc -s --pdf-engine wkhtmltopdf assets/publish/Parameter_Estimation/Paper.md -o assets/publish/export/paper_1.pdf --citeproc --bibliography assets/publish/bib/bib.bib --metadata csl=assets/publish/bib/nature.csl -V geometry:"top=2cm, bottom=1.5cm, left=2cm, right=2cm" --strip-comments
+pandoc -s --pdf-engine wkhtmltopdf assets/publish/Swanki/Paper.md -o assets/publish/export/paper_1.pdf --citeproc --bibliography assets/publish/bib/bib.bib --metadata csl=assets/publish/bib/nature.csl -V geometry:"top=2cm, bottom=1.5cm, left=2cm, right=2cm" --strip-comments --metadata title="Paper"
 
-# html. # metadata title warning comes from this command
-pandoc -s assets/publish/Parameter_Estimation/Paper.md -o assets/publish/export/paper.html --citeproc --bibliography assets/publish/bib/bib.bib --metadata csl=assets/publish/bib/nature.csl
+# html
+pandoc -s assets/publish/Swanki/Paper.md -o assets/publish/export/paper.html --citeproc --bibliography assets/publish/bib/bib.bib --metadata csl=assets/publish/bib/nature.csl --metadata title="Paper"
 
 # out of notes
 cd ..
 
 echo "Paper compiled!"
-echo "Find at 'notes/assets/publish/export/paper.docx' and 'notes/assets/publish/export/paper.pdf'"
+echo "Generated files:"
+echo "  - DOCX: notes/assets/publish/export/paper_0.docx"
+echo "  - PDF (xelatex): notes/assets/publish/export/paper_0.pdf"
+echo "  - PDF (wkhtmltopdf): notes/assets/publish/export/paper_1.pdf"
+echo "  - HTML: notes/assets/publish/export/paper.html"
