@@ -1,7 +1,7 @@
-manim
+#manim
 python-dotenv
-langchain-community
-langchain
+#langchain-community
+#langchain
 openai
 tiktoken
 PyPDF2
@@ -11,6 +11,8 @@ pydantic>=2.0
 instructor
 pyyaml
 elevenlabs
+pydub
+requests
 
 # dev
 build
