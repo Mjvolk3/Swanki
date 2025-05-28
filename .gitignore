@@ -7,7 +7,7 @@ node_modules
 
 swanki-out/*
 __pycache__
-*.pdf
+/*.pdf
 
 # Python packaging
 *.egg-info/
