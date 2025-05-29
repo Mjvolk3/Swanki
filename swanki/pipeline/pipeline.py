@@ -155,7 +155,7 @@ class Pipeline:
         load_dotenv()
         self.data_dir = Path(os.getenv('SWANKI_DATA', 'swanki-out'))
         
-    def process_full(self, pdf_path: Path, citation_key: str) -> Dict[str, Path]:
+    def process_full(self, pdf_path: Path, citation_key: str, output_dir: str = None) -> Dict[str, Path]:
         """Process PDF through the complete pipeline.
         
         Executes all processing steps from PDF to final outputs, including
@@ -168,6 +168,8 @@ class Pipeline:
             Path to the input PDF file
         citation_key : str
             Citation key for naming outputs and referencing
+        output_dir : str, optional
+            Name for the output directory. If not provided, uses citation_key
         
         Returns
         -------
@@ -200,21 +202,24 @@ class Pipeline:
             current_stage="initialization"
         )
         
-        # Create output directory based on citation key with auto-increment if exists
-        base_name = citation_key if citation_key else 'swanki-out'
-        output_dir = self.data_dir / base_name
+        # Create output directory based on output_dir or citation key with auto-increment if exists
+        base_name = output_dir if output_dir else (citation_key if citation_key else 'swanki-out')
+        output_path = self.data_dir / base_name
+        
+        # Store base_name for audio file naming
+        self.audio_prefix = base_name
         
         # If directory exists, append a number
-        if output_dir.exists():
+        if output_path.exists():
             counter = 0
             while True:
                 numbered_dir = self.data_dir / f"{base_name}_{counter}"
                 if not numbered_dir.exists():
-                    output_dir = numbered_dir
+                    output_path = numbered_dir
                     break
                 counter += 1
         
-        self.output_base = output_dir
+        self.output_base = output_path
         self.output_base.mkdir(parents=True, exist_ok=True)
         
         # 1. Split PDF based on config
@@ -884,9 +889,9 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
             with open(audio_path, 'w') as f:
                 for i, card in enumerate(cards):
                     # Audio files will be generated with card index starting from 1
-                    # Include citation key in filename to avoid conflicts
-                    audio_front_uri = f"{self.citation_key}/gen-md-complementary-audio/{self.citation_key}_page-{i+1}_{i+1}_front.mp3"
-                    audio_back_uri = f"{self.citation_key}/gen-md-complementary-audio/{self.citation_key}_page-{i+1}_{i+1}_back.mp3"
+                    # Use relative paths to avoid breaking links when directory names change
+                    audio_front_uri = f"gen-md-complementary-audio/{self.citation_key}_page-{i+1}_{i+1}_front.mp3"
+                    audio_back_uri = f"gen-md-complementary-audio/{self.citation_key}_page-{i+1}_{i+1}_back.mp3"
                     f.write(card.to_md(
                         include_audio=True, 
                         audio_front_uri=audio_front_uri,
@@ -1004,7 +1009,7 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
         if audio_config.get('generate_summary', False):
             print("Generating summary audio...")
             summary_text = f"{summary.summary}\n\nKey Contributions:\n" + "\n".join([f"- {contrib}" for contrib in summary.key_contributions])
-            summary_audio_path = self.output_base / "document-summary-audio.mp3"
+            summary_audio_path = self.output_base / f"{self.audio_prefix}-summary-audio.mp3"
             
             generate_summary_audio(
                 summary_text=summary_text,
@@ -1022,7 +1027,7 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
             print("Generating reading audio...")
             # Combine all cleaned markdown content
             full_content = "\n\n".join([f.read_text() for f in cleaned_files])
-            reading_audio_path = self.output_base / "document-reading-audio.mp3"
+            reading_audio_path = self.output_base / f"{self.audio_prefix}-reading-audio.mp3"
             
             generate_reading_audio(
                 full_content=full_content,
@@ -1038,7 +1043,7 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
         # Generate lecture audio (educational style)
         if audio_config.get('generate_lecture', False):
             print("Generating lecture audio...")
-            lecture_audio_path = self.output_base / "document-lecture-audio.mp3"
+            lecture_audio_path = self.output_base / f"{self.audio_prefix}-lecture-audio.mp3"
             
             # Get lecture prompt configuration
             prompts_config = self.config.get('prompts', {}).get('prompts', {})

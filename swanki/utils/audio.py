@@ -436,7 +436,9 @@ def generate_summary_audio(
         # Generate chunks and combine
         chunk_paths = []
         for i, chunk in enumerate(chunks):
-            chunk_path = output_path.parent / f"{output_path.stem}_chunk{i}.mp3"
+            # Include citation_key in temp file name to avoid conflicts
+            prefix = f"{citation_key}_{output_path.stem}" if citation_key else output_path.stem
+            chunk_path = output_path.parent / f"{prefix}_chunk{i}.mp3"
             text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key)
             chunk_paths.append(chunk_path)
             time.sleep(1)  # Rate limiting
@@ -549,7 +551,9 @@ def generate_reading_audio(
     chunk_paths = []
     
     for i, chunk in enumerate(audio_chunks):
-        chunk_path = output_path.parent / f"{output_path.stem}_chunk{i}.mp3"
+        # Include citation_key in temp file name to avoid conflicts
+        prefix = f"{citation_key}_{output_path.stem}" if citation_key else output_path.stem
+        chunk_path = output_path.parent / f"{prefix}_chunk{i}.mp3"
         text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key)
         chunk_paths.append(chunk_path)
         time.sleep(1)  # Rate limiting
@@ -661,9 +665,22 @@ def generate_lecture_audio(
         system_prompt = lecture_prompt_config.get('lecture_system', 'You are an expert educator.')
         user_template = lecture_prompt_config.get('lecture_generation', 'Create a lecture from: {content}')
     else:
-        # Default prompts
-        system_prompt = "You are an expert educator creating an engaging audio lecture."
-        user_template = "Create a lecture from this content:\n{content}"
+        # Default prompts - focus on clarity and directness
+        system_prompt = """You are creating a clear, informative audio presentation of academic content.
+Focus on clarity and educational value without unnecessary dramatization.
+Start directly with the content without lengthy introductions."""
+        user_template = """Create a clear educational presentation from this document.
+
+Guidelines:
+1. Begin directly with the main content - no lengthy introductions
+2. Use a professional, informative tone
+3. Focus on key concepts and findings
+4. Avoid theatrical or overly dramatic language
+5. End concisely without extended conclusions
+6. Mention the citation key naturally at the beginning: {citation_key}
+
+Content to present:
+{content}"""
     
     # Format user content
     if citation_key:
@@ -710,7 +727,9 @@ def generate_lecture_audio(
     chunk_paths = []
     
     for i, chunk in enumerate(audio_chunks):
-        chunk_path = output_path.parent / f"{output_path.stem}_chunk{i}.mp3"
+        # Include citation_key in temp file name to avoid conflicts
+        prefix = f"{citation_key}_{output_path.stem}" if citation_key else output_path.stem
+        chunk_path = output_path.parent / f"{prefix}_chunk{i}.mp3"
         text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key)
         chunk_paths.append(chunk_path)
         time.sleep(1)  # Rate limiting
@@ -830,7 +849,9 @@ def generate_card_audio(
         # Generate chunks and combine
         chunk_paths = []
         for i, chunk in enumerate(front_chunks):
-            chunk_path = audio_dir / f"{page_base}_{card_index}_front_chunk{i}.mp3"
+            # Include citation_key in temp file name to avoid conflicts
+            prefix = f"{citation_key}_{page_base}" if citation_key else page_base
+            chunk_path = audio_dir / f"{prefix}_{card_index}_front_chunk{i}.mp3"
             text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key)
             chunk_paths.append(chunk_path)
             time.sleep(1)  # Rate limiting
@@ -852,7 +873,9 @@ def generate_card_audio(
             # Generate chunks and combine
             chunk_paths = []
             for i, chunk in enumerate(back_chunks):
-                chunk_path = audio_dir / f"{page_base}_{card_index}_back_chunk{i}.mp3"
+                # Include citation_key in temp file name to avoid conflicts
+                prefix = f"{citation_key}_{page_base}" if citation_key else page_base
+                chunk_path = audio_dir / f"{prefix}_{card_index}_back_chunk{i}.mp3"
                 text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key)
                 chunk_paths.append(chunk_path)
                 time.sleep(1)  # Rate limiting

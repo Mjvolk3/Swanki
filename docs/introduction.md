@@ -88,6 +88,12 @@ swanki pdf_path=paper.pdf citation_key=doe2023 anki=auto_send
 
 # Custom deck hierarchy
 swanki pdf_path=paper.pdf citation_key=doe2023 anki=auto_send anki.deck_name="Textbooks::MachineLearning::{citation_key}"
+
+# Send existing cards to Anki (if you forgot to use auto_send)
+swanki-to-anki /Users/michaelvolk/Documents/projects/Swanki_Data/nishitaniSelfovercomingNihilism1990a_intro
+
+# Send multiple directories at once
+swanki-to-anki /Users/michaelvolk/Documents/projects/Swanki_Data/nishitaniSelfovercomingNihilism1990a_*
 ```
 
 ### Batch Processing Multiple Chapters

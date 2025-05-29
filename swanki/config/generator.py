@@ -259,7 +259,22 @@ ATP (Adenosine Triphosphate) serves as the primary energy currency of cells. It 
 
 Text: {text}
 Citation key: {citation_key}
-Known acronyms: {acronyms}"""
+Known acronyms: {acronyms}""",
+                    "lecture_system": """You are creating a clear, informative audio presentation of academic content.
+Focus on clarity and educational value without unnecessary dramatization.
+Start directly with the content without lengthy introductions.""",
+                    "lecture_generation": """Create a clear educational presentation from this document.
+
+Guidelines:
+1. Begin directly with the main content - no lengthy introductions
+2. Use a professional, informative tone
+3. Focus on key concepts and findings
+4. Avoid theatrical or overly dramatic language
+5. End concisely without extended conclusions
+6. Mention the citation key naturally at the beginning: {citation_key}
+
+Content to present:
+{content}"""
                 }
             }
         })

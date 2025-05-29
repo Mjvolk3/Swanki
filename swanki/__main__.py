@@ -93,7 +93,8 @@ def process_with_config(cfg: DictConfig) -> None:
     if hasattr(cfg, 'pdf_path') and cfg.pdf_path:
         outputs = pipeline.process_full(
             pdf_path=Path(cfg.pdf_path),
-            citation_key=cfg.citation_key if hasattr(cfg, 'citation_key') else None
+            citation_key=cfg.citation_key if hasattr(cfg, 'citation_key') else None,
+            output_dir=cfg.output_dir if hasattr(cfg, 'output_dir') else None
         )
         print(f"Generated outputs: {outputs}")
     else:
@@ -191,7 +192,7 @@ def main():
         print("""Swanki - Modern PDF-to-Anki card generation with AI
 
 Usage:
-  swanki pdf_path=path/to/file.pdf citation_key=author2023
+  swanki pdf_path=path/to/file.pdf citation_key=author2023 [+output_dir=custom_name]
   
 Configuration Options:
   pipeline=<default|comprehensive|fast>  Choose pipeline preset
@@ -206,6 +207,12 @@ Examples:
   
   # Comprehensive pipeline with full audio
   swanki pdf_path=paper.pdf citation_key=smith2023 pipeline=comprehensive audio=full
+  
+  # Use custom output directory (e.g., for book chapters)
+  swanki pdf_path=chapter5.pdf citation_key=smith2023 +output_dir=smith2023_CH5
+  
+  # Process specific section with full audio and auto-send to Anki
+  swanki pdf_path=/path/to/Luo_2020.pdf citation_key=luoWhenCausalInference2020 +output_dir=luoWhenCausalInference2020_12 audio=full anki=auto_send
   
   # Auto-send to Anki with custom deck
   swanki pdf_path=paper.pdf citation_key=smith2023 anki=auto_send anki.deck_name="Research::Papers::{citation_key}"
