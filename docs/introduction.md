@@ -5,6 +5,7 @@ Swanki is a powerful tool for converting PDFs into Anki flashcards with AI-gener
 ## Processing Book Chapters
 
 When working with textbooks or multi-chapter books, you often need to:
+
 1. Extract specific chapters from a larger PDF
 2. Remove unwanted pages (blank pages, references, etc.)
 3. Process each chapter with consistent citation keys but separate output directories
@@ -24,6 +25,7 @@ swanki pdf_path=/Users/michaelvolk/Documents/projects/Swanki_Data/Nishitani/Nish
 Before processing, you may need to extract specific pages or remove unwanted content:
 
 #### Extract Specific Pages
+
 ```bash
 # Extract pages 10-25 from a large PDF (chapter 2)
 swanki-cut input.pdf 10-25 chapter2.pdf
@@ -33,6 +35,7 @@ swanki-cut textbook.pdf 1-8 intro.pdf
 ```
 
 #### Remove Unwanted Pages and Combine
+
 ```bash
 # Extract content pages, skipping blanks and references
 swanki-cut book.pdf 1-50 part1.pdf    # Main content
@@ -67,12 +70,14 @@ swanki-to-anki /path/to/smithMachineLearning2023_CH5
 ## Basic Examples
 
 ### Simple Processing
+
 ```bash
 # Basic usage with defaults
 swanki pdf_path=paper.pdf citation_key=doe2023
 ```
 
 ### With Audio Generation
+
 ```bash
 # Generate all audio types
 swanki pdf_path=paper.pdf citation_key=doe2023 audio=full
@@ -82,6 +87,7 @@ swanki pdf_path=paper.pdf citation_key=doe2023 audio=minimal
 ```
 
 ### Anki Integration
+
 ```bash
 # Auto-send to Anki after processing
 swanki pdf_path=paper.pdf citation_key=doe2023 anki=auto_send

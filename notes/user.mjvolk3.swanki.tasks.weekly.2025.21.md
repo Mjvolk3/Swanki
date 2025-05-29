@@ -2,7 +2,7 @@
 id: fttgy1tk7pqnu50dmvnh8qr
 title: '21'
 desc: ''
-updated: 1748217121056
+updated: 1748556080376
 created: 1748056813358
 ---
 
@@ -14,3 +14,8 @@ created: 1748056813358
 
 ![](./assets/images/user.mjvolk3.swanki.tasks.weekly.2025.21.md.tags-not-being-parsed.png)
 ![](./assets/images/user.mjvolk3.swanki.tasks.weekly.2025.21.md.tags-still-not-parsed_00.png)
+
+## 2025.05.29
+
+- Issues
+
