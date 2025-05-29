@@ -3,6 +3,7 @@
 ## Requirements
 
 - Python 3.8 or higher
+- FFmpeg (for high-quality audio speed adjustment)
 - Mathpix CLI (`mpx`) for PDF to markdown conversion
 - Anki with AnkiConnect addon (for Anki integration)
 - API keys for OpenAI and ElevenLabs (for AI features)
@@ -19,6 +20,46 @@ pip install swanki
 git clone https://github.com/yourusername/swanki.git
 cd swanki
 pip install -e .
+```
+
+## Installing FFmpeg
+
+FFmpeg is required for high-quality audio speed adjustment. Install it based on your operating system:
+
+### macOS
+```bash
+# Using Homebrew
+brew install ffmpeg
+```
+
+### Windows
+1. Download FFmpeg from [https://ffmpeg.org/download.html](https://ffmpeg.org/download.html)
+2. Extract the files and add the `bin` folder to your system PATH
+3. Or use package managers:
+   ```bash
+   # Using Chocolatey
+   choco install ffmpeg
+   
+   # Using Scoop
+   scoop install ffmpeg
+   ```
+
+### Linux
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install ffmpeg
+
+# CentOS/RHEL/Fedora
+sudo dnf install ffmpeg
+
+# Arch Linux
+sudo pacman -S ffmpeg
+```
+
+### Verify FFmpeg Installation
+```bash
+ffmpeg -version
 ```
 
 ## Setting up Mathpix
