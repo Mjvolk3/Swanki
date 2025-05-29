@@ -53,6 +53,7 @@ Contents
    quickstart
    configuration
    cli-usage
+   pipeline
 
 .. toctree::
    :maxdepth: 2
