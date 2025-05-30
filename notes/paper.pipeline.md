@@ -2,7 +2,7 @@
 id: zmt43jnoh6luymdg9s3r4wv
 title: Pipeline
 desc: ''
-updated: 1748539053153
+updated: 1748568118249
 created: 1748539053153
 ---
 
@@ -334,16 +334,19 @@ classDiagram
 ## Usage Examples
 
 ### Basic Pipeline
+
 ```bash
 swanki --pdf_path=paper.pdf --citation_key=Smith2023
 ```
 
 ### With Custom Output Directory
+
 ```bash
 swanki --pdf_path=paper.pdf --citation_key=Smith2023 +output_dir=chapter1
 ```
 
 ### Full Audio Generation
+
 ```bash
 swanki --pdf_path=paper.pdf --citation_key=Smith2023 \
        audio.audio.generate_complementary=true \
@@ -353,9 +356,16 @@ swanki --pdf_path=paper.pdf --citation_key=Smith2023 \
 ```
 
 ### Custom Processing Options
+
 ```bash
 swanki --pdf_path=paper.pdf --citation_key=Smith2023 \
        pipeline.processing.window_size=3 \
        pipeline.processing.num_cards_per_page=5 \
        audio.audio.complementary_speed=1.6
+```
+
+***
+
+```python
+swanki pdf_path=paper.pdf citation_key=author_year audio=full anki=auto_send
 ```
