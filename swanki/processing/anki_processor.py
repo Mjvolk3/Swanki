@@ -223,14 +223,10 @@ class AnkiProcessor:
             
             # Prepare fields
             if is_cloze:
-                # For cloze cards, we need to split audio between Text and Extra
-                # Extract audio links from back content
-                back_audio_match = re.search(r'\[sound:([^\]]+)\]', card['back'])
-                back_without_audio = re.sub(r'\[sound:[^\]]+\]', '', card['back']).strip()
-                
+                # For cloze cards, put front content in Text and back content in Back Extra
                 fields = {
                     "Text": card['front'],  # Front already has the cloze text and front audio
-                    "Extra": card['back'] if back_audio_match else ""  # Back audio goes in Extra
+                    "Back Extra": card['back']  # All back content (including audio) goes in Back Extra
                 }
                 search_key = "Text"
             else:
