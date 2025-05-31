@@ -151,6 +151,7 @@ class ConfigGenerator:
                 "window_size": 2,
                 "skip": 1,
                 "num_cards_per_page": 3,
+                "cloze_cards_per_page": 2,  # Number of cloze deletion cards per page
                 "chunk_size": 1000,
                 "overlap": 200,
                 "blocking_audio": True,  # Based on learnings
@@ -176,6 +177,7 @@ class ConfigGenerator:
                 "window_size": 3,
                 "skip": 1,
                 "num_cards_per_page": 5,
+                "cloze_cards_per_page": 3,  # More cloze cards for comprehensive mode
                 "chunk_size": 1500,
                 "overlap": 300,
                 "blocking_audio": True
@@ -187,6 +189,7 @@ class ConfigGenerator:
                 "window_size": 1,
                 "skip": 1,
                 "num_cards_per_page": 2,
+                "cloze_cards_per_page": 1,  # Fewer cloze cards for fast mode
                 "chunk_size": 800,
                 "overlap": 100,
                 "blocking_audio": False
@@ -219,8 +222,13 @@ Focus on what information it conveys and its relevance.
 If it contains equations or data, describe them clearly."""
                 },
                 "cards": {
-                    "system": "You are an expert at creating educational flashcards in VSCode Anki format that test understanding.",
-                    "generate_cards": """Create {num_cards} flashcards from this content in VSCode Anki format.
+                    "system": "You are an expert at creating educational flashcards. Your ONLY job is to create the EXACT number of cards requested. You MUST create BOTH regular Q&A cards AND cloze deletion cards as specified. Count carefully and ensure you generate the exact numbers requested.",
+                    "generate_cards": """You are required to generate {num_cards} regular cards AND {num_cloze} cloze deletion cards.
+
+MANDATORY DISTRIBUTION:
+- Regular Q&A cards: {num_cards}
+- Cloze deletion cards: {num_cloze}
+- Total cards to generate: {num_cards} + {num_cloze}
 
 Context from document summary:
 Title: {title}
@@ -230,25 +238,69 @@ Technical terms: {technical_terms}
 Content:
 {content}
 
-FORMAT RULES:
-1. Use ## for the question (front of card)
-2. Answer goes on the next line (back of card)
-3. Tags go as a single bullet: - #tag1, #tag2, #tag3
-4. Use period-delimited tags from broad to narrow (e.g., #biology.cell-biology, #chemistry.organic)
+CLOZE DELETION CARD FORMAT (YOU MUST CREATE {num_cloze} OF THESE):
+## [Statement with {{c1::hidden text}} that tests understanding]
 
-CONTENT RULES:
-1. Each card tests ONE concept
-2. Use full forms of acronyms in answers
-3. Include necessary context in questions
-4. Answers should be comprehensive but concise
-5. Use LaTeX with $ for inline and $$ for display math
+- #tag1, #tag2
 
-Example card:
-## What is the role of ATP in cellular metabolism?
+IMPORTANT CLOZE RULES:
+- Hide meaningful concepts, definitions, or formulas
+- NEVER hide reference numbers (e.g., NOT "ref. {{c1::6}}")
+- NEVER hide specific years unless they are historically significant
+- NEVER hide arbitrary numbers or identifiers
+- Focus on hiding information that tests understanding, not memorization
 
-ATP (Adenosine Triphosphate) serves as the primary energy currency of cells. It stores energy in its high-energy phosphate bonds and releases it when hydrolyzed to ADP, powering various cellular processes including active transport, muscle contraction, and biosynthesis.
+Example GOOD cloze cards you MUST follow:
+## The gradient of $f(x) = x^2$ is {{c1::$2x$}}, which represents the {{c2::rate of change}}.
 
-- #biology.cellular-metabolism, #biochemistry.energy-metabolism"""
+- #calculus.derivatives, #mathematics
+
+## In machine learning, the {{c1::loss function}} measures the {{c2::difference between predicted and actual values}}.
+
+- #machine-learning.fundamentals, #optimization
+
+## {{c1::Bayesian networks}} encode conditional independencies using {{c2::directed acyclic graphs (DAGs)}}.
+
+- #bayesian-networks, #graphical-models
+
+Example BAD cloze cards to AVOID:
+- "The paper in ref. {{c1::6}} showed..." (Don't hide reference numbers)
+- "In {{c1::2023}}, researchers found..." (Don't hide arbitrary years)
+- "Algorithm {{c1::3}} performs better..." (Don't hide arbitrary identifiers)
+
+REGULAR Q&A CARD FORMAT (YOU MUST CREATE {num_cards} OF THESE):
+## [Question that asks about a concept]
+
+[Answer that explains the concept]
+
+- #tag1, #tag2
+
+Example regular cards:
+## What is the time complexity of quicksort in the average case?
+
+The average case time complexity of quicksort is O(n log n), where n is the number of elements to sort.
+
+- #algorithms.sorting, #complexity-analysis
+
+## How does gradient descent find the minimum of a function?
+
+Gradient descent iteratively moves in the direction opposite to the gradient, taking steps proportional to the negative of the gradient at the current point.
+
+- #optimization, #machine-learning.algorithms
+
+CRITICAL REQUIREMENTS:
+1. YOU MUST generate EXACTLY {num_cloze} cloze deletion cards (with {{c1::...}} syntax)
+2. YOU MUST generate EXACTLY {num_cards} regular Q&A cards
+3. EVERY card MUST have AT LEAST 2 meaningful tags on the "- #tag1, #tag2" line
+4. Tags should be hierarchical when appropriate (e.g., #biology.genetics, #algorithms.sorting)
+5. Never start the question with the citation - it will be added automatically
+6. Focus on mathematical equations and formulas when present
+7. NEVER use references like "ref.", "[12]", "according to" - be specific
+8. Use LaTeX with $ for inline math
+9. For cloze cards: Hide concepts/definitions, NOT reference numbers or arbitrary identifiers
+10. Make cloze deletions educational - test understanding, not rote memorization
+
+Start generating cards now. First generate all {num_cloze} cloze cards, then generate all {num_cards} regular cards."""
                 },
                 "audio": {
                     "transcript_cleaning": """Convert this text to be TTS-friendly:
@@ -413,7 +465,7 @@ Content to present:
         cls._write_yaml(anki_dir / "default.yaml", {
             "anki": {
                 "enabled": False,
-                "deck_name": "{citation_key}",  # Template variable support
+                "deck_name": "{deck_name}",  # Uses output_dir if specified, otherwise citation_key
                 "host": "127.0.0.1",
                 "port": 8765,
                 "auto_send": False,  # Whether to automatically send cards after generation
@@ -427,7 +479,7 @@ Content to present:
             "anki": {
                 "enabled": True,
                 "auto_send": True,
-                "deck_name": "{citation_key}",
+                "deck_name": "{deck_name}",  # Uses output_dir if specified, otherwise citation_key
                 "card_format": "with_audio"
             }
         })
@@ -435,7 +487,7 @@ Content to present:
         cls._write_yaml(anki_dir / "custom_deck.yaml", {
             "anki": {
                 "enabled": True,
-                "deck_name": "Research::Papers::{citation_key}",  # Custom hierarchy
+                "deck_name": "Research::Papers::{deck_name}",  # Custom hierarchy with output_dir or citation_key
                 "auto_send": False
             }
         })

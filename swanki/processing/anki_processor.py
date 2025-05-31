@@ -223,9 +223,14 @@ class AnkiProcessor:
             
             # Prepare fields
             if is_cloze:
+                # For cloze cards, we need to split audio between Text and Extra
+                # Extract audio links from back content
+                back_audio_match = re.search(r'\[sound:([^\]]+)\]', card['back'])
+                back_without_audio = re.sub(r'\[sound:[^\]]+\]', '', card['back']).strip()
+                
                 fields = {
-                    "Text": card['front'] + "\n" + card['back'],
-                    "Extra": ""
+                    "Text": card['front'],  # Front already has the cloze text and front audio
+                    "Extra": card['back'] if back_audio_match else ""  # Back audio goes in Extra
                 }
                 search_key = "Text"
             else:
@@ -236,7 +241,21 @@ class AnkiProcessor:
                 search_key = "Front"
             
             # Check if card exists
-            query = f'deck:"{deck_name}" {search_key}:"{fields[search_key]}"'
+            # Escape special characters in the search text
+            search_text = fields[search_key]
+            # Remove audio tags for search
+            search_text = re.sub(r'\[sound:[^\]]+\]', '', search_text).strip()
+            # Escape quotes and other special chars
+            search_text = search_text.replace('"', '\\"').replace('\\', '\\\\')
+            # For cloze cards, search without the cloze markers for better matching
+            if is_cloze:
+                # Remove cloze markers but keep the text
+                search_text = re.sub(r'{{c\d+::([^}]+)}}', r'\1', search_text)
+            # Limit search text length to avoid issues
+            if len(search_text) > 100:
+                search_text = search_text[:100]
+            
+            query = f'deck:"{deck_name}" {search_key}:"{search_text}"'
             existing_ids = self._find_notes(query)
             
             if not existing_ids:

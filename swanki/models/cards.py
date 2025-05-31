@@ -29,8 +29,12 @@ Examples
 >>> markdown = card.to_md()
 """
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Optional, Literal
+import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class CardContent(BaseModel):
@@ -78,6 +82,37 @@ class CardContent(BaseModel):
     requires_latex: bool = Field(default=False)
     audio_hint: Optional[str] = Field(None, description="Pronunciation guide for TTS")
     image_path: Optional[str] = Field(None, description="Path to image file for this card side")
+    
+    @field_validator('text')
+    def validate_cloze_format(cls, v):
+        """Validate cloze deletion format and fix common issues.
+        
+        Ensures proper {{c1::text}} format and converts other cloze numbers to c1.
+        """
+        import re
+        
+        # Fix single braces to double braces for cloze deletions
+        if '{c' in v and '{{c' not in v:
+            v = re.sub(r'\{c(\d+)::', r'{{c1::', v)
+            v = re.sub(r'([^}])\}([^}]|$)', r'\1}}\2', v)
+        
+        # Convert all cloze numbers (c2, c3, etc.) to c1 for simplicity
+        v = re.sub(r'\{\{c\d+::', '{{c1::', v)
+        
+        # Ensure all cloze deletions are properly closed
+        if '{{c1::' in v:
+            # Count opening and closing braces
+            opening_count = v.count('{{c1::')
+            closing_count = v.count('}}')
+            
+            # If we have cloze openings but not enough closings, try to fix
+            if opening_count > closing_count:
+                # Find positions where we might be missing closing braces
+                import re
+                # Replace single } with }} at the end of cloze deletions
+                v = re.sub(r'(\{\{c1::[^}]+)\}([^}]|$)', r'\1}}\2', v)
+        
+        return v
 
 
 class PlainCard(BaseModel):
@@ -130,11 +165,104 @@ class PlainCard(BaseModel):
     >>> 
     >>> # Convert to markdown
     >>> md = card.to_md(citation_key="Smith2023")
+    >>> 
+    >>> # With audio URIs stored in the card
+    >>> card.audio_front_uri = "audio/card_1_front.mp3"
+    >>> card.audio_back_uri = "audio/card_1_back.mp3"
+    >>> md_with_audio = card.to_md(include_audio=True)
     """
     front: CardContent
     back: CardContent
-    tags: List[str] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list, min_length=1, description="At least one tag required")
     difficulty: Literal["easy", "medium", "hard"] = "medium"
+    # Audio file URIs - set when audio is generated
+    audio_front_uri: Optional[str] = Field(None, description="URI/path to front audio file")
+    audio_back_uri: Optional[str] = Field(None, description="URI/path to back audio file")
+    # Unique identifier for robust pairing
+    card_id: Optional[str] = Field(None, description="Unique card identifier for audio pairing")
+    # Audio transcripts for validation
+    audio_front_transcript: Optional[str] = Field(None, description="Generated transcript for front audio")
+    audio_back_transcript: Optional[str] = Field(None, description="Generated transcript for back audio")
+    
+    @field_validator('tags')
+    def validate_tags(cls, v):
+        """Ensure at least one tag is present and tags are valid."""
+        # Clean up tags - remove empty strings and whitespace
+        cleaned_tags = [tag.strip() for tag in v if tag and tag.strip()]
+        
+        if not cleaned_tags:
+            raise ValueError("Every card must have at least one meaningful tag. No tags were provided.")
+        
+        # Validate tag format (optional - ensure they don't contain invalid characters)
+        for tag in cleaned_tags:
+            if not tag.replace('-', '').replace('.', '').replace('_', '').isalnum():
+                raise ValueError(f"Invalid tag format: '{tag}'. Tags should only contain letters, numbers, hyphens, dots, and underscores.")
+        
+        return cleaned_tags
+    
+    @model_validator(mode='after')
+    def fix_double_header(self):
+        """Fix double header issue where citation is separate from question or ## appears in text."""
+        import re
+        
+        # First, check if front text has double header pattern with citation
+        # Pattern: "@citation: ## Question" or "citation: ## Question"
+        double_header_pattern = r'^(@?\w+(?:Et\w+)?\d{4}:?\s*):?\s*##\s*(.+)$'
+        match = re.match(double_header_pattern, self.front.text, re.MULTILINE | re.DOTALL)
+        
+        if match:
+            # Extract citation and question
+            citation = match.group(1).strip().rstrip(':')
+            question = match.group(2).strip()
+            # Reconstruct properly
+            self.front.text = f"{citation}: {question}"
+        elif self.front.text.startswith('## '):
+            # If it just starts with ## without citation, remove the ##
+            self.front.text = self.front.text[3:].strip()
+        
+        return self
+    
+    @model_validator(mode='after')
+    def ensure_card_id(self):
+        """Ensure card has a unique ID for robust audio pairing."""
+        if not self.card_id:
+            self.card_id = str(uuid.uuid4())
+        return self
+    
+    def validate_audio_match(self) -> bool:
+        """Validate that audio transcripts match card content.
+        
+        Checks if the generated audio transcripts are appropriate for
+        the card content, particularly for cloze cards.
+        
+        Returns
+        -------
+        bool
+            True if transcripts match expectations, False otherwise
+        
+        Notes
+        -----
+        - For cloze cards, front transcript should contain "blank"
+        - Back transcript should reveal the hidden content
+        - Both should include citation if present
+        """
+        if not self.audio_front_transcript:
+            return True  # No transcript to validate
+        
+        is_cloze = "{{c" in self.front.text
+        
+        if is_cloze:
+            # Front transcript should have "blank" where cloze markers are
+            if "blank" not in self.audio_front_transcript.lower():
+                logger.warning(f"Cloze card front transcript missing 'blank': {self.card_id}")
+                return False
+            
+            # Back transcript should NOT have "blank"
+            if self.audio_back_transcript and "blank" in self.audio_back_transcript.lower():
+                logger.warning(f"Cloze card back transcript contains 'blank': {self.card_id}")
+                return False
+        
+        return True
     
     def add_citation_prefix(self, citation_key: str):
         """Add citation key to front of card.
@@ -155,10 +283,10 @@ class PlainCard(BaseModel):
         ... )
         >>> card.add_citation_prefix("Guido1991")
         >>> print(card.front.text)
-        'Guido1991: What is Python?'
+        '@Guido1991: What is Python?'
         """
-        if citation_key and not self.front.text.startswith(citation_key):
-            self.front.text = f"{citation_key}: {self.front.text}"
+        if citation_key and not self.front.text.startswith(f"@{citation_key}"):
+            self.front.text = f"@{citation_key}: {self.front.text}"
     
     def to_md(self, include_audio: bool = False, audio_front_uri: Optional[str] = None, audio_back_uri: Optional[str] = None, citation_key: Optional[str] = None, tag_format: str = "slugified") -> str:
         """Convert to markdown in VSCode Anki format.
@@ -217,35 +345,48 @@ class PlainCard(BaseModel):
         
         # Add citation key prefix if provided and not already present
         front_text = self.front.text
-        if citation_key and not front_text.startswith(f"@{citation_key}:"):
-            front_text = f"@{citation_key}: {front_text}"
+        if citation_key:
+            # Import here to avoid circular imports
+            from ..utils.formatting import humanize_citation_key
+            humanized = humanize_citation_key(citation_key)
+            # Check if citation is already present (either raw or humanized)
+            if not (front_text.startswith(f"@{citation_key}:") or front_text.startswith(f"{humanized}:")):
+                # Use @citation_key format for card text (not humanized)
+                front_text = f"@{citation_key}: {front_text}"
         
         # Format tags
         formatted_tags = format_tags(self.tags, tag_format)
+        
+        # Use stored audio URIs if available, otherwise use passed parameters
+        front_uri = self.audio_front_uri if self.audio_front_uri else audio_front_uri
+        back_uri = self.audio_back_uri if self.audio_back_uri else audio_back_uri
         
         # Check if this is a cloze card
         is_cloze = "{{c" in front_text or "{c1::" in front_text
         
         # Format based on card type and whether audio is included
         if is_cloze:
-            # Cloze cards don't need back content or back audio
-            # Fix single braces to double braces
-            front_text = front_text.replace("{c1::", "{{c1::").replace("}}", "}")
-            if "}}" not in front_text:
-                front_text = front_text.replace("}", "}}")
-            
             md = f"## {front_text}\n\n"
             
             # Add front image if present
             if self.front.image_path:
                 md += f"![Image]({self.front.image_path})\n\n"
             
-            if include_audio and audio_front_uri:
-                md += f"[audio-front]({audio_front_uri})\n\n"
+            # For cloze cards with audio: use same format as regular cards
+            # This ensures the AnkiProcessor can find and convert the audio links
+            if include_audio and front_uri:
+                md += f"[audio-front]({front_uri})\n"
+            
+            # Add separator for Extra field
+            md += " % \n"
+            
+            # Back audio reveals the masked words (goes in Extra)
+            if include_audio and back_uri:
+                md += f"[audio-back]({back_uri})\n\n"
             
             if formatted_tags:
                 md += f"#{', #'.join(formatted_tags)}\n\n"
-        elif include_audio and audio_front_uri and audio_back_uri:
+        elif include_audio and front_uri and back_uri:
             # Regular cards with audio
             md = f"## {front_text}\n\n"
             
@@ -253,9 +394,9 @@ class PlainCard(BaseModel):
             if self.front.image_path:
                 md += f"![Image]({self.front.image_path})\n\n"
             
-            md += f"[audio-front]({audio_front_uri})\n"
+            md += f"[audio-front]({front_uri})\n"
             md += " % \n"
-            md += f"[audio-back]({audio_back_uri})\n\n"
+            md += f"[audio-back]({back_uri})\n\n"
             
             # Add back image if present
             if self.back.image_path:
