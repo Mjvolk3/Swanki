@@ -2,7 +2,8 @@
 id: 5excb1b3qn779tz6628yaab
 title: Abstract
 desc: ''
-updated: 1675884774967
+updated: 1748637058629
 created: 1661539392353
 ---
-The abstract.
+
+Swanki (pronounced "swanky") is an open-source Python application that leverages artificial intelligence to transform PDFs into Anki flashcards, addressing the underutilization of evidence-based learning techniques in STEM education. While spaced repetition flashcard applications have demonstrated effectiveness in medical education, showing Anki users achieving higher USMLE Step 1 scores, adoption remains limited in chemistry, engineering, and other STEM disciplines due to high content creation costs and misconceptions about flashcard utility. Swanki employs a modular pipeline architecture turning PDFs into high quality Anki flashcards and optional audio files. The system's user controlled hierarchical configuration framework allows educators to customize AI prompts for specific learning objectives, generating three card types: standard question-answer, cloze deletion, and image-based cards that preserve LaTeX mathematical notation critical for STEM content. Four optional audio modes include complementary card narration, summaries, complete transcript readings, and lectures allowing for multimodal learning experiences. By automating the translation of educational materials into interactive study tools while maintaining educator oversight, Swanki directly supports the U.S. Executive Order on Advancing Artificial Intelligence Education for American Youth, enabling educators and students to both utilize and understand AI technologies. Future developments include support for chemical structure parsing via SMILE strings, programmatic visualization generation, and an Model Context Protocol server for natural language interaction helping democratize evidence-based educational content creation across chemistry subdisciplines and independent study more broadly.

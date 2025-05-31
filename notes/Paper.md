@@ -2,10 +2,10 @@
 id: m7o7r4jqe4jdwgsh3ia8sa4
 title: Paper
 desc: ''
-updated: 1748557974348
+updated: 1748639169929
 created: 1661539309897
 ---
-Michael Volk, Huimin Zhao
+Michael Volk
 
 ## ABSTRACT
 
@@ -14,6 +14,10 @@ Michael Volk, Huimin Zhao
 ## GRAPHICAL ABSTRACT
 
 ![](./assets/drawio/graphical_abstract.drawio.png)
+
+## KEYWORDS
+
+#TODO find appropriate keywords on ACS
 
 ## INTRODUCTION
 
@@ -33,18 +37,12 @@ The Supporting Information is available on the ACS Publications website at DOI: 
 
 Example brief descriptions with file formats indicated are shown below; customize for your material.
 
-Notes for Instructors (DOCX)
-Survey Instrument (DOCX)
-
-***
-
 We provide links here to the source:
 
 - [pypi-swanki](https://pypi.org/project/swanki)
 - [github-Swanki](https://github.com/Mjvolk3/Swanki)
 - [docs-swanki](https://swanki.readthedocs.io/en/latest/)
-
-Open Source'd Swanki library on Zenodo.
+- #TODO Link to Open Source example cards on GitHub
 
 ## AUTHOR INFORMATION
 

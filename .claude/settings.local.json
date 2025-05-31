@@ -1,11 +1,13 @@
 {
   "permissions": {
     "allow": [
+      "Read(*.py)",
+      "Read(*.md)",
+      "Read(*.txt)",
+      "Write(*.py)",
       "Bash(mkdir:*)",
-      "Bash(grep:*)",
-      "Bash(rg:*)"
-    ],
-    "deny": []
+      "Bash(ls:*)"
+    ]
   },
   "enableAllProjectMcpServers": false
 }
