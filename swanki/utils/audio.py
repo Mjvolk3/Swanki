@@ -56,6 +56,7 @@ Examples
 import os
 import re
 import time
+import logging
 from pathlib import Path
 from typing import List, Optional, Tuple
 from dotenv import load_dotenv
@@ -66,6 +67,8 @@ from openai import OpenAI
 
 from ..models.cards import PlainCard
 from ..utils.formatting import humanize_citation_key
+
+logger = logging.getLogger(__name__)
 
 # Default ElevenLabs voice ID
 DEFAULT_VOICE_ID = "7p1Ofvcwsv7UBPoFNcpI"
@@ -957,6 +960,8 @@ def generate_card_audio(
     
     Creates audio files for flashcard content, handling both regular
     and cloze cards. Cloze cards mask hidden text on front, reveal on back.
+    Citation audio is generated separately and always placed first to ensure
+    consistent ordering.
     
     Parameters
     ----------
@@ -1016,16 +1021,19 @@ def generate_card_audio(
     # Humanize citation key once for consistency
     humanized_citation = humanize_citation_key(citation_key) if citation_key else None
     
-    # Generate transcripts
+    # Generate transcripts WITHOUT citation for the main content
+    # We'll add citation audio separately to ensure it's always first
     front_transcript = generate_card_transcript(
         card, is_front=True, client=openai_client, model=model, 
-        citation_key=citation_key, humanized_citation=humanized_citation
+        citation_key=None,  # Don't include citation in transcript
+        humanized_citation=None
     )
     
     # Generate back transcript (for all cards now, including cloze)
     back_transcript = generate_card_transcript(
         card, is_front=False, client=openai_client, model=model, 
-        citation_key=citation_key, humanized_citation=humanized_citation
+        citation_key=None,  # Don't include citation in transcript
+        humanized_citation=None
     )
     
     # Store transcripts on the card for validation
@@ -1046,13 +1054,39 @@ def generate_card_audio(
     front_path = audio_dir / front_filename
     back_path = audio_dir / back_filename
     
+    # Generate citation audio separately to ensure it's always first
+    citation_audio_path = None
+    if citation_key and humanized_citation:
+        # Generate citation audio that can be reused
+        citation_audio_path = audio_dir / f"{citation_key}_citation.mp3"
+        if not citation_audio_path.exists():  # Cache citation audio
+            generate_citation_audio(
+                citation_key=citation_key,
+                output_path=citation_audio_path,
+                elevenlabs_api_key=elevenlabs_api_key,
+                voice_id=voice_id,
+                speed=speed,
+                use_cache=True
+            )
+    
     # Generate front audio
     front_chunks = chunk_text(front_transcript)
-    if len(front_chunks) == 1:
+    
+    # Check if we need to combine audio (citation + content or multiple chunks)
+    needs_combination = citation_audio_path is not None or len(front_chunks) > 1
+    
+    if not needs_combination:
+        # Simple case: single chunk, no citation stitching
         text_to_speech(front_chunks[0], voice_id, front_path, elevenlabs_api_key, speed)
     else:
         # Generate chunks and combine
         chunk_paths = []
+        
+        # Add citation audio first if we have it
+        if citation_audio_path and citation_audio_path.exists():
+            chunk_paths.append(citation_audio_path)
+        
+        # Generate content chunks
         for i, chunk in enumerate(front_chunks):
             # Include citation_key in temp file name to avoid conflicts
             prefix = f"{citation_key}_{page_base}" if citation_key else page_base
@@ -1061,10 +1095,13 @@ def generate_card_audio(
             chunk_paths.append(chunk_path)
             time.sleep(1)  # Rate limiting
         
+        # Combine all audio (citation + content)
         combine_audio(chunk_paths, front_path)
-        # Clean up chunks
+        
+        # Clean up chunks (but not the cached citation audio)
         for p in chunk_paths:
-            p.unlink()
+            if p != citation_audio_path:
+                p.unlink()
     
     # Generate back audio for all cards (including cloze)
     if back_transcript:
