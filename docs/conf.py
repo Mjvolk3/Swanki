@@ -21,6 +21,7 @@ extensions = [
     "sphinx.ext.intersphinx",  # Link to other projects' documentation
     "sphinx_rtd_theme",
     "myst_parser",  # For markdown support
+    "sphinxcontrib.mermaid",  # For mermaid diagram support
 ]
 
 templates_path = ["_templates"]
@@ -61,6 +62,27 @@ intersphinx_mapping = {
     "numpy": ("https://numpy.org/doc/stable", None),
     "pandas": ("https://pandas.pydata.org/docs", None),
 }
+
+# MyST settings
+myst_enable_extensions = [
+    "amsmath",
+    "colon_fence",
+    "deflist",
+    "dollarmath",
+    "fieldlist",
+    "html_admonition",
+    "html_image",
+    "linkify",
+    "replacements",
+    "smartquotes",
+    "strikethrough",
+    "substitution",
+    "tasklist",
+]
+
+# Mermaid configuration
+mermaid_version = "10.6.1"
+mermaid_init_js = "mermaid.initialize({startOnLoad:true, theme:'default'});"
 
 # Autodoc settings
 autodoc_default_options = {

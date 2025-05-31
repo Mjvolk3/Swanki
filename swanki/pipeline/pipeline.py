@@ -17,7 +17,7 @@ Examples
 --------
 >>> from swanki import Pipeline, ConfigGenerator
 >>> from pathlib import Path
->>> 
+>>>
 >>> # Generate configuration
 >>> config_gen = ConfigGenerator()
 >>> config = config_gen.generate(
@@ -25,7 +25,7 @@ Examples
 ...     output_dir="output",
 ...     deck_name="MyDeck"
 ... )
->>> 
+>>>
 >>> # Create and run pipeline
 >>> pipeline = Pipeline(config)
 >>> outputs = pipeline.process_full(
@@ -48,8 +48,11 @@ from dotenv import load_dotenv
 logger = logging.getLogger(__name__)
 
 from ..models import (
-    DocumentSummary, CardGenerationResponse, 
-    ImageSummary, ProcessingState, PlainCard
+    DocumentSummary,
+    CardGenerationResponse,
+    ImageSummary,
+    ProcessingState,
+    PlainCard,
 )
 
 # Import new processing modules
@@ -58,28 +61,37 @@ from ..processing import (
     MarkdownConverter,
     MarkdownCleaner,
     ImageProcessor,
-    AnkiProcessor
+    AnkiProcessor,
 )
 
 # Import audio utilities
-from ..utils.audio import generate_card_audio, generate_summary_audio, generate_reading_audio, generate_lecture_audio
+from ..utils.audio import (
+    generate_card_audio,
+    generate_summary_audio,
+    generate_reading_audio,
+    generate_lecture_audio,
+)
 
 # Import content utilities
-from ..utils.content import extract_images_from_markdown, detect_math_content, generate_image_card_prompts
+from ..utils.content import (
+    extract_images_from_markdown,
+    detect_math_content,
+    generate_image_card_prompts,
+)
 
 
 class Pipeline:
     """Main processing pipeline with configuration-driven workflow.
-    
+
     Orchestrates the complete PDF to Anki card conversion process,
     managing all intermediate steps and outputs. Supports various
     configuration options for customizing the processing behavior.
-    
+
     Parameters
     ----------
     config : Dict[str, Any]
         Hydra configuration dictionary containing all processing options
-    
+
     Attributes
     ----------
     config : Dict[str, Any]
@@ -94,7 +106,7 @@ class Pipeline:
         Current output directory for this run
     citation_key : str
         Citation key for the current document
-    
+
     Methods
     -------
     process_full(pdf_path, citation_key)
@@ -119,7 +131,7 @@ class Pipeline:
         Generate audio files for cards and content
     send_to_anki(cards, outputs, anki_config)
         Send cards to Anki via AnkiConnect
-    
+
     Examples
     --------
     >>> config = {
@@ -133,15 +145,15 @@ class Pipeline:
     ...     citation_key="Johnson2024"
     ... )
     """
-    
+
     def __init__(self, config: Dict[str, Any]):
         """Initialize the pipeline with configuration.
-        
+
         Parameters
         ----------
         config : Dict[str, Any]
             Hydra configuration dictionary with processing options
-        
+
         Notes
         -----
         Loads environment variables including SWANKI_DATA for output directory.
@@ -150,18 +162,20 @@ class Pipeline:
         self.config = config
         self.instructor = instructor.patch(OpenAI())
         self.state = None
-        
+
         # Load environment variables
         load_dotenv()
-        self.data_dir = Path(os.getenv('SWANKI_DATA', 'swanki-out'))
-        
-    def process_full(self, pdf_path: Path, citation_key: str, output_dir: str = None) -> Dict[str, Path]:
+        self.data_dir = Path(os.getenv("SWANKI_DATA", "swanki-out"))
+
+    def process_full(
+        self, pdf_path: Path, citation_key: str, output_dir: str = None
+    ) -> Dict[str, Path]:
         """Process PDF through the complete pipeline.
-        
+
         Executes all processing steps from PDF to final outputs, including
         splitting, conversion, cleaning, card generation, audio creation,
         and optional Anki integration.
-        
+
         Parameters
         ----------
         pdf_path : Path
@@ -170,7 +184,7 @@ class Pipeline:
             Citation key for naming outputs and referencing
         output_dir : str, optional
             Name for the output directory. If not provided, uses citation_key
-        
+
         Returns
         -------
         Dict[str, Path]
@@ -178,12 +192,12 @@ class Pipeline:
             - 'cards_plain': Plain markdown cards
             - 'cards_audio': Cards with audio links (if enabled)
             - 'summary': Document summary
-        
+
         Raises
         ------
         RuntimeError
             If PDF conversion fails or no markdown content generated
-        
+
         Examples
         --------
         >>> pipeline = Pipeline(config)
@@ -194,21 +208,23 @@ class Pipeline:
         >>> print(outputs['cards_plain'])
         PosixPath('swanki-out/Einstein1905/cards-plain.md')
         """
-        
+
         # Initialize state
         self.state = ProcessingState(
-            pdf_path=pdf_path,
-            citation_key=citation_key,
-            current_stage="initialization"
+            pdf_path=pdf_path, citation_key=citation_key, current_stage="initialization"
         )
-        
+
         # Create output directory based on output_dir or citation key with auto-increment if exists
-        base_name = output_dir if output_dir else (citation_key if citation_key else 'swanki-out')
+        base_name = (
+            output_dir
+            if output_dir
+            else (citation_key if citation_key else "swanki-out")
+        )
         output_path = self.data_dir / base_name
-        
+
         # Store base_name for audio file naming
         self.audio_prefix = base_name
-        
+
         # If directory exists, append a number
         if output_path.exists():
             counter = 0
@@ -218,111 +234,114 @@ class Pipeline:
                     output_path = numbered_dir
                     break
                 counter += 1
-        
+
         self.output_base = output_path
         self.output_base.mkdir(parents=True, exist_ok=True)
-        
+
         # 1. Split PDF based on config
         self.state.current_stage = "pdf_split"
         pages = self.split_pdf(pdf_path)
-        
+
         # 2. Convert to markdown
         self.state.current_stage = "markdown_conversion"
         markdown_files = self.convert_to_markdown(pages)
-        
+
         # Check if conversion was successful - fail fast if not
         if not markdown_files:
-            raise RuntimeError("PDF to markdown conversion failed. Cannot proceed without markdown content.")
-        
+            raise RuntimeError(
+                "PDF to markdown conversion failed. Cannot proceed without markdown content."
+            )
+
         # 3. Clean markdown
         self.state.current_stage = "markdown_cleaning"
         cleaned_files = self.clean_markdown(markdown_files)
-        
+
         # 4. Process images
         self.state.current_stage = "image_processing"
         image_summaries = self.process_images(cleaned_files)
-        
+
         # 5. Generate document summary (EARLY!)
         self.state.current_stage = "summary_generation"
-        doc_summary = self.generate_document_summary(
-            cleaned_files,
-            image_summaries
-        )
+        doc_summary = self.generate_document_summary(cleaned_files, image_summaries)
         self.state.document_summary = doc_summary
-        
+
         # 6. Generate cards with sliding window
         self.state.current_stage = "card_generation"
-        pipeline_config = self.config.get('pipeline', {})
-        processing_config = pipeline_config.get('processing', {})
+        pipeline_config = self.config.get("pipeline", {})
+        processing_config = pipeline_config.get("processing", {})
         all_cards = self.generate_cards_with_window(
             cleaned_files,
             doc_summary,
-            window_size=processing_config.get('window_size', 2),
-            skip=processing_config.get('skip', 1),
-            num_cards=processing_config.get('num_cards_per_page', 3)
+            window_size=processing_config.get("window_size", 2),
+            skip=processing_config.get("skip", 1),
+            num_cards=processing_config.get("num_cards_per_page", 3),
         )
-        
+
         # 6.5. Generate image cards if enabled
-        image_config = processing_config.get('image_cards', {})
-        if image_config.get('enabled', True):
+        image_config = processing_config.get("image_cards", {})
+        if image_config.get("enabled", True):
             self.state.current_stage = "image_card_generation"
             image_cards = self.generate_image_cards(
                 cleaned_files,
                 doc_summary,
-                cards_per_image=image_config.get('cards_per_image', 3),
-                image_on_front=image_config.get('image_on_front', True),
-                image_on_back=image_config.get('image_on_back', True),
-                require_math=image_config.get('require_math_content', False),
-                placement_strategy=image_config.get('placement_strategy', 'smart'),
-                front_back_ratio=image_config.get('front_back_ratio', 0.5)
+                cards_per_image=image_config.get("cards_per_image", 3),
+                image_on_front=image_config.get("image_on_front", True),
+                image_on_back=image_config.get("image_on_back", True),
+                require_math=image_config.get("require_math_content", False),
+                placement_strategy=image_config.get("placement_strategy", "smart"),
+                front_back_ratio=image_config.get("front_back_ratio", 0.5),
             )
             all_cards.extend(image_cards)
-        
+
         # 7. Store citation key for later use
         self.citation_key = citation_key
-        
+
         self.state.cards_generated = len(all_cards)
-        
+
         # 8. Generate outputs based on config
         self.state.current_stage = "output_generation"
         outputs = self.generate_outputs(all_cards, doc_summary, self.output_base)
-        
+
         # 9. Generate audio if configured
-        audio_config = self.config.get('audio', {}).get('audio', {})
-        if any([
-            audio_config.get('generate_complementary', False),
-            audio_config.get('generate_summary', False),
-            audio_config.get('generate_reading', False),
-            audio_config.get('generate_lecture', False)
-        ]):
+        audio_config = self.config.get("audio", {}).get("audio", {})
+        if any(
+            [
+                audio_config.get("generate_complementary", False),
+                audio_config.get("generate_summary", False),
+                audio_config.get("generate_reading", False),
+                audio_config.get("generate_lecture", False),
+            ]
+        ):
             self.state.current_stage = "audio_generation"
-            self.generate_audio(all_cards, doc_summary, outputs, cleaned_files, image_summaries)
-        
+            self.generate_audio(
+                all_cards, doc_summary, outputs, cleaned_files, image_summaries
+            )
+
         # 10. Send to Anki if configured
-        anki_config = self.config.get('anki', {}).get('anki', {})
-        if anki_config.get('enabled', False) and anki_config.get('auto_send', False):
+        anki_config = self.config.get("anki", {}).get("anki", {})
+        if anki_config.get("enabled", False) and anki_config.get("auto_send", False):
             self.state.current_stage = "anki_sending"
             self.send_to_anki(all_cards, outputs, anki_config)
-        
+
         self.state.outputs = outputs
         return outputs
-    
+
     def split_pdf(self, pdf_path: Path) -> List[Path]:
         """Split PDF into individual pages.
-        
+
         Uses PDFProcessor to split a multi-page PDF into separate
         single-page PDF files for easier processing.
-        
+
         Parameters
         ----------
         pdf_path : Path
             Path to the input PDF file
-        
+
         Returns
         -------
         List[Path]
             List of paths to individual page PDFs
-        
+
         See Also
         --------
         PDFProcessor : Handles PDF splitting operations
@@ -330,88 +349,90 @@ class Pipeline:
         pdf_processor = PDFProcessor(self.output_base)
         pdf_files = pdf_processor.split_pdf(pdf_path)
         return pdf_files
-    
+
     def convert_to_markdown(self, pages: List[Path]) -> List[Path]:
         """Convert PDF pages to markdown format.
-        
+
         Converts individual PDF pages to markdown using the Mathpix
         service. Handles conversion errors gracefully and logs progress.
-        
+
         Parameters
         ----------
         pages : List[Path]
             List of single-page PDF files to convert
-        
+
         Returns
         -------
         List[Path]
             List of paths to generated markdown files
-        
+
         Raises
         ------
         RuntimeError
             If no pages could be converted successfully
-        
+
         Notes
         -----
         Uses os.system for better TTY handling with the mpx command.
         Creates output in 'md-singles' subdirectory.
         """
-        
+
         # Create output directory
         md_singles_dir = self.output_base / "md-singles"
         md_singles_dir.mkdir(parents=True, exist_ok=True)
-        
+
         markdown_files = []
-        
+
         logger.info(f"Converting {len(pages)} PDF pages to markdown")
-        
+
         # Convert each page individually (like the legacy approach)
         for page_pdf in pages:
             # Create corresponding markdown filename
             md_filename = page_pdf.stem + ".md"  # page-1.pdf -> page-1.md
             md_path = md_singles_dir / md_filename
-            
+
             # Use os.system approach which handles clearLine errors better
             cmd = f"mpx convert '{page_pdf}' '{md_path}'"
-            
+
             logger.debug(f"Converting {page_pdf.name} to {md_path.name}")
-            
+
             try:
                 # Use os.system - it handles TTY issues better than subprocess
                 exit_code = os.system(cmd)
-                
+
                 if exit_code == 0 and md_path.exists() and md_path.stat().st_size > 0:
                     logger.debug(f"Successfully converted {page_pdf.name}")
                     markdown_files.append(md_path)
                 else:
-                    logger.warning(f"Failed to convert {page_pdf.name} - exit code: {exit_code}")
-                    
+                    logger.warning(
+                        f"Failed to convert {page_pdf.name} - exit code: {exit_code}"
+                    )
+
             except Exception as e:
                 logger.error(f"Error converting {page_pdf.name}: {e}")
-        
+
         if not markdown_files:
             raise RuntimeError("Failed to convert any PDF pages to markdown.")
-        
+
         logger.info(f"Successfully converted {len(markdown_files)} pages to markdown")
         return sorted(markdown_files)
-    
+
     def clean_markdown(self, markdown_files: List[Path]) -> List[Path]:
         """Clean and standardize markdown files.
-        
+
         Applies various cleaning operations to markdown files including
         removing artifacts, fixing formatting, and standardizing structure.
-        
+
         Parameters
         ----------
         markdown_files : List[Path]
             List of markdown files to clean
-        
+
         Returns
         -------
         List[Path]
             List of paths to cleaned markdown files
-        
+
         See Also
         --------
         MarkdownCleaner : Handles markdown cleaning operations
@@ -419,23 +440,23 @@ class Pipeline:
         cleaner = MarkdownCleaner(self.output_base)
         cleaned_files = cleaner.clean_all_markdown_files()
         return cleaned_files
-    
+
     def process_images(self, markdown_files: List[Path]) -> List[ImageSummary]:
         """Extract and summarize images from markdown.
-        
+
         Processes all images found in markdown files, generating
         AI-powered summaries and extracting relevant metadata.
-        
+
         Parameters
         ----------
         markdown_files : List[Path]
             List of markdown files to process
-        
+
         Returns
         -------
         List[ImageSummary]
             List of image summaries with metadata
-        
+
         See Also
         --------
         ImageProcessor : Handles image extraction and summarization
@@ -443,73 +464,73 @@ class Pipeline:
         """
         # Initialize processor with OpenAI client if available
         processor = ImageProcessor(self.output_base, self.instructor)
-        
+
         # Process all images
         image_infos = processor.process_all_images()
-        
+
         # Convert to ImageSummary objects
         image_summaries = []
         for idx, info in enumerate(image_infos):
-            if 'summary' in info:
+            if "summary" in info:
                 image_summary = ImageSummary(
-                    image_url=info['url'],
-                    summary=info['summary'],
-                    alt_text=info.get('alt_text', ''),
+                    image_url=info["url"],
+                    summary=info["summary"],
+                    alt_text=info.get("alt_text", ""),
                     page_idx=idx,
-                    context=info.get('context', '')
+                    context=info.get("context", ""),
                 )
                 image_summaries.append(image_summary)
-        
+
         return image_summaries
-    
+
     def generate_document_summary(
-        self, 
-        markdown_files: List[Path],
-        image_summaries: List[ImageSummary]
+        self, markdown_files: List[Path], image_summaries: List[ImageSummary]
     ) -> DocumentSummary:
         """Generate comprehensive document summary.
-        
+
         Creates a structured summary of the entire document including
         title, authors, key contributions, methodology, and definitions
         of acronyms and technical terms.
-        
+
         Parameters
         ----------
         markdown_files : List[Path]
             List of cleaned markdown files
         image_summaries : List[ImageSummary]
             List of image summaries to include
-        
+
         Returns
         -------
         DocumentSummary
             Structured document summary with metadata
-        
+
         Notes
         -----
         Uses configured prompts and LLM model for generation.
         Summary must be 200-500 words as validated by DocumentSummary.
-        
+
         See Also
         --------
         DocumentSummary : Data model for document summaries
         """
         # Combine all markdown content
-        combined_content = "\\n\\n".join([
-            f.read_text() for f in markdown_files
-        ])
-        
+        combined_content = "\\n\\n".join([f.read_text() for f in markdown_files])
+
         # Format image summaries
-        image_summary_text = "\\n".join([
-            f"Image {img.page_idx}: {img.summary}" 
-            for img in image_summaries
-        ])
-        
+        image_summary_text = "\\n".join(
+            [f"Image {img.page_idx}: {img.summary}" for img in image_summaries]
+        )
+
         # Get prompts from config (note the nested structure)
-        prompts_config = self.config.get('prompts', {}).get('prompts', {})
-        summary_prompts = prompts_config.get('summary', {})
-        system_prompt = summary_prompts.get('system', "You are an expert at creating concise, informative summaries of academic documents.")
-        user_prompt = summary_prompts.get('document_summary', """Create a comprehensive summary of this document.
+        prompts_config = self.config.get("prompts", {}).get("prompts", {})
+        summary_prompts = prompts_config.get("summary", {})
+        system_prompt = summary_prompts.get(
+            "system",
+            "You are an expert at creating concise, informative summaries of academic documents.",
+        )
+        user_prompt = summary_prompts.get(
+            "document_summary",
+            """Create a comprehensive summary of this document.
 Focus on:
 1. Main thesis and key contributions
 2. All acronyms and their full forms
@@ -521,43 +542,43 @@ Document content:
 {content}
 
 Image summaries:
-{image_summaries}""")
-        
+{image_summaries}""",
+        )
+
         # Generate summary using instructor
-        models_config = self.config.get('models', {}).get('models', {})
-        llm_config = models_config.get('llm', {})
+        models_config = self.config.get("models", {}).get("models", {})
+        llm_config = models_config.get("llm", {})
         response = self.instructor.chat.completions.create(
-            model=llm_config.get('model', 'gpt-4'),
+            model=llm_config.get("model", "gpt-4"),
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
                     "content": user_prompt.format(
-                        content=combined_content,
-                        image_summaries=image_summary_text
-                    )
-                }
+                        content=combined_content, image_summaries=image_summary_text
+                    ),
+                },
             ],
             response_model=DocumentSummary,
-            max_retries=llm_config.get('max_retries', 3)
+            max_retries=llm_config.get("max_retries", 3),
         )
-        
+
         return response
-    
+
     def generate_cards_with_window(
-        self, 
+        self,
         markdown_files: List[Path],
         doc_summary: DocumentSummary,
         window_size: int,
         skip: int,
-        num_cards: int
+        num_cards: int,
     ) -> List[PlainCard]:
         """Generate flashcards using sliding window approach.
-        
+
         Processes markdown files in overlapping windows to generate
         cards with better context. This helps create more coherent
         cards that can reference content across page boundaries.
-        
+
         Parameters
         ----------
         markdown_files : List[Path]
@@ -570,12 +591,12 @@ Image summaries:
             Number of files to skip between windows
         num_cards : int
             Number of cards to generate per page
-        
+
         Returns
         -------
         List[PlainCard]
             Generated flashcards
-        
+
         Examples
         --------
         >>> # Process files in groups of 2, moving 1 file at a time
@@ -586,57 +607,153 @@ Image summaries:
         ...     skip=1,
         ...     num_cards=3
         ... )
-        
+
         Notes
         -----
         The sliding window approach ensures cards can reference
         content that spans multiple pages, improving coherence.
         """
         all_cards = []
-        
+
         for i in range(0, len(markdown_files) - window_size + 1, skip):
-            window_files = markdown_files[i:i + window_size]
-            
+            window_files = markdown_files[i : i + window_size]
+
             # Combine content from window
-            combined_content = "\\n\\n".join([
-                f.read_text() for f in window_files
-            ])
-            
+            combined_content = "\\n\\n".join([f.read_text() for f in window_files])
+
             # Get config values
-            prompts_config = self.config.get('prompts', {}).get('prompts', {})
-            cards_prompts = prompts_config.get('cards', {})
-            models_config = self.config.get('models', {}).get('models', {})
-            llm_config = models_config.get('llm', {})
-            processing_config = self.config.get('processing', {}).get('processing', {})
-            
+            prompts_config = self.config.get("prompts", {}).get("prompts", {})
+            cards_prompts = prompts_config.get("cards", {})
+            models_config = self.config.get("models", {}).get("models", {})
+            llm_config = models_config.get("llm", {})
+            processing_config = self.config.get("pipeline", {}).get("processing", {})
+
             # Generate cards for this window
-            response = self.instructor.chat.completions.create(
-                model=llm_config.get('model', 'gpt-4'),
+            # Debug: Log the actual prompt being sent
+            actual_prompt = cards_prompts.get(
+                "generate_cards",
+                "Create {num_cards} flashcards from this content.",
+            ).replace('{num_cards}', str(num_cards * len(window_files))
+            ).replace('{num_cloze}', str(processing_config.get("cloze_cards_per_page", 2) * len(window_files))
+            ).replace('{title}', doc_summary.title
+            ).replace('{acronyms}', str(doc_summary.acronyms)
+            ).replace('{technical_terms}', str(doc_summary.technical_terms)
+            ).replace('{content}', combined_content)
+            
+            print(f"\n=== CARD GENERATION PROMPT ===")
+            print(f"Requesting {num_cards * len(window_files)} regular cards and {processing_config.get('cloze_cards_per_page', 2) * len(window_files)} cloze cards")
+            print(f"First 500 chars of prompt: {actual_prompt[:500]}...")
+            print("=== END PROMPT ===\n")
+            
+            # Generate regular cards first
+            print("Generating regular Q&A cards...")
+            regular_prompt = f"""Generate EXACTLY {num_cards * len(window_files)} regular Q&A flashcards from this content.
+
+Context from document summary:
+Title: {doc_summary.title}
+Acronyms: {doc_summary.acronyms}
+Technical terms: {doc_summary.technical_terms}
+
+Content:
+{combined_content}
+
+FORMAT RULES:
+1. Use ## for the question (front of card)
+2. Answer goes on the next line (back of card)
+3. Tags go as a single bullet: - #tag1, #tag2, #tag3
+4. NO CLOZE CARDS - only regular Q&A format
+
+REQUIREMENTS:
+1. Focus on mathematical equations and formulas when present
+2. NEVER use references like "ref.", "[12]", "according to" - be specific
+3. Each card tests ONE concept
+4. Use LaTeX with $ for inline math
+
+Generate {num_cards * len(window_files)} regular Q&A cards now."""
+
+            regular_response = self.instructor.chat.completions.create(
+                model=llm_config.get("model", "gpt-4"),
                 messages=[
                     {
-                        "role": "system", 
-                        "content": cards_prompts.get('system', "You are an expert at creating educational flashcards that test understanding.")
+                        "role": "system",
+                        "content": "Generate ONLY regular Q&A flashcards. Do NOT create any cloze deletion cards."
                     },
                     {
                         "role": "user",
-                        "content": cards_prompts.get('generate_cards', 'Create {num_cards} flashcards from this content.').format(
-                            num_cards=num_cards * len(window_files),
-                            num_cloze=processing_config.get('cloze_cards_per_page', 2) * len(window_files),
-                            title=doc_summary.title,
-                            acronyms=doc_summary.acronyms,
-                            technical_terms=doc_summary.technical_terms,
-                            content=combined_content
-                        )
+                        "content": regular_prompt
                     }
                 ],
                 response_model=CardGenerationResponse,
-                max_retries=llm_config.get('max_retries', 3)
+                max_retries=llm_config.get("max_retries", 3),
             )
             
+            # Generate cloze cards separately
+            print("Generating cloze deletion cards...")
+            cloze_count = processing_config.get("cloze_cards_per_page", 2) * len(window_files)
+            cloze_prompt = f"""Generate EXACTLY {cloze_count} cloze deletion flashcards from this content.
+
+Content:
+{combined_content}
+
+FORMAT: Each card MUST use {{{{c1::hidden text}}}} syntax for cloze deletions.
+
+Example:
+## The {{{{c1::Pythagorean theorem}}}} states that {{{{c2::$a^2 + b^2 = c^2$}}}} for right triangles.
+
+- #mathematics.geometry
+
+Generate {cloze_count} cloze cards now. Focus on key definitions, formulas, and facts."""
+
+            cloze_response = self.instructor.chat.completions.create(
+                model=llm_config.get("model", "gpt-4"),
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Generate ONLY cloze deletion flashcards using {{c1::text}} syntax."
+                    },
+                    {
+                        "role": "user",
+                        "content": cloze_prompt
+                    }
+                ],
+                response_model=CardGenerationResponse,
+                max_retries=2,
+            )
+            
+            # Combine responses
+            response = CardGenerationResponse(
+                cards=regular_response.cards + cloze_response.cards,
+                skipped_sections=regular_response.skipped_sections + cloze_response.skipped_sections
+            )
+
+            # Debug: Check what cards were generated
+            regular_cards = [c for c in response.cards if "{{c" not in c.front.text]
+            cloze_cards = [c for c in response.cards if "{{c" in c.front.text]
+            print(f"Generated: {len(regular_cards)} regular cards, {len(cloze_cards)} cloze cards")
+            
+            # Check for math content
+            math_cards = [c for c in response.cards if "$" in c.front.text or "$" in c.back.text]
+            print(f"Math cards: {len(math_cards)}")
+            
+            # Check for references
+            ref_cards = [c for c in response.cards if any(ref in c.front.text.lower() or ref in c.back.text.lower() 
+                                                          for ref in ["ref.", "reference", "according to", "["])]
+            if ref_cards:
+                print(f"WARNING: {len(ref_cards)} cards contain references that should have been removed")
+                for i, card in enumerate(ref_cards[:2]):  # Show first 2 examples
+                    print(f"  Example {i+1}: {card.front.text[:100]}...")
+            
+            # Show example of what was generated
+            if response.cards:
+                print("\nFirst card generated:")
+                print(f"  Front: {response.cards[0].front.text}")
+                print(f"  Back: {response.cards[0].back.text[:150]}...")
+            
+            # Add the cards from the combined response
             all_cards.extend(response.cards)
-        
+
         return all_cards
-    
+
     def generate_image_cards(
         self,
         markdown_files: List[Path],
@@ -646,14 +763,14 @@ Image summaries:
         image_on_back: bool = True,
         require_math: bool = False,
         placement_strategy: str = "smart",
-        front_back_ratio: float = 0.5
+        front_back_ratio: float = 0.5,
     ) -> List[PlainCard]:
         """Generate flashcards from document images.
-        
+
         Creates cards that test understanding of visual content like
         figures, graphs, and diagrams. Supports various strategies
         for placing images on card fronts or backs.
-        
+
         Parameters
         ----------
         markdown_files : List[Path]
@@ -672,12 +789,12 @@ Image summaries:
             Strategy for image placement (default is 'smart')
         front_back_ratio : float, optional
             Ratio for random placement strategy (default is 0.5)
-        
+
         Returns
         -------
         List[PlainCard]
             Generated image-based flashcards
-        
+
         Notes
         -----
         Image placement strategies:
@@ -686,9 +803,9 @@ Image summaries:
         - 'random': Random placement with specified ratio
         - 'prefer_front': Always place on front
         - 'prefer_back': Always place on back
-        
+
         Images are never placed on both sides of the same card.
-        
+
         Examples
         --------
         >>> # Generate 2 cards per image, smart placement
@@ -700,29 +817,31 @@ Image summaries:
         ... )
         """
         image_cards = []
-        
+
         for file_path in markdown_files:
             content = file_path.read_text()
-            
+
             # Extract images from this file
             images = extract_images_from_markdown(content, file_path.parent)
-            
+
             for image_info in images:
                 # Check if math content is required and present
-                if require_math and not detect_math_content(image_info['context']):
+                if require_math and not detect_math_content(image_info["context"]):
                     continue
-                
-                print(f"Generating {cards_per_image} cards for image: {image_info['path']}")
-                
+
+                print(
+                    f"Generating {cards_per_image} cards for image: {image_info['path']}"
+                )
+
                 # Get surrounding content (more context around the image)
                 file_content = content
-                
+
                 # Generate prompts for image cards
-                prompts_config = self.config.get('prompts', {}).get('prompts', {})
-                cards_prompts = prompts_config.get('cards', {})
-                models_config = self.config.get('models', {}).get('models', {})
-                llm_config = models_config.get('llm', {})
-                
+                prompts_config = self.config.get("prompts", {}).get("prompts", {})
+                cards_prompts = prompts_config.get("cards", {})
+                models_config = self.config.get("models", {}).get("models", {})
+                llm_config = models_config.get("llm", {})
+
                 # Create a specialized prompt for image cards
                 image_prompt = f"""Create {cards_per_image} educational flashcards based on this image and its context.
 
@@ -763,41 +882,51 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
                 # Generate cards using instructor
                 try:
                     response = self.instructor.chat.completions.create(
-                        model=llm_config.get('model', 'gpt-4'),
+                        model=llm_config.get("model", "gpt-4"),
                         messages=[
                             {
-                                "role": "system", 
-                                "content": cards_prompts.get('system', "You are an expert at creating educational flashcards that test understanding of visual content.")
+                                "role": "system",
+                                "content": cards_prompts.get(
+                                    "system",
+                                    "You are an expert at creating educational flashcards that test understanding of visual content.",
+                                ),
                             },
-                            {
-                                "role": "user",
-                                "content": image_prompt
-                            }
+                            {"role": "user", "content": image_prompt},
                         ],
                         response_model=CardGenerationResponse,
-                        max_retries=llm_config.get('max_retries', 3)
+                        max_retries=llm_config.get("max_retries", 3),
                     )
-                    
+
                     # Add image paths to the generated cards
                     for idx, card in enumerate(response.cards):
                         # Decide where to place the image based on config
                         if image_on_front and not image_on_back:
-                            card.front.image_path = image_info['original_path']
+                            card.front.image_path = image_info["original_path"]
                         elif image_on_back and not image_on_front:
-                            card.back.image_path = image_info['original_path']
+                            card.back.image_path = image_info["original_path"]
                         elif image_on_front and image_on_back:
                             # Both allowed, but NEVER put the same image on both sides
                             place_on_front = False
-                            
+
                             if placement_strategy == "smart":
                                 # Place on front if question references the image
-                                place_on_front = any(word in card.front.text.lower() 
-                                                   for word in ['figure', 'image', 'graph', 
-                                                              'chart', 'diagram', 'show', 
-                                                              'illustrate', 'depict', 'visual'])
+                                place_on_front = any(
+                                    word in card.front.text.lower()
+                                    for word in [
+                                        "figure",
+                                        "image",
+                                        "graph",
+                                        "chart",
+                                        "diagram",
+                                        "show",
+                                        "illustrate",
+                                        "depict",
+                                        "visual",
+                                    ]
+                                )
                             elif placement_strategy == "alternate":
                                 # Alternate between front and back
-                                place_on_front = (idx % 2 == 0)
+                                place_on_front = idx % 2 == 0
                             elif placement_strategy == "random":
                                 # Random with specified ratio
                                 place_on_front = random.random() < front_back_ratio
@@ -805,42 +934,47 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
                                 place_on_front = True
                             elif placement_strategy == "prefer_back":
                                 place_on_front = False
-                            
+
                             # Place image on ONLY ONE side
                             if place_on_front:
-                                card.front.image_path = image_info['original_path']
+                                card.front.image_path = image_info["original_path"]
                                 # Explicitly ensure it's not on the back
                                 card.back.image_path = None
                             else:
-                                card.back.image_path = image_info['original_path']
+                                card.back.image_path = image_info["original_path"]
                                 # Explicitly ensure it's not on the front
                                 card.front.image_path = None
-                    
+
                     image_cards.extend(response.cards)
-                    
+
                     # Debug output for image placement
-                    front_count = sum(1 for card in response.cards if card.front.image_path)
-                    back_count = sum(1 for card in response.cards if card.back.image_path)
-                    print(f"Generated {len(response.cards)} cards for image {image_info['path']}")
-                    print(f"  Image placement - Front: {front_count}, Back: {back_count} (strategy: {placement_strategy})")
-                    
+                    front_count = sum(
+                        1 for card in response.cards if card.front.image_path
+                    )
+                    back_count = sum(
+                        1 for card in response.cards if card.back.image_path
+                    )
+                    print(
+                        f"Generated {len(response.cards)} cards for image {image_info['path']}"
+                    )
+                    print(
+                        f"  Image placement - Front: {front_count}, Back: {back_count} (strategy: {placement_strategy})"
+                    )
+
                 except Exception as e:
                     print(f"Error generating cards for image {image_info['path']}: {e}")
                     continue
-        
+
         return image_cards
-    
+
     def generate_outputs(
-        self, 
-        cards: List[PlainCard], 
-        summary: DocumentSummary,
-        output_dir: Path
+        self, cards: List[PlainCard], summary: DocumentSummary, output_dir: Path
     ) -> Dict[str, Path]:
         """Generate output files in configured formats.
-        
+
         Creates various output files including plain cards, cards with
         audio links, and document summary based on configuration.
-        
+
         Parameters
         ----------
         cards : List[PlainCard]
@@ -849,7 +983,7 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
             Document summary
         output_dir : Path
             Directory for output files
-        
+
         Returns
         -------
         Dict[str, Path]
@@ -857,53 +991,39 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
             - 'cards_plain': Plain markdown cards
             - 'cards_audio': Cards with audio (if enabled)
             - 'summary': Document summary
-        
+
         Notes
         -----
         Audio card output is only generated if complementary audio
         generation is enabled in configuration.
         """
         outputs = {}
-        
+
         # Get output config
-        output_config = self.config.get('output', {}).get('output', {})
-        formats = output_config.get('formats', {})
-        tag_format = output_config.get('tag_format', 'slugified')
-        
+        output_config = self.config.get("output", {}).get("output", {})
+        formats = output_config.get("formats", {})
+        tag_format = output_config.get("tag_format", "slugified")
+
         # Plain cards (no audio)
-        plain_path = output_dir / formats.get('cards_plain', 'cards-plain.md')
-        with open(plain_path, 'w') as f:
+        plain_path = output_dir / formats.get("cards_plain", "cards-plain.md")
+        with open(plain_path, "w") as f:
             for card in cards:
-                f.write(card.to_md(
-                    include_audio=False, 
-                    citation_key=self.citation_key,
-                    tag_format=tag_format
-                ))
-        outputs['cards_plain'] = plain_path
-        
-        # Only create cards with audio if complementary audio is enabled
-        audio_config = self.config.get('audio', {}).get('audio', {})
-        if audio_config.get('generate_complementary', False):
-            # Cards with audio placeholders
-            audio_path = output_dir / formats.get('cards_audio', 'cards-with-audio.md')
-            with open(audio_path, 'w') as f:
-                for i, card in enumerate(cards):
-                    # Audio files will be generated with card index starting from 1
-                    # Use relative paths to avoid breaking links when directory names change
-                    audio_front_uri = f"gen-md-complementary-audio/{self.citation_key}_page-{i+1}_{i+1}_front.mp3"
-                    audio_back_uri = f"gen-md-complementary-audio/{self.citation_key}_page-{i+1}_{i+1}_back.mp3"
-                    f.write(card.to_md(
-                        include_audio=True, 
-                        audio_front_uri=audio_front_uri,
-                        audio_back_uri=audio_back_uri,
+                f.write(
+                    card.to_md(
+                        include_audio=False,
                         citation_key=self.citation_key,
-                        tag_format=tag_format
-                    ))
-            outputs['cards_audio'] = audio_path
-        
+                        tag_format=tag_format,
+                    )
+                )
+        outputs["cards_plain"] = plain_path
+
+        # Note: Cards with audio will be written after audio generation
+        # This ensures the audio URIs are properly set on the cards
+        # See generate_audio method for audio card generation
+
         # Document summary
-        summary_path = output_dir / formats.get('summary', 'document-summary.md')
-        with open(summary_path, 'w') as f:
+        summary_path = output_dir / formats.get("summary", "document-summary.md")
+        with open(summary_path, "w") as f:
             f.write(f"# {summary.title}\\n\\n")
             f.write(f"**Authors:** {', '.join(summary.authors)}\\n\\n")
             f.write(f"## Summary\\n\\n{summary.summary}\\n\\n")
@@ -913,23 +1033,23 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
             f.write(f"\\n## Acronyms\\n\\n")
             for acronym, definition in summary.acronyms.items():
                 f.write(f"- **{acronym}**: {definition}\\n")
-        outputs['summary'] = summary_path
-        
+        outputs["summary"] = summary_path
+
         return outputs
-    
+
     def generate_audio(
-        self, 
-        cards: List[PlainCard], 
+        self,
+        cards: List[PlainCard],
         summary: DocumentSummary,
         outputs: Dict[str, Path],
         cleaned_files: List[Path],
-        image_summaries: List[ImageSummary]
+        image_summaries: List[ImageSummary],
     ):
         """Generate audio files for various content types.
-        
+
         Creates audio files based on configuration including card audio,
         summary narration, full document reading, and educational lectures.
-        
+
         Parameters
         ----------
         cards : List[PlainCard]
@@ -942,12 +1062,12 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
             Cleaned markdown files for reading
         image_summaries : List[ImageSummary]
             Image summaries for lecture content
-        
+
         Raises
         ------
         RuntimeError
             If required API keys are not set in environment
-        
+
         Notes
         -----
         Requires ELEVEN_LABS_API_KEY and OPENAI_API_KEY environment
@@ -956,61 +1076,89 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
         - Summary: Narration of document summary
         - Reading: Full document text-to-speech
         - Lecture: Educational presentation style
-        
+
         See Also
         --------
         utils.audio : Audio generation utility functions
         """
-        audio_config = self.config.get('audio', {}).get('audio', {})
-        
+        audio_config = self.config.get("audio", {}).get("audio", {})
+
         # Get API keys
         elevenlabs_api_key = os.getenv("ELEVEN_LABS_API_KEY")
         if not elevenlabs_api_key:
             raise RuntimeError("ELEVEN_LABS_API_KEY not set in environment.")
-        
+
         openai_api_key = os.getenv("OPENAI_API_KEY")
         if not openai_api_key:
             raise RuntimeError("OPENAI_API_KEY not set in environment.")
         openai_client = OpenAI(api_key=openai_api_key)
-        
+
         # Get model config
-        models_config = self.config.get('models', {}).get('models', {})
-        llm_config = models_config.get('llm', {})
-        model = llm_config.get('model', 'gpt-4o')
-        voice_id = audio_config.get('voice_id')
-        
+        models_config = self.config.get("models", {}).get("models", {})
+        llm_config = models_config.get("llm", {})
+        model = llm_config.get("model", "gpt-4o")
+        voice_id = audio_config.get("voice_id")
+
         # Generate complementary audio (card audio)
-        if audio_config.get('generate_complementary', False):
+        if audio_config.get("generate_complementary", False):
             print("Generating complementary audio...")
             audio_dir = self.output_base / "gen-md-complementary-audio"
             audio_dir.mkdir(exist_ok=True)
-            
+
             for i, card in enumerate(cards):
-                page_base = f"page-{i+1}"
-                
+                # Use consistent card numbering instead of misleading page numbers
+                # This ensures audio files match the card order
+                card_base = f"card"
+
+                # Get complementary audio speed from config
+                complementary_speed = audio_config.get("complementary_speed", 1.0)
+
                 front_filename, back_filename = generate_card_audio(
                     card=card,
-                    card_index=i+1,
-                    page_base=page_base,
+                    card_index=i + 1,
+                    page_base=card_base,
                     audio_dir=audio_dir,
                     openai_client=openai_client,
                     elevenlabs_api_key=elevenlabs_api_key,
                     voice_id=voice_id,
                     model=model,
                     citation_key=self.citation_key,
+                    speed=complementary_speed,
                 )
                 
+                # Set audio URIs on the card for robust pairing
+                if front_filename:
+                    # Use relative path from output directory
+                    card.audio_front_uri = f"gen-md-complementary-audio/{front_filename}"
                 if back_filename:
-                    print(f"Generated audio for card {i+1}: {front_filename}, {back_filename}")
+                    card.audio_back_uri = f"gen-md-complementary-audio/{back_filename}"
+
+                # Validate audio transcript matches card content
+                if not card.validate_audio_match():
+                    print(f"WARNING: Audio transcript mismatch for card {i+1}")
+                
+                if back_filename:
+                    print(
+                        f"Generated audio for card {i+1}: {front_filename}, {back_filename}"
+                    )
                 else:
-                    print(f"Generated audio for cloze card {i+1}: {front_filename} (no back audio)")
-        
+                    print(
+                        f"Generated audio for card {i+1}: {front_filename} (front only)"
+                    )
+
         # Generate summary audio
-        if audio_config.get('generate_summary', False):
+        if audio_config.get("generate_summary", False):
             print("Generating summary audio...")
-            summary_text = f"{summary.summary}\n\nKey Contributions:\n" + "\n".join([f"- {contrib}" for contrib in summary.key_contributions])
-            summary_audio_path = self.output_base / f"{self.audio_prefix}-summary-audio.mp3"
-            
+            summary_text = f"{summary.summary}\n\nKey Contributions:\n" + "\n".join(
+                [f"- {contrib}" for contrib in summary.key_contributions]
+            )
+            summary_audio_path = (
+                self.output_base / f"{self.audio_prefix}-summary-audio.mp3"
+            )
+
+            # Get summary audio speed from config
+            summary_speed = audio_config.get("summary_speed", 1.0)
+
             generate_summary_audio(
                 summary_text=summary_text,
                 output_path=summary_audio_path,
@@ -1019,16 +1167,22 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
                 voice_id=voice_id,
                 model=model,
                 citation_key=self.citation_key,
+                speed=summary_speed,
             )
             print(f"Generated summary audio: {summary_audio_path.name}")
-        
+
         # Generate reading audio (full document)
-        if audio_config.get('generate_reading', False):
+        if audio_config.get("generate_reading", False):
             print("Generating reading audio...")
             # Combine all cleaned markdown content
             full_content = "\n\n".join([f.read_text() for f in cleaned_files])
-            reading_audio_path = self.output_base / f"{self.audio_prefix}-reading-audio.mp3"
-            
+            reading_audio_path = (
+                self.output_base / f"{self.audio_prefix}-reading-audio.mp3"
+            )
+
+            # Get reading audio speed from config
+            reading_speed = audio_config.get("reading_speed", 1.0)
+
             generate_reading_audio(
                 full_content=full_content,
                 output_path=reading_audio_path,
@@ -1037,25 +1191,33 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
                 voice_id=voice_id,
                 model=model,
                 citation_key=self.citation_key,
+                speed=reading_speed,
             )
             print(f"Generated reading audio: {reading_audio_path.name}")
-        
+
         # Generate lecture audio (educational style)
-        if audio_config.get('generate_lecture', False):
+        if audio_config.get("generate_lecture", False):
             print("Generating lecture audio...")
-            lecture_audio_path = self.output_base / f"{self.audio_prefix}-lecture-audio.mp3"
-            
+            lecture_audio_path = (
+                self.output_base / f"{self.audio_prefix}-lecture-audio.mp3"
+            )
+
             # Get lecture prompt configuration
-            prompts_config = self.config.get('prompts', {}).get('prompts', {})
-            audio_prompts = prompts_config.get('audio', {})
+            prompts_config = self.config.get("prompts", {}).get("prompts", {})
+            audio_prompts = prompts_config.get("audio", {})
             lecture_prompt_config = {
-                'lecture_system': audio_prompts.get('lecture_system'),
-                'lecture_generation': audio_prompts.get('lecture_generation')
+                "lecture_system": audio_prompts.get("lecture_system"),
+                "lecture_generation": audio_prompts.get("lecture_generation"),
             }
-            
+
             # Extract image summaries as strings
             image_summary_strings = [img.summary for img in image_summaries]
-            
+
+            # Get lecture audio speed from config (defaults to same as summary)
+            lecture_speed = audio_config.get(
+                "lecture_speed", audio_config.get("summary_speed", 1.0)
+            )
+
             generate_lecture_audio(
                 markdown_files=cleaned_files,
                 image_summaries=image_summary_strings,
@@ -1066,49 +1228,79 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
                 model=model,
                 citation_key=self.citation_key,
                 lecture_prompt_config=lecture_prompt_config,
+                speed=lecture_speed,
             )
             print(f"Generated lecture audio: {lecture_audio_path.name}")
-    
-    def format_deck_name(self, template: str, citation_key: str) -> str:
+        
+        # After all audio generation is complete, write cards with audio links
+        if audio_config.get("generate_complementary", False):
+            # Get output config
+            output_config = self.config.get("output", {}).get("output", {})
+            formats = output_config.get("formats", {})
+            tag_format = output_config.get("tag_format", "slugified")
+            
+            # Write cards with audio using the URIs stored in each card
+            audio_path = self.output_base / formats.get("cards_audio", "cards-with-audio.md")
+            with open(audio_path, "w") as f:
+                for card in cards:
+                    f.write(
+                        card.to_md(
+                            include_audio=True,
+                            citation_key=self.citation_key,
+                            tag_format=tag_format,
+                        )
+                    )
+            outputs["cards_audio"] = audio_path
+            print(f"Written cards with audio: {audio_path.name}")
+
+    def format_deck_name(self, template: str, deck_name: str) -> str:
         """Format deck name template with variables.
-        
+
         Replaces template variables in deck name with actual values.
-        
+
         Parameters
         ----------
         template : str
-            Deck name template (e.g., '{citation_key}_cards')
-        citation_key : str
-            Citation key to substitute
-        
+            Deck name template (e.g., '{deck_name}_cards')
+        deck_name : str
+            Deck name to substitute (output_dir if specified, otherwise citation_key)
+
         Returns
         -------
         str
             Formatted deck name
-        
+
         Examples
         --------
-        >>> pipeline.format_deck_name("{citation_key}_2024", "Smith")
+        >>> pipeline.format_deck_name("{deck_name}_2024", "Smith")
         'Smith_2024'
         """
-        # Support template variables like {citation_key}
+        # Support template variables
         variables = {
-            'citation_key': citation_key or 'default'
+            "deck_name": deck_name or "default",
+            "citation_key": self.citation_key
+            or "default",  # Still support citation_key for backward compatibility
         }
-        
+
         # Replace template variables
         formatted = template
         for var, value in variables.items():
             formatted = formatted.replace(f"{{{var}}}", value)
-        
+
         return formatted
-    
-    def prepare_anki_file(self, cards: List[PlainCard], deck_name: str, output_path: Path, include_audio: bool = True) -> Path:
+
+    def prepare_anki_file(
+        self,
+        cards: List[PlainCard],
+        deck_name: str,
+        output_path: Path,
+        include_audio: bool = True,
+    ) -> Path:
         """Prepare markdown file for Anki import.
-        
+
         Creates a properly formatted markdown file with deck header
         required by the Anki markdown importer.
-        
+
         Parameters
         ----------
         cards : List[PlainCard]
@@ -1119,40 +1311,45 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
             Base output file path
         include_audio : bool, optional
             Whether to include audio links (default is True)
-        
+
         Returns
         -------
         Path
             Path to prepared Anki file
-        
+
         Notes
         -----
         Adds '# DeckName' header required by md_to_anki.py.
         Preserves exact card formatting from original output.
         """
         anki_file = output_path.parent / f"anki-{output_path.name}"
-        
+
         # First, read the existing output file to use its exact format
         # This ensures we preserve the exact card format that was generated
-        with open(output_path, 'r') as f:
+        with open(output_path, "r") as f:
             content = f.read()
-        
-        with open(anki_file, 'w') as f:
+
+        with open(anki_file, "w") as f:
             # Write deck name header (required by md_to_anki.py)
             f.write(f"# {deck_name}\n\n")
-            
+
             # Write the rest of the content as-is
             # This preserves the exact tag format from the original file
             f.write(content)
-        
+
         return anki_file
-    
-    def send_to_anki(self, cards: List[PlainCard], outputs: Dict[str, Path], anki_config: Dict[str, Any]):
+
+    def send_to_anki(
+        self,
+        cards: List[PlainCard],
+        outputs: Dict[str, Path],
+        anki_config: Dict[str, Any],
+    ):
         """Send generated cards to Anki via AnkiConnect.
-        
+
         Uploads cards to Anki using the AnkiConnect API, supporting
         deck creation, card updates, and media file uploads.
-        
+
         Parameters
         ----------
         cards : List[PlainCard]
@@ -1168,59 +1365,70 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
             - sync_after: Sync after upload
             - host: AnkiConnect host
             - port: AnkiConnect port
-        
+
         Raises
         ------
         Exception
             If connection to Anki fails or upload errors occur
-        
+
         Notes
         -----
         Requires Anki to be running with AnkiConnect addon installed.
         Creates deck if it doesn't exist. Handles both new cards and
         updates to existing cards based on configuration.
-        
+
         See Also
         --------
         AnkiProcessor : Handles AnkiConnect communication
         """
         try:
             # Format deck name with template variables
-            deck_template = anki_config.get('deck_name', '{citation_key}')
-            deck_name = self.format_deck_name(deck_template, self.citation_key)
-            
+            # Use output_dir (stored in audio_prefix) if it was specified, otherwise use citation_key
+            deck_template = anki_config.get("deck_name", "{deck_name}")
+            # Use audio_prefix which contains output_dir if specified, otherwise citation_key
+            deck_name_value = (
+                self.audio_prefix
+                if hasattr(self, "audio_prefix")
+                else self.citation_key
+            )
+            deck_name = self.format_deck_name(deck_template, deck_name_value)
+
             logger.info(f"Sending cards to Anki deck: {deck_name}")
-            
+
             # Choose which output file to use as base
             # Important: Only use audio cards if they actually exist
-            card_format = anki_config.get('card_format', 'with_audio')
-            if card_format == 'with_audio' and 'cards_audio' in outputs:
-                base_file = outputs['cards_audio']
+            card_format = anki_config.get("card_format", "with_audio")
+            if card_format == "with_audio" and "cards_audio" in outputs:
+                base_file = outputs["cards_audio"]
             else:
                 # Fall back to plain cards if audio cards don't exist or not requested
-                base_file = outputs['cards_plain']
-            
+                base_file = outputs["cards_plain"]
+
             # Prepare Anki file with proper deck header
             # Only include audio if it was actually generated
-            use_audio = (card_format == 'with_audio' and 'cards_audio' in outputs)
-            anki_file = self.prepare_anki_file(cards, deck_name, base_file, include_audio=use_audio)
-            
+            use_audio = card_format == "with_audio" and "cards_audio" in outputs
+            anki_file = self.prepare_anki_file(
+                cards, deck_name, base_file, include_audio=use_audio
+            )
+
             # Initialize AnkiProcessor
-            host = anki_config.get('host', '127.0.0.1')
-            port = anki_config.get('port', 8765)
+            host = anki_config.get("host", "127.0.0.1")
+            port = anki_config.get("port", 8765)
             anki_processor = AnkiProcessor(host, port)
-            
+
             # Send cards to Anki
             cards_added, cards_updated = anki_processor.send_cards_from_file(
                 file_path=anki_file,
                 deck_name=deck_name,
-                update_existing=anki_config.get('update_existing', True),
-                upload_media=anki_config.get('media_upload', True),
-                sync_after=anki_config.get('sync_after', False)
+                update_existing=anki_config.get("update_existing", True),
+                upload_media=anki_config.get("media_upload", True),
+                sync_after=anki_config.get("sync_after", False),
             )
-            
-            logger.info(f"Successfully sent to Anki deck '{deck_name}': {cards_added} added, {cards_updated} updated")
-            
+
+            logger.info(
+                f"Successfully sent to Anki deck '{deck_name}': {cards_added} added, {cards_updated} updated"
+            )
+
         except Exception as e:
             logger.error(f"Failed to send cards to Anki: {e}")
             raise

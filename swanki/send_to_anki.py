@@ -15,19 +15,6 @@ swanki_root = Path(__file__).parent.parent
 if str(swanki_root) not in sys.path:
     sys.path.insert(0, str(swanki_root))
 
-try:
-    from swanki.processing.anki_processor import AnkiProcessor
-except ImportError:
-    # If full import fails, try direct import
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "anki_processor", 
-        swanki_root / "swanki" / "processing" / "anki_processor.py"
-    )
-    anki_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(anki_module)
-    AnkiProcessor = anki_module.AnkiProcessor
-
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
 
@@ -74,7 +61,7 @@ def send_directory_to_anki(directory: Path, deck_name: str = None, host: str = '
     """Send cards from a directory to Anki.
     
     Looks for cards-with-audio.md or cards-plain.md, creates the anki- version,
-    and sends to Anki.
+    and sends to Anki using the modern AnkiProcessor.
     
     Parameters
     ----------
@@ -106,11 +93,23 @@ def send_directory_to_anki(directory: Path, deck_name: str = None, host: str = '
     # Use directory name as deck name if not provided
     if deck_name is None:
         deck_name = directory.name
+        # Remove numbering suffix if present (e.g., "luoWhenCausalInference2020_23" -> "luoWhenCausalInference2020")
+        if "_" in deck_name and deck_name.split("_")[-1].isdigit():
+            deck_name = "_".join(deck_name.split("_")[:-1])
     
     # Prepare anki file
     anki_file = prepare_anki_file(input_file, deck_name)
     
-    # Send to Anki
+    # Import AnkiProcessor
+    try:
+        from ..processing.anki_processor import AnkiProcessor
+    except ImportError:
+        # Fallback import for script usage
+        import sys
+        sys.path.insert(0, str(swanki_root))
+        from swanki.processing.anki_processor import AnkiProcessor
+    
+    # Send to Anki using modern processor
     try:
         anki_processor = AnkiProcessor(host, port)
         cards_added, cards_updated = anki_processor.send_cards_from_file(

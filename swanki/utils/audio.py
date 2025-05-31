@@ -77,6 +77,7 @@ def generate_card_transcript(
     client: OpenAI,
     model: str = "gpt-4o",
     citation_key: Optional[str] = None,
+    humanized_citation: Optional[str] = None,
 ) -> str:
     """Generate audio transcript for a card side.
     
@@ -96,6 +97,8 @@ def generate_card_transcript(
         Model to use for generation (default is "gpt-4o")
     citation_key : str, optional
         Citation key to include in front transcript
+    humanized_citation : str, optional
+        Pre-humanized citation for consistency across cards
     
     Returns
     -------
@@ -126,63 +129,122 @@ def generate_card_transcript(
     # Get the appropriate text
     if is_front:
         content = card.front.text
+        
+        # For cloze cards on front, explicitly replace the cloze markers with "blank"
+        if is_cloze:
+            # Replace all cloze patterns {{c1::text}}, {{c2::text}}, etc. with "blank"
+            content = re.sub(r'\{\{c\d+::([^}]+)\}\}', 'blank', content)
+        
         # Always prepend citation key for front of card, even if already present
-        if citation_key:
+        if citation_key or humanized_citation:
+            # Use pre-humanized citation if provided, otherwise use raw citation key
+            citation_prefix = humanized_citation if humanized_citation else f"@{citation_key}"
+            
             # Remove existing citation if present to avoid duplication
-            if content.startswith(f"@{citation_key}:"):
-                content = content[len(f"@{citation_key}:"):]
-            content = f"@{citation_key}: {content.strip()}"
+            if content.startswith(f"@{citation_key}: "):
+                content = content[len(f"@{citation_key}: "):]
+            elif content.startswith(f"{citation_prefix}: "):
+                content = content[len(f"{citation_prefix}: "):]
+                
+            content = f"{citation_prefix}: {content.strip()}"
     else:
-        content = card.back.text
+        # For back of card
+        if is_cloze:
+            # For cloze cards, read the FULL front text but with cloze markers removed
+            # This reveals what was hidden
+            content = card.front.text
+            # Remove the cloze markers to reveal the hidden text
+            content = re.sub(r'\{\{c\d+::([^}]+)\}\}', r'\1', content)
+            # Debug log to verify cloze removal
+            if "blank" in content.lower():
+                logger.warning(f"'blank' found in cloze back content after processing: {content[:100]}...")
+            
+            # Add citation key if present
+            if citation_key or humanized_citation:
+                citation_prefix = humanized_citation if humanized_citation else f"@{citation_key}"
+                # Remove existing citation if present to avoid duplication
+                if content.startswith(f"@{citation_key}: "):
+                    content = content[len(f"@{citation_key}: "):]
+                elif content.startswith(f"{citation_prefix}: "):
+                    content = content[len(f"{citation_prefix}: "):]
+                content = f"{citation_prefix}: {content.strip()}"
+        else:
+            # Regular card - use the back text
+            content = card.back.text
     
-    # Prepare system message based on card type
+    # Check if content has LaTeX/math or images that need LLM processing
+    has_math = bool(re.search(r'[\$\\]|\\\\[a-zA-Z]+|[\^_{}]|\(I\s*-\s*W', content))
+    has_images = bool(re.search(r'!\[.*?\]\(.*?\)', content))
+    
+    # If no special content, use text directly with minimal processing
+    if not has_math and not has_images:
+        # Just clean up the text for TTS
+        transcript = content
+        # Convert some basic markdown to spoken form
+        transcript = re.sub(r'\*\*(.*?)\*\*', r'\1', transcript)  # Remove bold
+        transcript = re.sub(r'\*(.*?)\*', r'\1', transcript)      # Remove italic
+        transcript = re.sub(r'`(.*?)`', r'\1', transcript)        # Remove code
+        # Clean up extra whitespace
+        transcript = " ".join(transcript.split())
+        
+        return transcript
+    
     if is_front:
         if is_cloze:
             system_content = (
-                "You are converting a cloze deletion card to audio format. "
-                "Follow these rules precisely:\n"
-                "1. ALWAYS start by speaking the citation naturally if present (e.g., @authorYear becomes 'Author, Year')\n"
-                "2. Replace any {{c1::hidden text}} with the word 'mask'\n"
-                "3. State the sentence naturally, saying 'mask' where content is hidden\n"
-                "4. Speak any math expressions in natural language\n"
-                "5. Keep your response concise and academic\n"
-                "6. Never include phrases like 'Question:' or 'Guidance:'\n"
-                "7. Never explain what you're doing, just provide the transcript\n"
+                "Convert this text to natural speech for audio. "
+                "CRITICAL: Say 'blank' exactly where it appears in the text. "
+                "Do NOT try to figure out what the blank should be. "
+                "For mathematical expressions:\n"
+                "- Read them naturally as a mathematician would\n"
+                "- Subscripts: X_j as 'X sub j', X_{parent} as 'X sub parent'\n"
+                "- E[X | Y] as 'expected value of X given Y'\n"
+                "- X^{-1} as 'X inverse'\n"
+                "- (I - W^T) as 'I minus W transpose'\n"
+                "- g_j(f_j(X)) as 'g sub j of f sub j of X'\n"
+                "- \\mid as 'given' in conditional expressions\n"
+                "- \\text{} contents should be read normally\n"
+                "- Use context to determine proper reading"
             )
         else:
             system_content = (
-                "You are converting a flashcard question to audio format. "
-                "Follow these rules precisely:\n"
-                "1. ALWAYS start by speaking the citation naturally if present (e.g., @authorYear becomes 'Author, Year')\n"
-                "2. State only the question without any introductory phrases\n"
-                "3. Speak any math expressions in natural language\n"
-                "4. Keep your response concise and academic\n"
-                "5. Never include phrases like 'Question:' or 'Guidance:'\n"
-                "6. Never explain what you're doing, just provide the transcript\n"
+                "Convert this flashcard question to natural speech for audio. "
+                "For mathematical expressions:\n"
+                "- Read them naturally as a mathematician would\n"
+                "- Subscripts: X_j as 'X sub j', X_{parent} as 'X sub parent'\n"
+                "- E[X | Y] as 'expected value of X given Y'\n"
+                "- X^{-1} as 'X inverse' not 'X to the power of minus one'\n"
+                "- (I - W^T) as 'I minus W transpose'\n"
+                "- f_2((I - W^T)^{-1}) as 'f two of the inverse of I minus W transpose'\n"
+                "- g_j(f_j(X)) as 'g sub j of f sub j of X'\n"
+                "- \\mid as 'given' in conditional expressions\n"
+                "- \\text{} contents should be read normally\n"
+                "- Use mathematical context to determine proper reading\n"
+                "- Describe images naturally if present"
             )
     else:  # Back of card
         if is_cloze:
             system_content = (
-                "You are providing the answer to a cloze deletion card. "
-                "Follow these rules precisely:\n"
-                "1. Do NOT restate the question or cite the source again\n"
-                "2. Simply state what the hidden text is: 'The missing word is...'\n"
-                "3. Speak any math expressions in natural language\n"
-                "4. Keep your response very brief - just the missing text\n"
-                "5. Never include phrases like 'Answer:' or 'Guidance:'\n"
-                "6. Never explain what you're doing, just provide the transcript\n"
+                "Read this complete text naturally for audio. "
+                "This is the ANSWER that reveals what was hidden in the blanks. "
+                "IMPORTANT: The text has already been processed to remove cloze markers. "
+                "Do NOT say 'blank' - read all the words that are present. "
+                "Read it as a complete statement with all words revealed. "
+                "For mathematical expressions, read them naturally as a mathematician would."
             )
         else:
             system_content = (
-                "You are providing the answer to a flashcard question. "
-                "Follow these rules precisely:\n"
-                "1. Do NOT restate the question or cite the source again\n"
-                "2. Begin directly with the answer\n"
-                "3. Speak any math expressions in natural language\n"
-                "4. Keep your response concise and academic\n"
-                "5. Never include phrases like 'Answer:' or 'Guidance:'\n"
-                "6. Never explain what you're doing, just provide the transcript\n"
-                "7. Never start with phrases like 'In the study...' or 'The research shows...'\n"
+                "Convert this answer to natural speech for audio. "
+                "For mathematical expressions:\n"
+                "- Read them naturally as a mathematician would\n"
+                "- Subscripts: X_j as 'X sub j', X_{parent} as 'X sub parent'\n"
+                "- E[X | Y] as 'expected value of X given Y'\n"
+                "- X^{-1} as 'X inverse'\n"
+                "- g_j(f_j(X)) as 'g sub j of f sub j of X'\n"
+                "- \\mid as 'given' in conditional expressions\n"
+                "- \\text{} contents should be read normally\n"
+                "- Use context to determine proper reading\n"
+                "- Describe images naturally if present"
             )
     
     # Handle chunks for long content
@@ -272,7 +334,8 @@ def text_to_speech(
     text: str, 
     voice_id: str, 
     output_path: Path, 
-    api_key: str
+    api_key: str,
+    speed: float = 1.0
 ) -> None:
     """Convert a text chunk to speech and save as MP3.
     
@@ -316,11 +379,67 @@ def text_to_speech(
     )
     
     data = b"".join(stream) if hasattr(stream, "__iter__") else stream
-    with open(output_path, "wb") as f:
-        f.write(data)
+    
+    # Apply speed adjustment if needed
+    if speed != 1.0:
+        # Save to temp file first
+        temp_path = output_path.with_suffix('.temp.mp3')
+        with open(temp_path, "wb") as f:
+            f.write(data)
+        
+        # Load audio
+        audio = AudioSegment.from_mp3(temp_path)
+        
+        # Use FFmpeg's atempo filter for high-quality speed adjustment
+        # atempo preserves pitch while changing speed
+        if speed != 1.0:
+            # Build the atempo filter chain
+            atempo_filters = []
+            remaining_speed = speed
+            
+            # FFmpeg's atempo filter only accepts values between 0.5 and 2.0
+            # For values outside this range, we need to chain multiple atempo filters
+            while remaining_speed < 0.5 or remaining_speed > 2.0:
+                if remaining_speed < 0.5:
+                    atempo_filters.append("atempo=0.5")
+                    remaining_speed = remaining_speed / 0.5  # This makes it larger (towards 1.0)
+                else:
+                    atempo_filters.append("atempo=2.0")
+                    remaining_speed = remaining_speed / 2.0  # This makes it smaller (towards 1.0)
+            
+            # Add the final filter for the remaining speed adjustment
+            if remaining_speed != 1.0:
+                atempo_filters.append(f"atempo={remaining_speed}")
+            
+            # Apply the filter chain using FFmpeg
+            if atempo_filters:
+                filter_chain = ",".join(atempo_filters)
+                try:
+                    # Export with FFmpeg parameters for speed adjustment
+                    audio.export(
+                        output_path,
+                        format="mp3",
+                        parameters=["-filter:a", filter_chain, "-avoid_negative_ts", "make_zero"]
+                    )
+                except Exception as e:
+                    print(f"FFmpeg filter failed, falling back to simple method: {e}")
+                    print("Please ensure FFmpeg is installed and available in your PATH")
+                    # Fallback to simple speed adjustment if FFmpeg fails
+                    adjusted_audio = audio.speedup(playback_speed=speed)
+                    adjusted_audio.export(output_path, format="mp3")
+            else:
+                audio.export(output_path, format="mp3")
+        else:
+            audio.export(output_path, format="mp3")
+        
+        # Clean up temp file
+        temp_path.unlink()
+    else:
+        with open(output_path, "wb") as f:
+            f.write(data)
 
 
-def combine_audio(files: List[Path], output: Path) -> None:
+def combine_audio(files: List[Path], output: Path, crossfade_ms: int = 200) -> None:
     """Combine multiple MP3 files into one with smooth transitions.
     
     Merges audio files with crossfade to avoid abrupt transitions.
@@ -331,10 +450,12 @@ def combine_audio(files: List[Path], output: Path) -> None:
         List of MP3 files to combine in order
     output : Path
         Path for combined output file
+    crossfade_ms : int, optional
+        Crossfade duration in milliseconds (default 200)
     
     Notes
     -----
-    - Uses 200ms crossfade between segments
+    - Uses crossfade between segments
     - Exports at 192k bitrate
     - Requires pydub and ffmpeg
     """
@@ -342,9 +463,73 @@ def combine_audio(files: List[Path], output: Path) -> None:
     combined = segments[0]
     
     for seg in segments[1:]:
-        combined = combined.append(seg, crossfade=200)
+        combined = combined.append(seg, crossfade=crossfade_ms)
     
     combined.export(str(output), format="mp3", bitrate="192k")
+
+
+def generate_citation_audio(
+    citation_key: str,
+    output_path: Path,
+    elevenlabs_api_key: str,
+    voice_id: Optional[str] = None,
+    speed: float = 1.0,
+    use_cache: bool = True
+) -> Path:
+    """Generate audio for a citation key that can be reused across cards.
+    
+    Creates audio for just the humanized citation, which can be combined
+    with card content audio for efficiency.
+    
+    Parameters
+    ----------
+    citation_key : str
+        The citation key to convert to audio
+    output_path : Path
+        Path for the output MP3 file
+    elevenlabs_api_key : str
+        ElevenLabs API key
+    voice_id : str, optional
+        Voice ID (defaults to DEFAULT_VOICE_ID)
+    speed : float, optional
+        Audio playback speed multiplier (default 1.0)
+    use_cache : bool, optional
+        Whether to reuse existing file if it exists (default True)
+    
+    Returns
+    -------
+    Path
+        Path to the generated audio file
+    
+    Notes
+    -----
+    - Humanizes the citation key for natural speech
+    - Caches results to avoid regenerating
+    - Adds a colon and pause for natural flow
+    """
+    voice_id = voice_id or DEFAULT_VOICE_ID
+    
+    # Check cache
+    if use_cache and output_path.exists():
+        return output_path
+    
+    # Humanize the citation
+    from ..utils.formatting import humanize_citation_key
+    humanized = humanize_citation_key(citation_key)
+    
+    # Add colon and slight pause for natural speech
+    citation_text = f"{humanized}:"
+    
+    # Generate audio
+    text_to_speech(
+        text=citation_text,
+        voice_id=voice_id,
+        output_path=output_path,
+        api_key=elevenlabs_api_key,
+        speed=speed
+    )
+    
+    return output_path
 
 
 def generate_summary_audio(
@@ -355,6 +540,7 @@ def generate_summary_audio(
     voice_id: Optional[str] = None,
     model: str = "gpt-4o",
     citation_key: Optional[str] = None,
+    speed: float = 1.0,
 ) -> str:
     """Generate audio for document summary.
     
@@ -377,6 +563,8 @@ def generate_summary_audio(
         OpenAI model to use (default is "gpt-4o")
     citation_key : str, optional
         Citation key to announce at beginning
+    speed : float, optional
+        Audio playback speed multiplier (default 1.0)
     
     Returns
     -------
@@ -431,7 +619,7 @@ def generate_summary_audio(
     # Generate audio
     chunks = chunk_text(transcript)
     if len(chunks) == 1:
-        text_to_speech(chunks[0], voice_id, output_path, elevenlabs_api_key)
+        text_to_speech(chunks[0], voice_id, output_path, elevenlabs_api_key, speed)
     else:
         # Generate chunks and combine
         chunk_paths = []
@@ -439,7 +627,7 @@ def generate_summary_audio(
             # Include citation_key in temp file name to avoid conflicts
             prefix = f"{citation_key}_{output_path.stem}" if citation_key else output_path.stem
             chunk_path = output_path.parent / f"{prefix}_chunk{i}.mp3"
-            text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key)
+            text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed)
             chunk_paths.append(chunk_path)
             time.sleep(1)  # Rate limiting
         
@@ -459,6 +647,7 @@ def generate_reading_audio(
     voice_id: Optional[str] = None,
     model: str = "gpt-4o",
     citation_key: Optional[str] = None,
+    speed: float = 1.0,
 ) -> str:
     """Generate audio for full document reading.
     
@@ -482,6 +671,8 @@ def generate_reading_audio(
         OpenAI model to use (default is "gpt-4o")
     citation_key : str, optional
         Citation key to announce at beginning
+    speed : float, optional
+        Audio playback speed multiplier (default 1.0)
     
     Returns
     -------
@@ -554,7 +745,7 @@ def generate_reading_audio(
         # Include citation_key in temp file name to avoid conflicts
         prefix = f"{citation_key}_{output_path.stem}" if citation_key else output_path.stem
         chunk_path = output_path.parent / f"{prefix}_chunk{i}.mp3"
-        text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key)
+        text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed)
         chunk_paths.append(chunk_path)
         time.sleep(1)  # Rate limiting
     
@@ -578,6 +769,7 @@ def generate_lecture_audio(
     model: str = "gpt-4o",
     citation_key: Optional[str] = None,
     lecture_prompt_config: Optional[dict] = None,
+    speed: float = 1.0,
 ) -> str:
     """Generate educational lecture-style audio from document content.
     
@@ -603,6 +795,8 @@ def generate_lecture_audio(
         OpenAI model to use (default is "gpt-4o")
     citation_key : str, optional
         Citation key to include in lecture
+    speed : float, optional
+        Audio playback speed multiplier (default 1.0)
     lecture_prompt_config : dict, optional
         Custom prompt configuration with keys:
         - 'lecture_system': System prompt
@@ -730,7 +924,7 @@ Content to present:
         # Include citation_key in temp file name to avoid conflicts
         prefix = f"{citation_key}_{output_path.stem}" if citation_key else output_path.stem
         chunk_path = output_path.parent / f"{prefix}_chunk{i}.mp3"
-        text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key)
+        text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed)
         chunk_paths.append(chunk_path)
         time.sleep(1)  # Rate limiting
     
@@ -757,11 +951,12 @@ def generate_card_audio(
     voice_id: Optional[str] = None,
     model: str = "gpt-4o",
     citation_key: Optional[str] = None,
+    speed: float = 1.0,
 ) -> Tuple[str, Optional[str]]:
     """Generate audio files for both sides of a card.
     
     Creates audio files for flashcard content, handling both regular
-    and cloze cards appropriately. Cloze cards only generate front audio.
+    and cloze cards. Cloze cards mask hidden text on front, reveal on back.
     
     Parameters
     ----------
@@ -783,12 +978,14 @@ def generate_card_audio(
         OpenAI model to use (default is "gpt-4o")
     citation_key : str, optional
         Citation key for file naming and content
+    speed : float, optional
+        Audio playback speed multiplier (default 1.0)
     
     Returns
     -------
     Tuple[str, Optional[str]]
-        Tuple of (front_filename, back_filename). For cloze cards,
-        back_filename is None.
+        Tuple of (front_filename, back_filename). Back may be None
+        if no back transcript was generated.
     
     Examples
     --------
@@ -802,41 +999,49 @@ def generate_card_audio(
     ...     citation_key="doe2024"
     ... )
     >>> print(front)
-    'doe2024_page-1_1_front.mp3'
+    'doe2024_a1b2c3d4-e5f6-g7h8-i9j0-k1l2m3n4o5p6_front.mp3'
     >>> print(back)
-    'doe2024_page-1_1_back.mp3'
+    'doe2024_a1b2c3d4-e5f6-g7h8-i9j0-k1l2m3n4o5p6_back.mp3'
     
     Notes
     -----
-    - Files are named with citation key prefix to avoid conflicts
+    - Files are named using card UUID for order-independent pairing
+    - Citation key is prefixed to avoid conflicts between documents
     - Rate limiting is applied between API calls
     - Large transcripts are chunked and combined
     - Temporary chunk files are cleaned up after combination
     """
     voice_id = voice_id or DEFAULT_VOICE_ID
     
-    # Check if this is a cloze card
-    is_cloze = "{{c" in card.front.text or "{c1::" in card.front.text
+    # Humanize citation key once for consistency
+    humanized_citation = humanize_citation_key(citation_key) if citation_key else None
     
     # Generate transcripts
     front_transcript = generate_card_transcript(
-        card, is_front=True, client=openai_client, model=model, citation_key=citation_key
+        card, is_front=True, client=openai_client, model=model, 
+        citation_key=citation_key, humanized_citation=humanized_citation
     )
     
-    # Only generate back transcript for non-cloze cards
-    back_transcript = None
-    if not is_cloze:
-        back_transcript = generate_card_transcript(
-            card, is_front=False, client=openai_client, model=model, citation_key=citation_key
-        )
+    # Generate back transcript (for all cards now, including cloze)
+    back_transcript = generate_card_transcript(
+        card, is_front=False, client=openai_client, model=model, 
+        citation_key=citation_key, humanized_citation=humanized_citation
+    )
     
-    # Generate audio files with citation key prefix to avoid conflicts
+    # Store transcripts on the card for validation
+    card.audio_front_transcript = front_transcript
+    card.audio_back_transcript = back_transcript
+    
+    # Use card UUID for order-independent audio file naming
+    # This ensures audio files always match their cards regardless of ordering
+    card_uuid = card.card_id  # This is auto-generated by the model validator
+    
     if citation_key:
-        front_filename = f"{citation_key}_{page_base}_{card_index}_front.mp3"
-        back_filename = f"{citation_key}_{page_base}_{card_index}_back.mp3"
+        front_filename = f"{citation_key}_{card_uuid}_front.mp3"
+        back_filename = f"{citation_key}_{card_uuid}_back.mp3"
     else:
-        front_filename = f"{page_base}_{card_index}_front.mp3"
-        back_filename = f"{page_base}_{card_index}_back.mp3"
+        front_filename = f"{card_uuid}_front.mp3"
+        back_filename = f"{card_uuid}_back.mp3"
     
     front_path = audio_dir / front_filename
     back_path = audio_dir / back_filename
@@ -844,7 +1049,7 @@ def generate_card_audio(
     # Generate front audio
     front_chunks = chunk_text(front_transcript)
     if len(front_chunks) == 1:
-        text_to_speech(front_chunks[0], voice_id, front_path, elevenlabs_api_key)
+        text_to_speech(front_chunks[0], voice_id, front_path, elevenlabs_api_key, speed)
     else:
         # Generate chunks and combine
         chunk_paths = []
@@ -852,7 +1057,7 @@ def generate_card_audio(
             # Include citation_key in temp file name to avoid conflicts
             prefix = f"{citation_key}_{page_base}" if citation_key else page_base
             chunk_path = audio_dir / f"{prefix}_{card_index}_front_chunk{i}.mp3"
-            text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key)
+            text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed)
             chunk_paths.append(chunk_path)
             time.sleep(1)  # Rate limiting
         
@@ -861,14 +1066,14 @@ def generate_card_audio(
         for p in chunk_paths:
             p.unlink()
     
-    # Only generate back audio for non-cloze cards
-    if not is_cloze:
+    # Generate back audio for all cards (including cloze)
+    if back_transcript:
         time.sleep(1)  # Rate limiting between cards
         
         # Generate back audio
         back_chunks = chunk_text(back_transcript)
         if len(back_chunks) == 1:
-            text_to_speech(back_chunks[0], voice_id, back_path, elevenlabs_api_key)
+            text_to_speech(back_chunks[0], voice_id, back_path, elevenlabs_api_key, speed)
         else:
             # Generate chunks and combine
             chunk_paths = []
@@ -876,7 +1081,7 @@ def generate_card_audio(
                 # Include citation_key in temp file name to avoid conflicts
                 prefix = f"{citation_key}_{page_base}" if citation_key else page_base
                 chunk_path = audio_dir / f"{prefix}_{card_index}_back_chunk{i}.mp3"
-                text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key)
+                text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed)
                 chunk_paths.append(chunk_path)
                 time.sleep(1)  # Rate limiting
             
@@ -884,8 +1089,8 @@ def generate_card_audio(
             # Clean up chunks
             for p in chunk_paths:
                 p.unlink()
+        
+        return front_filename, back_filename
     else:
-        # For cloze cards, return None for back filename
-        back_filename = None
-    
-    return front_filename, back_filename
+        # No back transcript was generated
+        return front_filename, None
