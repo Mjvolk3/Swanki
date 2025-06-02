@@ -38,6 +38,7 @@ Legacy mode:
 $ swanki --legacy -f paper.pdf --citation-key @smith2023
 """
 
+import os
 import hydra
 from hydra import compose, initialize_config_dir
 from omegaconf import DictConfig, OmegaConf
@@ -101,7 +102,7 @@ def process_with_config(cfg: DictConfig) -> None:
         print("No PDF provided. Use: swanki pdf_path=path/to/file.pdf citation_key=@author2023")
 
 
-@hydra.main(version_base=None, config_path=str(ConfigGenerator.ensure_configs()), config_name="config")
+@hydra.main(version_base=None, config_path=str(ConfigGenerator.ensure_configs(interactive=os.getenv("SWANKI_NONINTERACTIVE") != "1")), config_name="config")
 def cli_main(cfg: DictConfig) -> None:
     """Main CLI entry point with Hydra configuration.
     
@@ -222,6 +223,9 @@ Examples:
   
   # Override specific settings
   swanki pdf_path=paper.pdf citation_key=smith2023 processing.num_cards_per_page=5
+  
+  # Force regenerate citation audio (if it seems corrupted)
+  swanki pdf_path=paper.pdf citation_key=smith2023 audio.force_regenerate_citation=true
   
   # Use legacy mode (backward compatibility)
   swanki --legacy -f paper.pdf --citation-key @smith2023 --num-cards 3

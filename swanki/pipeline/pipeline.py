@@ -35,7 +35,7 @@ Examples
 """
 
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from omegaconf import DictConfig
 import instructor
 from openai import OpenAI
@@ -43,6 +43,7 @@ import os
 import random
 import subprocess
 import logging
+import re
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
@@ -290,6 +291,7 @@ class Pipeline:
                 require_math=image_config.get("require_math_content", False),
                 placement_strategy=image_config.get("placement_strategy", "smart"),
                 front_back_ratio=image_config.get("front_back_ratio", 0.5),
+                image_summaries=image_summaries,
             )
             all_cards.extend(image_cards)
 
@@ -663,11 +665,13 @@ FORMAT RULES:
 3. Tags go as a single bullet: - #tag1, #tag2, #tag3
 4. NO CLOZE CARDS - only regular Q&A format
 
-REQUIREMENTS:
-1. Focus on mathematical equations and formulas when present
-2. NEVER use references like "ref.", "[12]", "according to" - be specific
-3. Each card tests ONE concept
-4. Use LaTeX with $ for inline math
+CRITICAL REQUIREMENTS:
+1. Cards MUST be self-contained - students won't have access to the paper, figures, or other references
+2. NEVER reference external content: "According to [12]", "As shown in Figure 3", "The paper states"
+3. Each card tests ONE concept and includes all context needed to understand it
+4. Focus on mathematical equations and formulas when present
+5. Use LaTeX with $ for inline math, $$ for display math
+6. NEVER use LaTeX tables (\\\\begin{{tabular}})
 
 Generate {num_cards * len(window_files)} regular Q&A cards now."""
 
@@ -697,10 +701,23 @@ Content:
 
 FORMAT: Each card MUST use {{{{c1::hidden text}}}} syntax for cloze deletions.
 
-Example:
+CRITICAL RULES:
+1. Cards MUST be self-contained - no references to "the paper", figures, or external content
+2. For equations: Hide PARTS of equations, not entire equations
+3. Hide meaningful concepts, not arbitrary numbers or references
+
+GOOD Examples:
 ## The {{{{c1::Pythagorean theorem}}}} states that {{{{c2::$a^2 + b^2 = c^2$}}}} for right triangles.
 
 - #mathematics.geometry
+
+## In gradient descent, the update rule is $\\theta = \\theta - {{{{c1::α}}}} {{{{c2::∇L(θ)}}}}$ where {{{{c3::α is the learning rate}}}}.
+
+- #optimization, #machine-learning
+
+BAD Examples (AVOID):
+- "The original method uses {{{{c1::algorithm X}}}}" (What original method?)
+- "{{{{c1::$E[X|Y] = g(f(X))$}}}}" (Don't hide entire equations)
 
 Generate {cloze_count} cloze cards now. Focus on key definitions, formulas, and facts."""
 
@@ -764,6 +781,7 @@ Generate {cloze_count} cloze cards now. Focus on key definitions, formulas, and 
         require_math: bool = False,
         placement_strategy: str = "smart",
         front_back_ratio: float = 0.5,
+        image_summaries: Optional[List[ImageSummary]] = None,
     ) -> List[PlainCard]:
         """Generate flashcards from document images.
 
@@ -842,6 +860,23 @@ Generate {cloze_count} cloze cards now. Focus on key definitions, formulas, and 
                 models_config = self.config.get("models", {}).get("models", {})
                 llm_config = models_config.get("llm", {})
 
+                # Find matching image summary if available
+                image_summary_text = None
+                if image_summaries:
+                    # Try to match by URL/path
+                    for img_summary in image_summaries:
+                        # Check if paths match (handle different path formats)
+                        if (image_info['path'] in img_summary.image_url or 
+                            img_summary.image_url in image_info['path'] or
+                            Path(image_info['path']).name == Path(img_summary.image_url).name):
+                            image_summary_text = img_summary.summary
+                            logger.info(f"Found image summary for {image_info['path']}: {image_summary_text[:50]}...")
+                            break
+                    
+                    if not image_summary_text:
+                        logger.warning(f"No matching image summary found for {image_info['path']}")
+                        logger.debug(f"  Available summaries: {[img.image_url for img in image_summaries]}")
+                
                 # Create a specialized prompt for image cards
                 image_prompt = f"""Create {cards_per_image} educational flashcards based on this image and its context.
 
@@ -849,6 +884,7 @@ Image Information:
 - Path: {image_info['path']}
 - Alt text: {image_info['alt']}
 - Context: {image_info['context']}
+{f'- Image Description: {image_summary_text}' if image_summary_text else ''}
 
 Document Summary Context:
 - Title: {doc_summary.title}
@@ -858,26 +894,36 @@ Document Summary Context:
 Full content from this page:
 {file_content}
 
+CRITICAL RULES:
+- DO NOT include ![Image](...) markdown in your response - the image will be added automatically
+- DO NOT put image links in the question or answer text
+- Just write the question and answer text referring to "the image" or "this figure"
+
 Requirements:
-- Each card should test understanding of the image content
-- Cards can reference specific parts of the image (e.g., "What does the graph in the upper left show?")
+- Each card should test UNDERSTANDING of concepts, not just ask to describe the image
+- Questions should focus on WHY, HOW, or WHAT implications the image shows
+- BAD: "How are X and Y represented in this image?" (just asks for description)
+- GOOD: "What relationship does the image show between X and Y?" (tests understanding)
+- GOOD: "Why does the pathway split into two branches in the diagram?" (tests conceptual understanding)
+- Cards can reference specific parts of the image (e.g., "What does the upper pathway represent?")
 - Include mathematical notation if present in the image
-- Make questions specific to visual elements
+- Make questions test conceptual understanding, not just visual identification
 - {'Image can appear on front or back of card as appropriate' if image_on_front and image_on_back else 'Image should appear on front of card' if image_on_front else 'Image should appear on back of card' if image_on_back else 'No image placement preference'}
 
 FORMAT RULES:
-1. Use ## for the question (front of card)
-2. Answer goes on the next line (back of card)
+1. Use ## for the question (front of card) - NO IMAGE MARKDOWN
+2. Answer goes on the next line (back of card) - NO IMAGE MARKDOWN
 3. Tags go as a single bullet: - #tag1, #tag2, #tag3
-4. Use period-delimited tags from broad to narrow (e.g., #biology.cell-biology, #figures.graphs)
-5. Include visual/image-related tags like #figures, #diagrams, #graphs, #charts as appropriate
+4. Use period-delimited tags from broad to narrow (e.g., #biology.cell-biology, #machine-learning.neural-networks)
+5. DO NOT include figure/image tags like #figures, #diagrams, #graphs - the card already has an image
+6. NEVER include ![Image](...) in your text - images are handled separately
 
 Example card for an image:
-## What does Figure 1 show about the relationship between X and Y?
+## What relationship between learning rate and convergence is shown in this graph?
 
-Figure 1 demonstrates a positive correlation between X and Y, with the data points following a clear linear trend. The graph shows that as X increases from 0 to 10, Y increases proportionally from 2 to 20.
+The graph demonstrates that smaller learning rates lead to slower but more stable convergence, while larger learning rates can cause oscillations or divergence. The optimal learning rate (shown in green) balances speed and stability.
 
-- #figures.graphs, #data-analysis.correlation, #statistics.linear-relationships"""
+- #optimization.learning-rate, #machine-learning.training, #convergence-analysis"""
 
                 # Generate cards using instructor
                 try:
@@ -899,11 +945,24 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
 
                     # Add image paths to the generated cards
                     for idx, card in enumerate(response.cards):
+                        # Clean up any image markdown that might have slipped through
+                        # Remove ![Image](...) patterns from both front and back text
+                        import re
+                        image_pattern = r'!\[.*?\]\([^)]+\)'
+                        card.front.text = re.sub(image_pattern, '', card.front.text).strip()
+                        card.back.text = re.sub(image_pattern, '', card.back.text).strip()
+                        
                         # Decide where to place the image based on config
                         if image_on_front and not image_on_back:
                             card.front.image_path = image_info["original_path"]
+                            if image_summary_text:
+                                card.front.image_summary = image_summary_text
                         elif image_on_back and not image_on_front:
                             card.back.image_path = image_info["original_path"]
+                            if image_summary_text:
+                                card.back.image_summary = image_summary_text
+                            else:
+                                logger.error(f"No image summary found for {image_info['path']}")
                         elif image_on_front and image_on_back:
                             # Both allowed, but NEVER put the same image on both sides
                             place_on_front = False
@@ -938,11 +997,19 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
                             # Place image on ONLY ONE side
                             if place_on_front:
                                 card.front.image_path = image_info["original_path"]
-                                # Explicitly ensure it's not on the back
+                                if image_summary_text:
+                                    card.front.image_summary = image_summary_text
+                                # Explicitly ensure IMAGE is not on the back (but keep summary for audio)
                                 card.back.image_path = None
+                                # Don't clear back.image_summary - we might need it for audio
                             else:
                                 card.back.image_path = image_info["original_path"]
-                                # Explicitly ensure it's not on the front
+                                if image_summary_text:
+                                    card.back.image_summary = image_summary_text
+                                else:
+                                    # If no summary was found, log error
+                                    logger.error(f"No image summary found for {image_info['path']}")
+                                # Explicitly ensure IMAGE is not on the front
                                 card.front.image_path = None
 
                     image_cards.extend(response.cards)
@@ -1112,6 +1179,8 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
 
                 # Get complementary audio speed from config
                 complementary_speed = audio_config.get("complementary_speed", 1.0)
+                # Get force regenerate option from config
+                force_regenerate_citation = audio_config.get("force_regenerate_citation", False)
 
                 front_filename, back_filename = generate_card_audio(
                     card=card,
@@ -1124,6 +1193,7 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
                     model=model,
                     citation_key=self.citation_key,
                     speed=complementary_speed,
+                    force_regenerate_citation=force_regenerate_citation,
                 )
                 
                 # Set audio URIs on the card for robust pairing
@@ -1252,6 +1322,46 @@ Figure 1 demonstrates a positive correlation between X and Y, with the data poin
                     )
             outputs["cards_audio"] = audio_path
             print(f"Written cards with audio: {audio_path.name}")
+            
+            # Create a summary of audio transcripts for debugging
+            transcripts_dir = self.output_base / "audio-transcripts"
+            if transcripts_dir.exists():
+                summary_path = transcripts_dir / "transcript-summary.md"
+                with open(summary_path, "w") as f:
+                    f.write("# Audio Transcript Summary\n\n")
+                    f.write(f"Generated transcripts for {len(cards)} cards\n\n")
+                    
+                    # Count cards with images
+                    cards_with_images = sum(1 for card in cards if card.front.image_path or card.back.image_path)
+                    cards_with_summaries = sum(1 for card in cards if card.front.image_summary or card.back.image_summary)
+                    
+                    f.write(f"- Total cards: {len(cards)}\n")
+                    f.write(f"- Cards with images: {cards_with_images}\n")
+                    f.write(f"- Cards with image summaries: {cards_with_summaries}\n\n")
+                    
+                    # List any cards missing summaries
+                    missing_summaries = [
+                        card for card in cards 
+                        if (card.front.image_path or card.back.image_path) 
+                        and not (card.front.image_summary or card.back.image_summary)
+                    ]
+                    
+                    if missing_summaries:
+                        f.write(f"## Cards Missing Image Summaries ({len(missing_summaries)} cards)\n\n")
+                        for card in missing_summaries:
+                            f.write(f"- Card ID: {card.card_id}\n")
+                            f.write(f"  - Front image: {card.front.image_path}\n")
+                            f.write(f"  - Back image: {card.back.image_path}\n")
+                            f.write(f"  - Front text preview: {card.front.text[:50]}...\n\n")
+                    
+                    f.write("\n## Transcript Files Generated\n\n")
+                    transcript_files = sorted(transcripts_dir.glob("*.md"))
+                    # Exclude the summary file itself
+                    transcript_files = [f for f in transcript_files if f.name != "transcript-summary.md"]
+                    for tf in transcript_files:
+                        f.write(f"- {tf.name}\n")
+                
+                print(f"Written transcript summary: {summary_path.name}")
 
     def format_deck_name(self, template: str, deck_name: str) -> str:
         """Format deck name template with variables.

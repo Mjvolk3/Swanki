@@ -129,7 +129,7 @@ def generate_card_transcript(
     # Check if this is a cloze card
     is_cloze = "{{c" in card.front.text
     
-    # Get the appropriate text
+    # Get the appropriate text WITHOUT citation first
     if is_front:
         content = card.front.text
         
@@ -138,18 +138,11 @@ def generate_card_transcript(
             # Replace all cloze patterns {{c1::text}}, {{c2::text}}, etc. with "blank"
             content = re.sub(r'\{\{c\d+::([^}]+)\}\}', 'blank', content)
         
-        # Always prepend citation key for front of card, even if already present
-        if citation_key or humanized_citation:
-            # Use pre-humanized citation if provided, otherwise use raw citation key
-            citation_prefix = humanized_citation if humanized_citation else f"@{citation_key}"
-            
-            # Remove existing citation if present to avoid duplication
-            if content.startswith(f"@{citation_key}: "):
-                content = content[len(f"@{citation_key}: "):]
-            elif content.startswith(f"{citation_prefix}: "):
-                content = content[len(f"{citation_prefix}: "):]
-                
-            content = f"{citation_prefix}: {content.strip()}"
+        # Remove any existing citation to work with clean content
+        if citation_key and content.startswith(f"@{citation_key}: "):
+            content = content[len(f"@{citation_key}: "):]
+        elif humanized_citation and content.startswith(f"{humanized_citation}: "):
+            content = content[len(f"{humanized_citation}: "):]
     else:
         # For back of card
         if is_cloze:
@@ -162,25 +155,85 @@ def generate_card_transcript(
             if "blank" in content.lower():
                 logger.warning(f"'blank' found in cloze back content after processing: {content[:100]}...")
             
-            # Add citation key if present
-            if citation_key or humanized_citation:
-                citation_prefix = humanized_citation if humanized_citation else f"@{citation_key}"
-                # Remove existing citation if present to avoid duplication
-                if content.startswith(f"@{citation_key}: "):
-                    content = content[len(f"@{citation_key}: "):]
-                elif content.startswith(f"{citation_prefix}: "):
-                    content = content[len(f"{citation_prefix}: "):]
-                content = f"{citation_prefix}: {content.strip()}"
+            # Remove any existing citation to work with clean content
+            if citation_key and content.startswith(f"@{citation_key}: "):
+                content = content[len(f"@{citation_key}: "):]
+            elif humanized_citation and content.startswith(f"{humanized_citation}: "):
+                content = content[len(f"{humanized_citation}: "):]
         else:
             # Regular card - use the back text
             content = card.back.text
     
+    # Check if we have an image summary to include
+    # For cards with images, we ALWAYS want to include the summary in the audio
+    # regardless of where the image is visually placed
+    image_summary = ""
+    image_summary_included = False
+    
+    # Check if this card has an image at all
+    has_image = (card.front.image_path is not None) or (card.back.image_path is not None)
+    
+    # Log detailed debugging info
+    logger.info(f"Card {card.card_id} - Audio generation debug:")
+    logger.info(f"  Is front: {is_front}")
+    logger.info(f"  Has image: {has_image}")
+    logger.info(f"  Front image path: {card.front.image_path}")
+    logger.info(f"  Back image path: {card.back.image_path}")
+    logger.info(f"  Front image summary: {card.front.image_summary}")
+    logger.info(f"  Back image summary: {card.back.image_summary}")
+    
+    if is_front and has_image:
+        # For front audio, ONLY include image summary if image is on the FRONT
+        if card.front.image_path and card.front.image_summary:
+            image_summary = f"Image description: {card.front.image_summary}. "
+            logger.info(f"  Using front image summary for front audio")
+        else:
+            # If no summary but has image, note that
+            logger.warning(f"Card {card.card_id} has image but no summary for audio")
+            # Log more details for debugging
+            logger.warning(f"  Front image path: {card.front.image_path}")
+            logger.warning(f"  Back image path: {card.back.image_path}")
+            logger.warning(f"  Front summary: {card.front.image_summary}")
+            logger.warning(f"  Back summary: {card.back.image_summary}")
+        
+        # Prepend image summary to content for natural flow
+        if image_summary:
+            content = image_summary + content
+            image_summary_included = True
+            logger.info(f"Card {card.card_id}: Including image summary in front audio")
+            logger.info(f"  Final content preview: {content[:100]}...")
+        else:
+            logger.info(f"  No image summary included in front audio")
+    elif not is_front:
+        # For back audio, only include if image is specifically on back
+        if card.back.image_path and card.back.image_summary:
+            image_summary = f"\\n\\nImage description: {card.back.image_summary}"
+            content = content + image_summary
+            image_summary_included = True
+            logger.info(f"  Including back image summary in back audio")
+    
+    # NOW add citation prefix after image summary has been included
+    if (is_front or (not is_front and is_cloze)) and (citation_key or humanized_citation):
+        # Use pre-humanized citation if provided, otherwise use raw citation key
+        citation_prefix = humanized_citation if humanized_citation else f"@{citation_key}"
+        content = f"{citation_prefix}: {content.strip()}"
+    
     # Check if content has LaTeX/math or images that need LLM processing
     has_math = bool(re.search(r'[\$\\]|\\\\[a-zA-Z]+|[\^_{}]|\(I\s*-\s*W', content))
-    has_images = bool(re.search(r'!\[.*?\]\(.*?\)', content))
+    # Check for embedded image markdown OR if we added an image summary
+    has_images = bool(re.search(r'!\[.*?\]\(.*?\)', content)) or image_summary_included
     
-    # If no special content, use text directly with minimal processing
+    # Log what's happening for debugging
+    logger.info(f"Card {card.card_id} - Processing decision:")
+    logger.info(f"  Has math: {has_math}")
+    logger.info(f"  Has images: {has_images}")
+    logger.info(f"  Image summary included: {image_summary_included}")
+    logger.info(f"  Content preview: {content[:200]}...")
+    
+    # If no special content (math or images), use text directly with minimal processing
+    # But ONLY if we don't have an image summary that needs proper formatting
     if not has_math and not has_images:
+        logger.warning(f"Card {card.card_id}: Taking simple path - image summary may be lost!")
         # Just clean up the text for TTS
         transcript = content
         # Convert some basic markdown to spoken form
@@ -196,34 +249,59 @@ def generate_card_transcript(
         if is_cloze:
             system_content = (
                 "Convert this text to natural speech for audio. "
-                "CRITICAL: Say 'blank' exactly where it appears in the text. "
-                "Do NOT try to figure out what the blank should be. "
+                "CRITICAL INSTRUCTIONS:\n"
+                "1. Say 'blank' exactly where it appears in the text\n"
+                "2. Do NOT try to figure out what the blank should be\n"
+                "3. If the text starts with 'Image description:', you MUST include it\n"
+                "4. Read the ENTIRE content provided, including any image descriptions\n"
+                "5. The image description is crucial for audio-only learners\n"
+                "\n"
                 "For mathematical expressions:\n"
                 "- Read them naturally as a mathematician would\n"
-                "- Subscripts: X_j as 'X sub j', X_{parent} as 'X sub parent'\n"
+                "- Subscripts: X_j as 'X sub j', X_{parent} as 'X sub parent', X_i as 'X sub i'\n"
+                "- Superscripts: X^2 as 'X squared', X^n as 'X to the n'\n"
                 "- E[X | Y] as 'expected value of X given Y'\n"
                 "- X^{-1} as 'X inverse'\n"
+                "- X^T as 'X transpose'\n"
                 "- (I - W^T) as 'I minus W transpose'\n"
                 "- g_j(f_j(X)) as 'g sub j of f sub j of X'\n"
-                "- \\mid as 'given' in conditional expressions\n"
+                "- \\mid or | as 'given' in conditional expressions\n"
                 "- \\text{} contents should be read normally\n"
-                "- Use context to determine proper reading"
+                "- Matrix notation: X_1 to X_6 as 'X one to X six'\n"
+                "- \\sum as 'sum', \\prod as 'product', \\int as 'integral'\n"
+                "- Greek letters: \\alpha as 'alpha', \\beta as 'beta', etc.\n"
+                "\n"
+                "Remember: Include ALL content, especially image descriptions"
             )
         else:
             system_content = (
-                "Convert this flashcard question to natural speech for audio. "
+                "Convert this flashcard QUESTION to natural speech for audio. "
+                "CRITICAL INSTRUCTIONS:\n"
+                "1. This is the FRONT of a flashcard - ONLY read what's provided, DO NOT answer the question\n"
+                "2. If the text starts with 'Image description:', read it EXACTLY as written\n"
+                "3. After any image description, read the question EXACTLY as written\n"
+                "4. DO NOT provide any answers, explanations, or additional information\n"
+                "5. Your ONLY job is to read the image description (if present) and the question\n"
+                "\n"
+                "FORBIDDEN: Do not answer, explain, or elaborate on the question\n"
+                "\n"
                 "For mathematical expressions:\n"
                 "- Read them naturally as a mathematician would\n"
-                "- Subscripts: X_j as 'X sub j', X_{parent} as 'X sub parent'\n"
+                "- Subscripts: X_j as 'X sub j', X_{parent} as 'X sub parent', X_i as 'X sub i'\n"
+                "- Superscripts: X^2 as 'X squared', X^n as 'X to the n'\n"
                 "- E[X | Y] as 'expected value of X given Y'\n"
                 "- X^{-1} as 'X inverse' not 'X to the power of minus one'\n"
+                "- X^T as 'X transpose'\n"
                 "- (I - W^T) as 'I minus W transpose'\n"
                 "- f_2((I - W^T)^{-1}) as 'f two of the inverse of I minus W transpose'\n"
                 "- g_j(f_j(X)) as 'g sub j of f sub j of X'\n"
-                "- \\mid as 'given' in conditional expressions\n"
+                "- \\mid or | as 'given' in conditional expressions\n"
                 "- \\text{} contents should be read normally\n"
-                "- Use mathematical context to determine proper reading\n"
-                "- Describe images naturally if present"
+                "- Matrix notation: X_1 to X_6 as 'X one to X six'\n"
+                "- \\sum as 'sum', \\prod as 'product', \\int as 'integral'\n"
+                "- Greek letters: \\alpha as 'alpha', \\beta as 'beta', etc.\n"
+                "\n"
+                "Remember: This is a QUESTION only - do not provide the answer!"
             )
     else:  # Back of card
         if is_cloze:
@@ -240,14 +318,20 @@ def generate_card_transcript(
                 "Convert this answer to natural speech for audio. "
                 "For mathematical expressions:\n"
                 "- Read them naturally as a mathematician would\n"
-                "- Subscripts: X_j as 'X sub j', X_{parent} as 'X sub parent'\n"
+                "- Subscripts: X_j as 'X sub j', X_{parent} as 'X sub parent', X_i as 'X sub i'\n"
+                "- Superscripts: X^2 as 'X squared', X^n as 'X to the n'\n"
                 "- E[X | Y] as 'expected value of X given Y'\n"
                 "- X^{-1} as 'X inverse'\n"
+                "- X^T as 'X transpose'\n"
+                "- (I - W^T) as 'I minus W transpose'\n"
                 "- g_j(f_j(X)) as 'g sub j of f sub j of X'\n"
-                "- \\mid as 'given' in conditional expressions\n"
+                "- \\mid or | as 'given' in conditional expressions\n"
                 "- \\text{} contents should be read normally\n"
+                "- Matrix notation: X_1 to X_6 as 'X one to X six'\n"
+                "- \\sum as 'sum', \\prod as 'product', \\int as 'integral'\n"
+                "- Greek letters: \\alpha as 'alpha', \\beta as 'beta', etc.\n"
                 "- Use context to determine proper reading\n"
-                "- Describe images naturally if present"
+                "- If an image description is provided, incorporate it naturally into the speech"
             )
     
     # Handle chunks for long content
@@ -256,8 +340,16 @@ def generate_card_transcript(
     max_chunk = 3000
     out_chunks: List[str] = []
     
+    # Log the content being sent to LLM
+    logger.info(f"Card {card.card_id} - Sending to LLM:")
+    logger.info(f"  Content length: {len(content)} chars")
+    logger.info(f"  Content preview: {content[:300]}...")
+    logger.info(f"  Contains 'Image description:': {'Yes' if 'Image description:' in content else 'No'}")
+    
     for start in range(0, len(tokens), max_chunk):
         chunk = enc.decode(tokens[start : start + max_chunk])
+        logger.info(f"  Processing chunk {start//max_chunk + 1}, length: {len(chunk)}")
+        
         resp = client.chat.completions.create(
             model=model,
             messages=[
@@ -265,9 +357,14 @@ def generate_card_transcript(
                 {"role": "user", "content": chunk},
             ],
             temperature=0.3,  # Lower temperature for more consistent output
-            max_tokens=1000,
+            max_tokens=2000,  # Increased to prevent cutoff
         )
-        out_chunks.append(resp.choices[0].message.content.strip())
+        
+        response_content = resp.choices[0].message.content.strip()
+        out_chunks.append(response_content)
+        
+        logger.info(f"  LLM response length: {len(response_content)} chars")
+        logger.info(f"  Response includes image desc: {'Yes' if 'image' in response_content.lower() else 'No'}")
     
     transcript = "\n\n".join(out_chunks)
     
@@ -417,19 +514,18 @@ def text_to_speech(
             # Apply the filter chain using FFmpeg
             if atempo_filters:
                 filter_chain = ",".join(atempo_filters)
-                try:
-                    # Export with FFmpeg parameters for speed adjustment
-                    audio.export(
-                        output_path,
-                        format="mp3",
-                        parameters=["-filter:a", filter_chain, "-avoid_negative_ts", "make_zero"]
-                    )
-                except Exception as e:
-                    print(f"FFmpeg filter failed, falling back to simple method: {e}")
-                    print("Please ensure FFmpeg is installed and available in your PATH")
-                    # Fallback to simple speed adjustment if FFmpeg fails
-                    adjusted_audio = audio.speedup(playback_speed=speed)
-                    adjusted_audio.export(output_path, format="mp3")
+                # Always use FFmpeg for speed adjustment - no fallback
+                # Add apad to the filter chain to ensure no cutoff
+                full_filter_chain = f"{filter_chain},apad=pad_dur=0.1"
+                audio.export(
+                    output_path,
+                    format="mp3",
+                    parameters=[
+                        "-filter:a", full_filter_chain,
+                        "-avoid_negative_ts", "make_zero",
+                        "-loglevel", "error"  # Only show errors to reduce noise
+                    ]
+                )
             else:
                 audio.export(output_path, format="mp3")
         else:
@@ -477,12 +573,16 @@ def generate_citation_audio(
     elevenlabs_api_key: str,
     voice_id: Optional[str] = None,
     speed: float = 1.0,
-    use_cache: bool = True
+    use_cache: bool = True,
+    max_retries: int = 3,
+    min_file_size: int = 1024,  # 1KB minimum
+    force_regenerate: bool = False
 ) -> Path:
     """Generate audio for a citation key that can be reused across cards.
     
     Creates audio for just the humanized citation, which can be combined
-    with card content audio for efficiency.
+    with card content audio for efficiency. Includes validation and retry
+    logic to prevent bad audio from being cached.
     
     Parameters
     ----------
@@ -498,41 +598,152 @@ def generate_citation_audio(
         Audio playback speed multiplier (default 1.0)
     use_cache : bool, optional
         Whether to reuse existing file if it exists (default True)
+    max_retries : int, optional
+        Maximum number of retry attempts (default 3)
+    min_file_size : int, optional
+        Minimum valid file size in bytes (default 1024)
+    force_regenerate : bool, optional
+        Force regeneration even if cached file exists (default False)
     
     Returns
     -------
     Path
         Path to the generated audio file
     
+    Raises
+    ------
+    RuntimeError
+        If audio generation fails after all retries
+    
     Notes
     -----
     - Humanizes the citation key for natural speech
+    - Validates generated audio files
+    - Retries on failure with exponential backoff
+    - Logs humanized citation for debugging
     - Caches results to avoid regenerating
-    - Adds a colon and pause for natural flow
     """
     voice_id = voice_id or DEFAULT_VOICE_ID
-    
-    # Check cache
-    if use_cache and output_path.exists():
-        return output_path
     
     # Humanize the citation
     from ..utils.formatting import humanize_citation_key
     humanized = humanize_citation_key(citation_key)
     
+    # Log the humanized citation for debugging
+    logger.info(f"Citation audio generation: '{citation_key}' -> '{humanized}'")
+    
+    # Check if we need to validate existing cache
+    if use_cache and not force_regenerate and output_path.exists():
+        # Validate existing file
+        if _validate_audio_file(output_path, min_file_size, humanized):
+            logger.info(f"Using cached citation audio: {output_path}")
+            return output_path
+        else:
+            logger.warning(f"Cached citation audio failed validation, regenerating: {output_path}")
+            output_path.unlink()  # Remove invalid cached file
+    
     # Add colon and slight pause for natural speech
     citation_text = f"{humanized}:"
     
-    # Generate audio
-    text_to_speech(
-        text=citation_text,
-        voice_id=voice_id,
-        output_path=output_path,
-        api_key=elevenlabs_api_key,
-        speed=speed
-    )
+    # Try to generate audio with retries
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"Generating citation audio (attempt {attempt + 1}/{max_retries})")
+            
+            # Generate audio
+            text_to_speech(
+                text=citation_text,
+                voice_id=voice_id,
+                output_path=output_path,
+                api_key=elevenlabs_api_key,
+                speed=speed
+            )
+            
+            # Validate the generated file
+            if _validate_audio_file(output_path, min_file_size, humanized):
+                logger.info(f"Successfully generated citation audio: {output_path}")
+                return output_path
+            else:
+                logger.warning(f"Generated audio failed validation (attempt {attempt + 1})")
+                if output_path.exists():
+                    output_path.unlink()
+                    
+        except Exception as e:
+            last_error = e
+            logger.error(f"Error generating citation audio (attempt {attempt + 1}): {e}")
+            if output_path.exists():
+                output_path.unlink()
+        
+        # Exponential backoff between retries
+        if attempt < max_retries - 1:
+            wait_time = 2 ** attempt
+            logger.info(f"Waiting {wait_time} seconds before retry...")
+            time.sleep(wait_time)
     
-    return output_path
+    # All retries failed
+    error_msg = f"Failed to generate valid citation audio after {max_retries} attempts"
+    if last_error:
+        error_msg += f": {last_error}"
+    raise RuntimeError(error_msg)
+
+
+def _validate_audio_file(
+    audio_path: Path, 
+    min_size: int = 1024, 
+    expected_content: str = ""
+) -> bool:
+    """Validate an audio file for basic integrity.
+    
+    Checks that the audio file exists, has reasonable size, and
+    can be loaded as valid audio.
+    
+    Parameters
+    ----------
+    audio_path : Path
+        Path to the audio file to validate
+    min_size : int, optional
+        Minimum file size in bytes (default 1024)
+    expected_content : str, optional
+        Expected content for logging (default "")
+    
+    Returns
+    -------
+    bool
+        True if file is valid, False otherwise
+    """
+    # Check if file exists
+    if not audio_path.exists():
+        logger.warning(f"Audio file does not exist: {audio_path}")
+        return False
+    
+    # Check file size
+    file_size = audio_path.stat().st_size
+    if file_size < min_size:
+        logger.warning(f"Audio file too small ({file_size} bytes): {audio_path}")
+        return False
+    
+    # Try to load the audio file to verify it's valid
+    try:
+        audio = AudioSegment.from_mp3(str(audio_path))
+        duration_ms = len(audio)
+        
+        # Check minimum duration (at least 500ms for a citation)
+        if duration_ms < 500:
+            logger.warning(f"Audio too short ({duration_ms}ms) for content '{expected_content}': {audio_path}")
+            return False
+        
+        # Check maximum duration (citation shouldn't be longer than 10 seconds)
+        if duration_ms > 10000:
+            logger.warning(f"Audio too long ({duration_ms}ms) for citation '{expected_content}': {audio_path}")
+            return False
+        
+        logger.debug(f"Audio validation passed: {audio_path} ({duration_ms}ms, {file_size} bytes)")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to load audio file {audio_path}: {e}")
+        return False
 
 
 def generate_summary_audio(
@@ -955,6 +1166,7 @@ def generate_card_audio(
     model: str = "gpt-4o",
     citation_key: Optional[str] = None,
     speed: float = 1.0,
+    force_regenerate_citation: bool = False,
 ) -> Tuple[str, Optional[str]]:
     """Generate audio files for both sides of a card.
     
@@ -985,6 +1197,8 @@ def generate_card_audio(
         Citation key for file naming and content
     speed : float, optional
         Audio playback speed multiplier (default 1.0)
+    force_regenerate_citation : bool, optional
+        Force regeneration of citation audio even if cached (default False)
     
     Returns
     -------
@@ -1021,6 +1235,10 @@ def generate_card_audio(
     # Humanize citation key once for consistency
     humanized_citation = humanize_citation_key(citation_key) if citation_key else None
     
+    # Log the humanized citation for debugging
+    if humanized_citation:
+        logger.info(f"Card {card.card_id} - Using humanized citation: '{humanized_citation}' (from '{citation_key}')")
+    
     # Generate transcripts WITHOUT citation for the main content
     # We'll add citation audio separately to ensure it's always first
     front_transcript = generate_card_transcript(
@@ -1054,20 +1272,72 @@ def generate_card_audio(
     front_path = audio_dir / front_filename
     back_path = audio_dir / back_filename
     
+    # Save transcripts to markdown files for debugging
+    transcripts_dir = audio_dir.parent / "audio-transcripts"
+    transcripts_dir.mkdir(exist_ok=True)
+    
+    # Save front transcript
+    front_transcript_filename = f"{citation_key}_{card_uuid}_front.md" if citation_key else f"{card_uuid}_front.md"
+    front_transcript_path = transcripts_dir / front_transcript_filename
+    with open(front_transcript_path, "w", encoding="utf-8") as f:
+        f.write(f"# Card {card_index} - Front Transcript\n\n")
+        f.write(f"**Card ID:** {card_uuid}\n\n")
+        f.write(f"**Original Text:**\n{card.front.text}\n\n")
+        if card.front.image_path:
+            f.write(f"**Image Path:** {card.front.image_path}\n\n")
+        if card.front.image_summary:
+            f.write(f"**Image Summary:** {card.front.image_summary}\n\n")
+        
+        # Debug info for image summary inclusion
+        f.write(f"**Image Summary Debug:**\n")
+        f.write(f"- Has image on front: {card.front.image_path is not None}\n")
+        f.write(f"- Has image on back: {card.back.image_path is not None}\n")
+        f.write(f"- Front image summary: {'Yes' if card.front.image_summary else 'No'}\n")
+        f.write(f"- Back image summary: {'Yes' if card.back.image_summary else 'No'}\n")
+        f.write(f"- Image summary included in transcript: {'Yes' if any(phrase in front_transcript for phrase in ['Image description:', 'image description:']) else 'No'}\n\n")
+        
+        f.write(f"**Generated Transcript:**\n{front_transcript}\n")
+        
+        # Add the actual citation that was added
+        if humanized_citation:
+            f.write(f"\n**Citation Added:** {humanized_citation}\n")
+    
+    # Save back transcript if generated
+    if back_transcript:
+        back_transcript_filename = f"{citation_key}_{card_uuid}_back.md" if citation_key else f"{card_uuid}_back.md"
+        back_transcript_path = transcripts_dir / back_transcript_filename
+        with open(back_transcript_path, "w", encoding="utf-8") as f:
+            f.write(f"# Card {card_index} - Back Transcript\n\n")
+            f.write(f"**Card ID:** {card_uuid}\n\n")
+            f.write(f"**Original Text:**\n{card.back.text if not ('{{c' in card.front.text) else card.front.text}\n\n")
+            if card.back.image_path:
+                f.write(f"**Image Path:** {card.back.image_path}\n\n")
+            if card.back.image_summary:
+                f.write(f"**Image Summary:** {card.back.image_summary}\n\n")
+            f.write(f"**Generated Transcript:**\n{back_transcript}\n")
+    
     # Generate citation audio separately to ensure it's always first
     citation_audio_path = None
     if citation_key and humanized_citation:
         # Generate citation audio that can be reused
         citation_audio_path = audio_dir / f"{citation_key}_citation.mp3"
-        if not citation_audio_path.exists():  # Cache citation audio
-            generate_citation_audio(
+        
+        try:
+            # Always validate existing citation audio, even if cached
+            citation_audio_path = generate_citation_audio(
                 citation_key=citation_key,
                 output_path=citation_audio_path,
                 elevenlabs_api_key=elevenlabs_api_key,
                 voice_id=voice_id,
                 speed=speed,
-                use_cache=True
+                use_cache=True,
+                force_regenerate=force_regenerate_citation
             )
+        except RuntimeError as e:
+            logger.error(f"Failed to generate citation audio for card {card.card_id}: {e}")
+            # Continue without citation audio rather than failing all cards
+            citation_audio_path = None
+            logger.warning(f"Proceeding without citation audio for card {card.card_id}")
     
     # Generate front audio
     front_chunks = chunk_text(front_transcript)
