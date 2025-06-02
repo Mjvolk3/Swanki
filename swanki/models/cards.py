@@ -30,7 +30,7 @@ Examples
 """
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Union
 import uuid
 import logging
 
@@ -82,15 +82,17 @@ class CardContent(BaseModel):
     requires_latex: bool = Field(default=False)
     audio_hint: Optional[str] = Field(None, description="Pronunciation guide for TTS")
     image_path: Optional[str] = Field(None, description="Path to image file for this card side")
+    image_summary: Optional[str] = Field(None, description="Description of the image for audio generation")
     
     @field_validator('text')
-    def validate_cloze_format(cls, v):
-        """Validate cloze deletion format and fix common issues.
+    def validate_text_content(cls, v):
+        """Validate text content for cloze format and forbidden references.
         
-        Ensures proper {{c1::text}} format and converts other cloze numbers to c1.
+        Combines validation for cloze deletion format and reference checking.
         """
         import re
         
+        # First, fix cloze deletion format
         # Fix single braces to double braces for cloze deletions
         if '{c' in v and '{{c' not in v:
             v = re.sub(r'\{c(\d+)::', r'{{c1::', v)
@@ -99,18 +101,85 @@ class CardContent(BaseModel):
         # Convert all cloze numbers (c2, c3, etc.) to c1 for simplicity
         v = re.sub(r'\{\{c\d+::', '{{c1::', v)
         
-        # Ensure all cloze deletions are properly closed
+        # Fix LaTeX/math conflicts within cloze deletions
         if '{{c1::' in v:
-            # Count opening and closing braces
+            # Find all cloze deletions and fix LaTeX conflicts within them
+            def fix_cloze_math_conflicts(match):
+                cloze_content = match.group(1)
+                
+                # Check if this cloze contains LaTeX/math
+                if any(indicator in cloze_content for indicator in ['$', '\\frac', '\\sum', '\\int', '\\begin', '\\end']):
+                    # Fix }} within math expressions by adding space
+                    # This prevents }} in LaTeX from being interpreted as cloze end
+                    # Look for patterns like }{baz}} and change to }{baz} }
+                    cloze_content = re.sub(r'(\})\}(?!\})', r'\1 }', cloze_content)
+                    
+                    # Fix :: within cloze content (e.g., std::variant)
+                    # Add HTML comment to prevent :: from being interpreted as cloze separator
+                    cloze_content = re.sub(r'::(?!})', r':<!-- -->:', cloze_content)
+                
+                return f'{{{{c1::{cloze_content}}}}}'
+            
+            # Apply fixes to all cloze deletions
+            v = re.sub(r'\{\{c1::(.+?)\}\}', fix_cloze_math_conflicts, v, flags=re.DOTALL)
+            
+            # Ensure all cloze deletions are properly closed
             opening_count = v.count('{{c1::')
             closing_count = v.count('}}')
             
             # If we have cloze openings but not enough closings, try to fix
             if opening_count > closing_count:
-                # Find positions where we might be missing closing braces
-                import re
                 # Replace single } with }} at the end of cloze deletions
                 v = re.sub(r'(\{\{c1::[^}]+)\}([^}]|$)', r'\1}}\2', v)
+        
+        # Validate and fix MathJax formatting
+        # Anki uses \( \) for inline and \[ \] for display equations
+        # Convert common LaTeX formats to MathJax
+        if '$' in v:
+            # Convert $...$ to \(...\) for inline math
+            v = re.sub(r'(?<!\$)\$(?!\$)(.+?)\$(?!\$)', r'\\(\1\\)', v)
+            # Convert $$...$$ to \[...\] for display math
+            v = re.sub(r'\$\$(.+?)\$\$', r'\\[\1\\]', v, flags=re.DOTALL)
+            
+        # Convert [latex] tags to proper format
+        if '[latex]' in v or '[$]' in v:
+            # These are for LaTeX image generation, not MathJax
+            # Log warning as MathJax is preferred
+            logger.warning("Card uses LaTeX tags instead of MathJax. Consider using \\(...\\) or \\[...\\] instead.")
+        
+        # Now validate no references
+        # Check for forbidden reference patterns
+        forbidden_patterns = [
+            r'ref\.\s*\[\d+\]',           # ref. [6]
+            r'\[\d+\]',                   # [1], [12]
+            r'reference\s*\[\d+\]',       # reference [6]
+            r'according\s+to\s+\[\d+\]',  # according to [12]
+            r'in\s+\[\d+\]',              # in [6]
+            r'\([A-Za-z]+,?\s*\d{4}\)',  # (Smith, 2023) or (Smith 2023)
+        ]
+        
+        for pattern in forbidden_patterns:
+            if re.search(pattern, v, re.IGNORECASE):
+                raise ValueError(
+                    f"Text contains forbidden reference pattern: {pattern}. "
+                    "Cards must be self-contained without external references."
+                )
+        
+        # Check for vague references
+        vague_patterns = [
+            (r'^What.*?in\s+this\s+framework\?', 'Specify which framework'),
+            (r'^How.*?the\s+model\s+', 'Specify which model'),
+            (r'^What.*?this\s+approach\s+', 'Specify which approach'),
+            (r'the\s+framework\s+in\s+ref\.', 'Remove reference number'),
+            (r'the\s+method\s+in\s+\[', 'Remove reference number'),
+        ]
+        
+        for pattern, message in vague_patterns:
+            if re.search(pattern, v, re.IGNORECASE):
+                raise ValueError(
+                    f"Text is too vague: '{message}'. "
+                    "Cards must specify exactly what they're referring to."
+                )
         
         return v
 
@@ -228,6 +297,7 @@ class PlainCard(BaseModel):
         if not self.card_id:
             self.card_id = str(uuid.uuid4())
         return self
+    
     
     def validate_audio_match(self) -> bool:
         """Validate that audio transcripts match card content.
@@ -423,6 +493,56 @@ class PlainCard(BaseModel):
                 md += f"#{', #'.join(formatted_tags)}\n\n"
         
         return md
+
+
+class ImageCardContent(CardContent):
+    """Content for image cards that requires an image summary.
+    
+    Extends CardContent to make image_summary required for cards
+    that will have images attached.
+    """
+    image_summary: str = Field(..., min_length=10, description="Required description of the image for accessibility")
+    
+    @field_validator('image_summary')
+    def validate_image_summary(cls, v):
+        """Ensure image summary is meaningful."""
+        if len(v.split()) < 5:
+            raise ValueError("Image summary must be at least 5 words to be meaningful")
+        return v
+
+
+class ImageCard(BaseModel):
+    """Flashcard specifically for image-based content.
+    
+    Ensures that cards with images always have proper summaries
+    for accessibility and audio generation.
+    """
+    front: Union[ImageCardContent, CardContent]
+    back: Union[ImageCardContent, CardContent] 
+    tags: List[str] = Field(default_factory=list, min_length=1)
+    difficulty: Literal["easy", "medium", "hard"] = "medium"
+    card_id: Optional[str] = Field(None)
+    
+    @model_validator(mode='after')
+    def ensure_at_least_one_image_summary(self):
+        """Ensure at least one side has an image summary."""
+        front_has_summary = isinstance(self.front, ImageCardContent) or (hasattr(self.front, 'image_summary') and self.front.image_summary)
+        back_has_summary = isinstance(self.back, ImageCardContent) or (hasattr(self.back, 'image_summary') and self.back.image_summary)
+        
+        if not (front_has_summary or back_has_summary):
+            raise ValueError("Image cards must have an image summary on at least one side")
+        
+        return self
+    
+    def to_plain_card(self) -> PlainCard:
+        """Convert to PlainCard for compatibility."""
+        return PlainCard(
+            front=self.front,
+            back=self.back,
+            tags=self.tags,
+            difficulty=self.difficulty,
+            card_id=self.card_id
+        )
 
 
 class CardGenerationResponse(BaseModel):

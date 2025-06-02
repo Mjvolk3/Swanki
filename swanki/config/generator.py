@@ -65,12 +65,17 @@ class ConfigGenerator:
     DEFAULT_CONFIG_DIR = Path(".swanki_config")
     
     @classmethod
-    def ensure_configs(cls) -> Path:
+    def ensure_configs(cls, interactive: bool = True) -> Path:
         """Ensure config directory exists with all defaults.
         
         Creates the configuration directory and generates all default
         configuration files if they don't already exist. Called automatically
         by the CLI before Hydra initialization.
+        
+        Parameters
+        ----------
+        interactive : bool, optional
+            Whether to prompt user when creating configs (default is True)
         
         Returns
         -------
@@ -86,9 +91,53 @@ class ConfigGenerator:
         config_dir = Path.cwd() / cls.DEFAULT_CONFIG_DIR
         
         if not config_dir.exists():
-            print(f"Creating default configs at {config_dir}")
+            print(f"\n{'='*60}")
+            print("FIRST TIME SETUP: No configuration found")
+            print(f"{'='*60}")
+            print(f"\nSwanki needs to create default configuration files at:")
+            print(f"  {config_dir}")
+            print("\nThese configs control:")
+            print("  - Number of cards generated per page")
+            print("  - Audio generation settings (speed, voice)")
+            print("  - LLM model selection")
+            print("  - Anki integration options")
+            print("  - Output formats and organization")
+            
+            if interactive:
+                print(f"\n{'='*60}")
+                response = input("\nCreate configs and continue with defaults? [Y/n]: ").strip().lower()
+                
+                if response and response not in ['y', 'yes', '']:
+                    print("\nConfiguration cancelled. You can manually create configs at:")
+                    print(f"  {config_dir}")
+                    print("\nOr run the command again to use defaults.")
+                    import sys
+                    sys.exit(0)
+            
+            print(f"\nCreating default configurations...")
             config_dir.mkdir(parents=True, exist_ok=True)
             cls._generate_all_defaults(config_dir)
+            
+            print(f"\n✓ Default configurations created successfully!")
+            print(f"\nYou can customize these settings by editing files in:")
+            print(f"  {config_dir}/")
+            print(f"\nKey config files:")
+            print(f"  - pipeline/default.yaml  : Card generation settings")
+            print(f"  - prompts/default.yaml   : LLM prompts")
+            print(f"  - audio/default.yaml     : Audio generation options")
+            print(f"  - anki/default.yaml      : Anki integration")
+            
+            if interactive:
+                print(f"\n{'='*60}")
+                response = input("\nProceed with default settings? [Y/n]: ").strip().lower()
+                
+                if response and response not in ['y', 'yes', '']:
+                    print("\nExiting. Please review and customize the configs, then run your command again.")
+                    print(f"Config location: {config_dir}/")
+                    import sys
+                    sys.exit(0)
+            
+            print(f"\nContinuing with default configurations...\n")
         
         return config_dir
     
@@ -217,9 +266,24 @@ Document content:
 
 Image summaries:
 {image_summaries}""",
-                    "image_summary": """Describe this image in 2-3 sentences.
-Focus on what information it conveys and its relevance.
-If it contains equations or data, describe them clearly."""
+                    "image_summary": """Provide a comprehensive description of this image for audio-only learners.
+
+Instructions:
+1. Describe the overall structure and layout of the image (4-6 sentences)
+2. Detail all key components, labels, and relationships shown
+3. If it contains equations, describe them precisely using natural language
+4. If it shows a process or flow, describe the sequence and connections
+5. Include any text labels, annotations, or legends
+6. Describe visual elements that convey meaning (arrows, colors, shapes)
+7. DO NOT interpret or explain what the image means - just describe what is shown
+
+The description should be detailed enough that someone listening to audio only can understand:
+- What type of visual it is (graph, diagram, flowchart, etc.)
+- What elements are present and how they're arranged
+- What relationships or processes are depicted
+- Any mathematical or technical notation shown
+
+Aim for 6-10 sentences that paint a complete picture without revealing answers to potential questions."""
                 },
                 "cards": {
                     "system": "You are an expert at creating educational flashcards. Your ONLY job is to create the EXACT number of cards requested. You MUST create BOTH regular Q&A cards AND cloze deletion cards as specified. Count carefully and ensure you generate the exact numbers requested.",
@@ -238,67 +302,124 @@ Technical terms: {technical_terms}
 Content:
 {content}
 
+CRITICAL RULE: CARDS MUST BE SELF-CONTAINED
+Every card must contain ALL information needed to understand and answer it. Students will NOT have access to:
+- The original paper or document
+- Other papers or references
+- Figures, tables, or diagrams (unless embedded in the card)
+- Previous or subsequent cards
+- Any external context
+
+FORBIDDEN CONTENT - NEVER CREATE CARDS WITH:
+- References to other papers: "According to Smith et al. [12]..." or "As shown in reference [7]..."
+- ANY reference numbers: "ref. [6]", "[1]", "(Smith, 2023)", "the framework in [6]"
+- Figure/table references: "Figure 3 shows..." or "As seen in Table 2..."
+- Context-dependent phrases: "The above equation...", "This method...", "The aforementioned..."
+- Vague referents: "this framework", "the model", "this approach" (without explaining WHAT framework/model/approach)
+- LaTeX tables (\\\\begin{{tabular}}) - they don't render properly in Anki
+- External citations that students can't access
+
+CRITICAL: If the content mentions "ref. [X]" or "framework in [Y]", you MUST:
+1. Extract the actual innovation/method being described
+2. Describe it directly without the reference number
+3. Make the card about the concept itself, not about who proposed it
+
+EXAMPLE TRANSFORMATIONS:
+❌ BAD: "What innovation did the framework in ref. [6] introduce?"
+✓ GOOD: "What innovation transformed discrete DAG optimization into continuous optimization?"
+
+❌ BAD: "According to [12], what is the complexity of the algorithm?"
+✓ GOOD: "What is the time complexity of learning Bayesian network structures?"
+
+❌ BAD: "How does the method in ref. [8] differ from previous approaches?"
+✓ GOOD: "How does continuous optimization for DAG learning differ from combinatorial approaches?"
+
+BAD EXAMPLES TO AVOID:
+❌ "What transformation is applied in this framework?" (WHAT framework?)
+❌ "How does the model handle missing data?" (WHAT model?)
+❌ "What is the advantage of this approach?" (WHAT approach?)
+
+GOOD EXAMPLES:
+✓ "What transformation is applied in the causal inference framework that combines DAGs with deep learning?"
+✓ "How does the multi-layer perceptron model handle missing data in the feature matrix?"
+✓ "What is the advantage of combining causal inference with deep learning for dimensionality reduction?"
+
 CLOZE DELETION CARD FORMAT (YOU MUST CREATE {num_cloze} OF THESE):
-## [Statement with {{c1::hidden text}} that tests understanding]
+## [Self-contained statement with {{c1::hidden text}} that tests understanding]
 
 - #tag1, #tag2
 
 IMPORTANT CLOZE RULES:
-- Hide meaningful concepts, definitions, or formulas
-- NEVER hide reference numbers (e.g., NOT "ref. {{c1::6}}")
-- NEVER hide specific years unless they are historically significant
-- NEVER hide arbitrary numbers or identifiers
-- Focus on hiding information that tests understanding, not memorization
+- Hide meaningful concepts, definitions, or key terms
+- For equations: Hide PARTS of equations, not entire equations
+- Make cards educational - test understanding, not memorization
+- Each card must stand alone without external context
 
-Example GOOD cloze cards you MUST follow:
-## The gradient of $f(x) = x^2$ is {{c1::$2x$}}, which represents the {{c2::rate of change}}.
+Example GOOD cloze cards:
+## The gradient of \\(f(x) = x^2\\) is {{c1::$2x$}}, which represents the {{c2::rate of change}}.
 
 - #calculus.derivatives, #mathematics
 
-## In machine learning, the {{c1::loss function}} measures the {{c2::difference between predicted and actual values}}.
-
-- #machine-learning.fundamentals, #optimization
-
-## {{c1::Bayesian networks}} encode conditional independencies using {{c2::directed acyclic graphs (DAGs)}}.
+## In Bayesian networks, conditional dependencies are represented by {{c1::directed edges}} in a {{c2::directed acyclic graph (DAG)}}.
 
 - #bayesian-networks, #graphical-models
 
+## The expectation \\(E[X_j \\mid X_{pa(j)}]\\) can be expressed as {{c1::$g_j(f_j(X))$}} where {{c2::$g_j$ and $f_j$ are learned functions}}.
+
+- #statistics, #conditional-expectation
+
 Example BAD cloze cards to AVOID:
-- "The paper in ref. {{c1::6}} showed..." (Don't hide reference numbers)
-- "In {{c1::2023}}, researchers found..." (Don't hide arbitrary years)
-- "Algorithm {{c1::3}} performs better..." (Don't hide arbitrary identifiers)
+- "According to [12], the algorithm is {{c1::efficient}}" (References external paper)
+- "The original constraints are replaced by {{c1::continuous equality}}" (What original constraints?)
+- "As shown in Figure 3, performance {{c1::improves}}" (No access to Figure 3)
+- "{{c1::$E[X_j \\mid X_{pa(j)}] = g_j(f_j(X))$}}" (Don't hide entire equations)
 
 REGULAR Q&A CARD FORMAT (YOU MUST CREATE {num_cards} OF THESE):
-## [Question that asks about a concept]
+## [Self-contained question that provides all necessary context]
 
-[Answer that explains the concept]
+[Complete answer that doesn't reference external content]
 
 - #tag1, #tag2
 
-Example regular cards:
+Example GOOD regular cards:
 ## What is the time complexity of quicksort in the average case?
 
-The average case time complexity of quicksort is O(n log n), where n is the number of elements to sort.
+The average case time complexity of quicksort is O(n log n), where n is the number of elements to sort. This assumes random pivot selection and balanced partitions.
 
 - #algorithms.sorting, #complexity-analysis
 
-## How does gradient descent find the minimum of a function?
+## How does gradient descent minimize a loss function?
 
-Gradient descent iteratively moves in the direction opposite to the gradient, taking steps proportional to the negative of the gradient at the current point.
+Gradient descent iteratively updates parameters by moving in the direction opposite to the gradient. At each step, it computes the gradient of the loss function and updates parameters: θ = θ - α∇L(θ), where α is the learning rate.
 
 - #optimization, #machine-learning.algorithms
+
+Example BAD regular cards to AVOID:
+## According to the paper, what is the main contribution?
+
+(Bad - which paper? Students don't have access to it)
+
+## What does Table 3 show about performance?
+
+(Bad - students can't see Table 3)
 
 CRITICAL REQUIREMENTS:
 1. YOU MUST generate EXACTLY {num_cloze} cloze deletion cards (with {{c1::...}} syntax)
 2. YOU MUST generate EXACTLY {num_cards} regular Q&A cards
-3. EVERY card MUST have AT LEAST 2 meaningful tags on the "- #tag1, #tag2" line
-4. Tags should be hierarchical when appropriate (e.g., #biology.genetics, #algorithms.sorting)
-5. Never start the question with the citation - it will be added automatically
-6. Focus on mathematical equations and formulas when present
-7. NEVER use references like "ref.", "[12]", "according to" - be specific
-8. Use LaTeX with $ for inline math
-9. For cloze cards: Hide concepts/definitions, NOT reference numbers or arbitrary identifiers
-10. Make cloze deletions educational - test understanding, not rote memorization
+3. EVERY card MUST be completely self-contained - no external references
+4. EVERY card MUST have AT LEAST 2 meaningful tags on the "- #tag1, #tag2" line
+5. Tags should be hierarchical when appropriate (e.g., #algorithms.sorting, #optimization.gradient-based)
+6. Never start the question with the citation - it will be added automatically
+7. Focus on mathematical equations and formulas when present
+8. Use MathJax format: \\(...\\) for inline math, \\[...\\] for display math
+9. NEVER use $ or $$ delimiters - Anki uses \\( \\) and \\[ \\]
+10. NEVER use LaTeX tables (\\\\begin{{tabular}})
+11. For cloze cards with math: If }} appears in your LaTeX, add a space before it
+    Example: {{c1::The formula \\(\\frac{a}{\\frac{b}{c} }\\) shows...}} (note the space before })
+12. For cloze cards with :: in content: Use HTML comment
+    Example: {{c1::std:<!-- -->:variant is a C++ feature}}
+13. For equations in cloze cards: hide parts, not whole equations
+14. Each card must teach a concept, not test memorization of references
 
 Start generating cards now. First generate all {num_cloze} cloze cards, then generate all {num_cards} regular cards."""
                 },

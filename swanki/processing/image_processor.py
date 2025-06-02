@@ -150,7 +150,8 @@ class ImageProcessor:
         """
         # Create output directories
         self.image_summaries_dir.mkdir(parents=True, exist_ok=True)
-        self.images_dir.mkdir(parents=True, exist_ok=True)
+        # Only create images_dir if we actually need to download images
+        # self.images_dir.mkdir(parents=True, exist_ok=True)  # Removed to prevent empty directory
         
         # Get all markdown files
         md_files = sorted(self.clean_md_singles_dir.glob("*.md"))
@@ -413,6 +414,9 @@ Keep the summary concise but informative (2-4 sentences)."""
                                 ext = '.png'
                             elif 'gif' in content_type:
                                 ext = '.gif'
+                        
+                        # Create images directory only when we actually need to save an image
+                        self.images_dir.mkdir(parents=True, exist_ok=True)
                         
                         # Save locally
                         filename = f"image_{image_info['source_file']}_{idx}{ext}"
