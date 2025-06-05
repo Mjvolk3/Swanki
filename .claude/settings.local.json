@@ -6,7 +6,8 @@
       "Read(*.txt)",
       "Write(*.py)",
       "Bash(mkdir:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Grep(*.py)"
     ]
   },
   "enableAllProjectMcpServers": false

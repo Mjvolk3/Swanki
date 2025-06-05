@@ -15,3 +15,7 @@ Example
 ## Pydantic Models
 
 - We want to use pydantic models to structure output as much as possible as opposed to controlling output by changing prompts.
+
+## Files
+
+- Don't Ever 

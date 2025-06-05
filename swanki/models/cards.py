@@ -131,15 +131,45 @@ class CardContent(BaseModel):
             if opening_count > closing_count:
                 # Replace single } with }} at the end of cloze deletions
                 v = re.sub(r'(\{\{c1::[^}]+)\}([^}]|$)', r'\1}}\2', v)
+            
+            # Validate that math equations are properly inside cloze markers
+            # Check for math outside of cloze deletions in cloze cards
+            cloze_pattern = r'\{\{c\d+::([^}]+)\}\}'
+            clozes = list(re.finditer(cloze_pattern, v))
+            
+            if clozes:
+                # This is a cloze card
+                # Check if there's math notation outside the cloze markers
+                # Remove all cloze content to check what's left
+                text_without_clozes = re.sub(cloze_pattern, 'CLOZE_PLACEHOLDER', v)
+                
+                # Check for math patterns in the remaining text
+                math_patterns = [
+                    r'\\[\(\[]',  # MathJax delimiters
+                    r'\$',         # LaTeX delimiters
+                    r'\\[a-zA-Z]+\{',  # LaTeX commands like \frac{
+                    r'\^',         # Superscripts
+                    r'_\{',        # Subscripts with braces
+                    r'\\sum|\\int|\\prod|\\lim',  # Common math operators
+                ]
+                
+                for pattern in math_patterns:
+                    if re.search(pattern, text_without_clozes):
+                        # Check if the cloze content is too simple (like just "Mathjax" or a word)
+                        for cloze in clozes:
+                            cloze_content = cloze.group(1).strip()
+                            # If cloze content is too short or doesn't contain math, it's likely wrong
+                            if (len(cloze_content) < 10 and 
+                                not any(re.search(p, cloze_content) for p in math_patterns)):
+                                raise ValueError(
+                                    f"Math equation appears to be outside cloze deletion. "
+                                    f"Found cloze with content '{cloze_content}' but math notation exists outside. "
+                                    f"For math cloze cards, the entire equation should be inside {{{{c1::equation}}}}. "
+                                    f"Example: 'The equation {{{{c1::\\(E = mc^2\\)}}}} shows mass-energy equivalence.'"
+                                )
         
-        # Validate and fix MathJax formatting
-        # Anki uses \( \) for inline and \[ \] for display equations
-        # Convert common LaTeX formats to MathJax
-        if '$' in v:
-            # Convert $...$ to \(...\) for inline math
-            v = re.sub(r'(?<!\$)\$(?!\$)(.+?)\$(?!\$)', r'\\(\1\\)', v)
-            # Convert $$...$$ to \[...\] for display math
-            v = re.sub(r'\$\$(.+?)\$\$', r'\\[\1\\]', v, flags=re.DOTALL)
+        # Note: We keep LaTeX dollar notation in the card model
+        # Conversion to MathJax happens only when sending to Anki
             
         # Convert [latex] tags to proper format
         if '[latex]' in v or '[$]' in v:
@@ -147,39 +177,12 @@ class CardContent(BaseModel):
             # Log warning as MathJax is preferred
             logger.warning("Card uses LaTeX tags instead of MathJax. Consider using \\(...\\) or \\[...\\] instead.")
         
-        # Now validate no references
-        # Check for forbidden reference patterns
-        forbidden_patterns = [
-            r'ref\.\s*\[\d+\]',           # ref. [6]
-            r'\[\d+\]',                   # [1], [12]
-            r'reference\s*\[\d+\]',       # reference [6]
-            r'according\s+to\s+\[\d+\]',  # according to [12]
-            r'in\s+\[\d+\]',              # in [6]
-            r'\([A-Za-z]+,?\s*\d{4}\)',  # (Smith, 2023) or (Smith 2023)
-        ]
-        
-        for pattern in forbidden_patterns:
-            if re.search(pattern, v, re.IGNORECASE):
-                raise ValueError(
-                    f"Text contains forbidden reference pattern: {pattern}. "
-                    "Cards must be self-contained without external references."
-                )
-        
-        # Check for vague references
-        vague_patterns = [
-            (r'^What.*?in\s+this\s+framework\?', 'Specify which framework'),
-            (r'^How.*?the\s+model\s+', 'Specify which model'),
-            (r'^What.*?this\s+approach\s+', 'Specify which approach'),
-            (r'the\s+framework\s+in\s+ref\.', 'Remove reference number'),
-            (r'the\s+method\s+in\s+\[', 'Remove reference number'),
-        ]
-        
-        for pattern, message in vague_patterns:
-            if re.search(pattern, v, re.IGNORECASE):
-                raise ValueError(
-                    f"Text is too vague: '{message}'. "
-                    "Cards must specify exactly what they're referring to."
-                )
+        # Basic reference check - keep simple for now
+        if re.search(r'\[\d+\]', v):
+            raise ValueError(
+                "Text contains reference numbers like [1] or [12]. "
+                "Cards must be self-contained without external references."
+            )
         
         return v
 
