@@ -135,8 +135,47 @@ def generate_card_transcript(
         
         # For cloze cards on front, explicitly replace the cloze markers with "blank"
         if is_cloze:
-            # Replace all cloze patterns {{c1::text}}, {{c2::text}}, etc. with "blank"
-            content = re.sub(r'\{\{c\d+::([^}]+)\}\}', 'blank', content)
+            
+            # Use a more sophisticated approach to handle nested braces in math
+            # First, let's handle the cloze deletions properly by matching balanced braces
+            
+            def replace_all_cloze_with_blank(text):
+                """Replace all cloze deletions with 'blank', handling nested braces."""
+                result = text
+                # Keep replacing until no more cloze markers are found
+                while '{{c' in result:
+                    # Find the start of the next cloze
+                    start = result.find('{{c')
+                    if start == -1:
+                        break
+                    
+                    # Find the digit and ::
+                    colon_pos = result.find('::', start)
+                    if colon_pos == -1:
+                        break
+                    
+                    # Now find the matching closing braces
+                    # Start after the ::
+                    pos = colon_pos + 2
+                    brace_count = 2  # We already have {{ open
+                    
+                    while pos < len(result) and brace_count > 0:
+                        if result[pos] == '{':
+                            brace_count += 1
+                        elif result[pos] == '}':
+                            brace_count -= 1
+                        pos += 1
+                    
+                    # Replace the entire cloze with 'blank'
+                    if brace_count == 0:
+                        result = result[:start] + 'blank' + result[pos:]
+                    else:
+                        # Malformed cloze, just break to avoid infinite loop
+                        break
+                
+                return result
+            
+            content = replace_all_cloze_with_blank(content)
         
         # Remove any existing citation to work with clean content
         if citation_key and content.startswith(f"@{citation_key}: "):
@@ -149,8 +188,42 @@ def generate_card_transcript(
             # For cloze cards, read the FULL front text but with cloze markers removed
             # This reveals what was hidden
             content = card.front.text
+            
             # Remove the cloze markers to reveal the hidden text
-            content = re.sub(r'\{\{c\d+::([^}]+)\}\}', r'\1', content)
+            # Need to handle nested braces in LaTeX properly
+            def remove_cloze_markers(match):
+                # Extract the content, handling potential nested braces
+                cloze_content = match.group(1)
+                # Count braces to ensure we get the complete content
+                brace_count = 0
+                complete_content = cloze_content
+                remaining = match.string[match.end():]
+                
+                # Check if we have unclosed braces
+                for char in cloze_content:
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                
+                # If we have unclosed braces, we need to continue reading
+                if brace_count > 0:
+                    for i, char in enumerate(remaining):
+                        complete_content += char
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == -2:  # We've found the closing }}
+                                # Remove the extra } we added
+                                complete_content = complete_content[:-1]
+                                break
+                
+                return complete_content
+            
+            # Use more sophisticated replacement that handles nested braces
+            content = re.sub(r'\{\{c\d+::(.+?)\}\}(?!\})', remove_cloze_markers, content, flags=re.DOTALL)
+            
             # Debug log to verify cloze removal
             if "blank" in content.lower():
                 logger.warning(f"'blank' found in cloze back content after processing: {content[:100]}...")
@@ -174,43 +247,43 @@ def generate_card_transcript(
     has_image = (card.front.image_path is not None) or (card.back.image_path is not None)
     
     # Log detailed debugging info
-    logger.info(f"Card {card.card_id} - Audio generation debug:")
-    logger.info(f"  Is front: {is_front}")
-    logger.info(f"  Has image: {has_image}")
-    logger.info(f"  Front image path: {card.front.image_path}")
-    logger.info(f"  Back image path: {card.back.image_path}")
-    logger.info(f"  Front image summary: {card.front.image_summary}")
-    logger.info(f"  Back image summary: {card.back.image_summary}")
+    logger.debug(f"Card {card.card_id} - Audio generation debug:")
+    logger.debug(f"  Is front: {is_front}")
+    logger.debug(f"  Has image: {has_image}")
+    logger.debug(f"  Front image path: {card.front.image_path}")
+    logger.debug(f"  Back image path: {card.back.image_path}")
+    logger.debug(f"  Front image summary: {card.front.image_summary}")
+    logger.debug(f"  Back image summary: {card.back.image_summary}")
     
     if is_front and has_image:
         # For front audio, ONLY include image summary if image is on the FRONT
         if card.front.image_path and card.front.image_summary:
             image_summary = f"Image description: {card.front.image_summary}. "
-            logger.info(f"  Using front image summary for front audio")
+            logger.debug(f"  Using front image summary for front audio")
         else:
             # If no summary but has image, note that
-            logger.warning(f"Card {card.card_id} has image but no summary for audio")
+            logger.debug(f"Card {card.card_id} has image but no summary for audio")
             # Log more details for debugging
-            logger.warning(f"  Front image path: {card.front.image_path}")
-            logger.warning(f"  Back image path: {card.back.image_path}")
-            logger.warning(f"  Front summary: {card.front.image_summary}")
-            logger.warning(f"  Back summary: {card.back.image_summary}")
+            logger.debug(f"  Front image path: {card.front.image_path}")
+            logger.debug(f"  Back image path: {card.back.image_path}")
+            logger.debug(f"  Front summary: {card.front.image_summary}")
+            logger.debug(f"  Back summary: {card.back.image_summary}")
         
         # Prepend image summary to content for natural flow
         if image_summary:
             content = image_summary + content
             image_summary_included = True
-            logger.info(f"Card {card.card_id}: Including image summary in front audio")
-            logger.info(f"  Final content preview: {content[:100]}...")
+            logger.debug(f"Card {card.card_id}: Including image summary in front audio")
+            logger.debug(f"  Final content preview: {content[:100]}...")
         else:
-            logger.info(f"  No image summary included in front audio")
+            logger.debug(f"  No image summary included in front audio")
     elif not is_front:
         # For back audio, only include if image is specifically on back
         if card.back.image_path and card.back.image_summary:
             image_summary = f"\\n\\nImage description: {card.back.image_summary}"
             content = content + image_summary
             image_summary_included = True
-            logger.info(f"  Including back image summary in back audio")
+            logger.debug(f"  Including back image summary in back audio")
     
     # NOW add citation prefix after image summary has been included
     if (is_front or (not is_front and is_cloze)) and (citation_key or humanized_citation):
@@ -224,16 +297,16 @@ def generate_card_transcript(
     has_images = bool(re.search(r'!\[.*?\]\(.*?\)', content)) or image_summary_included
     
     # Log what's happening for debugging
-    logger.info(f"Card {card.card_id} - Processing decision:")
-    logger.info(f"  Has math: {has_math}")
-    logger.info(f"  Has images: {has_images}")
-    logger.info(f"  Image summary included: {image_summary_included}")
-    logger.info(f"  Content preview: {content[:200]}...")
+    logger.debug(f"Card {card.card_id} - Processing decision:")
+    logger.debug(f"  Has math: {has_math}")
+    logger.debug(f"  Has images: {has_images}")
+    logger.debug(f"  Image summary included: {image_summary_included}")
+    logger.debug(f"  Content preview: {content[:200]}...")
     
     # If no special content (math or images), use text directly with minimal processing
     # But ONLY if we don't have an image summary that needs proper formatting
     if not has_math and not has_images:
-        logger.warning(f"Card {card.card_id}: Taking simple path - image summary may be lost!")
+        logger.debug(f"Card {card.card_id}: Taking simple path - image summary may be lost!")
         # Just clean up the text for TTS
         transcript = content
         # Convert some basic markdown to spoken form
@@ -293,13 +366,16 @@ def generate_card_transcript(
                 "- X^{-1} as 'X inverse' not 'X to the power of minus one'\n"
                 "- X^T as 'X transpose'\n"
                 "- (I - W^T) as 'I minus W transpose'\n"
+                "- (I - W^T)^{-1} as 'the inverse of I minus W transpose'\n"
                 "- f_2((I - W^T)^{-1}) as 'f two of the inverse of I minus W transpose'\n"
                 "- g_j(f_j(X)) as 'g sub j of f sub j of X'\n"
+                "- F(W) as 'F of W'\n"
                 "- \\mid or | as 'given' in conditional expressions\n"
                 "- \\text{} contents should be read normally\n"
                 "- Matrix notation: X_1 to X_6 as 'X one to X six'\n"
                 "- \\sum as 'sum', \\prod as 'product', \\int as 'integral'\n"
                 "- Greek letters: \\alpha as 'alpha', \\beta as 'beta', etc.\n"
+                "- Parentheses in math: read naturally, e.g., \\(F(W)\\) as 'F of W'\n"
                 "\n"
                 "Remember: This is a QUESTION only - do not provide the answer!"
             )
@@ -310,8 +386,19 @@ def generate_card_transcript(
                 "This is the ANSWER that reveals what was hidden in the blanks. "
                 "IMPORTANT: The text has already been processed to remove cloze markers. "
                 "Do NOT say 'blank' - read all the words that are present. "
-                "Read it as a complete statement with all words revealed. "
-                "For mathematical expressions, read them naturally as a mathematician would."
+                "Read it as a complete statement with all words revealed.\n\n"
+                "CRITICAL: Convert ALL mathematical notation to spoken form:\n"
+                "- \\(F(W)\\) → 'F of W'\n"
+                "- \\(h(W)=0\\) → 'h of W equals zero'\n" 
+                "- \\(E[X_j \\mid X_{pa(j)}]\\) → 'expected value of X sub j given X sub parent of j'\n"
+                "- \\(g_j(f_j(X))\\) → 'g sub j of f sub j of X'\n"
+                "- \\(\\mathbb{E}[X_j \\mid X_{pa(j)}]\\) → 'expected value of X sub j given X sub parent of j'\n"
+                "- Any expression like \\(...\\) or $...$ MUST be converted to words\n"
+                "- NEVER output raw LaTeX like '\\(F(W)\\)' - always convert to words\n\n"
+                "General rules:\n"
+                "- Subscripts: X_j as 'X sub j'\n"
+                "- Superscripts: X^2 as 'X squared', X^{-1} as 'X inverse'\n"
+                "- Greek letters: \\alpha as 'alpha', \\beta as 'beta', etc.\n"
             )
         else:
             system_content = (
@@ -630,7 +717,7 @@ def generate_citation_audio(
     humanized = humanize_citation_key(citation_key)
     
     # Log the humanized citation for debugging
-    logger.info(f"Citation audio generation: '{citation_key}' -> '{humanized}'")
+    logger.debug(f"Citation audio generation: '{citation_key}' -> '{humanized}'")
     
     # Check if we need to validate existing cache
     if use_cache and not force_regenerate and output_path.exists():
@@ -649,7 +736,7 @@ def generate_citation_audio(
     last_error = None
     for attempt in range(max_retries):
         try:
-            logger.info(f"Generating citation audio (attempt {attempt + 1}/{max_retries})")
+            logger.debug(f"Generating citation audio (attempt {attempt + 1}/{max_retries})")
             
             # Generate audio
             text_to_speech(
@@ -662,7 +749,7 @@ def generate_citation_audio(
             
             # Validate the generated file
             if _validate_audio_file(output_path, min_file_size, humanized):
-                logger.info(f"Successfully generated citation audio: {output_path}")
+                logger.debug(f"Successfully generated citation audio: {output_path}")
                 return output_path
             else:
                 logger.warning(f"Generated audio failed validation (attempt {attempt + 1})")
@@ -830,6 +917,16 @@ def generate_summary_audio(
     
     transcript = response.choices[0].message.content.strip()
     
+    # Save transcript for debugging/editing
+    transcripts_dir = output_path.parent / "summary_transcript"
+    transcripts_dir.mkdir(exist_ok=True)
+    transcript_path = transcripts_dir / f"{output_path.stem}_transcript.md"
+    with open(transcript_path, "w", encoding="utf-8") as f:
+        f.write(f"# Summary Audio Transcript\n\n")
+        if citation_key:
+            f.write(f"**Citation Key:** {citation_key}\n\n")
+        f.write(f"**Generated Transcript:**\n\n{transcript}\n")
+    
     # Generate audio
     chunks = chunk_text(transcript)
     if len(chunks) == 1:
@@ -950,6 +1047,16 @@ def generate_reading_audio(
         transcript_chunks.append(response.choices[0].message.content.strip())
     
     full_transcript = "\n\n".join(transcript_chunks)
+    
+    # Save transcript for debugging/editing
+    transcripts_dir = output_path.parent / "full_read"
+    transcripts_dir.mkdir(exist_ok=True)
+    transcript_path = transcripts_dir / f"{output_path.stem}_transcript.md"
+    with open(transcript_path, "w", encoding="utf-8") as f:
+        f.write(f"# Full Reading Audio Transcript\n\n")
+        if citation_key:
+            f.write(f"**Citation Key:** {citation_key}\n\n")
+        f.write(f"**Generated Transcript:**\n\n{full_transcript}\n")
     
     # Generate audio in chunks
     audio_chunks = chunk_text(full_transcript, max_chars=2000)  # Smaller chunks for long content
@@ -1130,6 +1237,16 @@ Content to present:
     # Combine transcript chunks
     full_transcript = "\n\n".join(transcript_chunks)
     
+    # Save transcript for debugging/editing
+    transcripts_dir = output_path.parent / "lecture_transcript"
+    transcripts_dir.mkdir(exist_ok=True)
+    transcript_path = transcripts_dir / f"{output_path.stem}_transcript.md"
+    with open(transcript_path, "w", encoding="utf-8") as f:
+        f.write(f"# Lecture Audio Transcript\n\n")
+        if citation_key:
+            f.write(f"**Citation Key:** {citation_key}\n\n")
+        f.write(f"**Generated Transcript:**\n\n{full_transcript}\n")
+    
     # Generate audio in smaller chunks for stability
     audio_chunks = chunk_text(full_transcript, max_chars=2000)
     chunk_paths = []
@@ -1237,7 +1354,7 @@ def generate_card_audio(
     
     # Log the humanized citation for debugging
     if humanized_citation:
-        logger.info(f"Card {card.card_id} - Using humanized citation: '{humanized_citation}' (from '{citation_key}')")
+        logger.debug(f"Card {card.card_id} - Using humanized citation: '{humanized_citation}' (from '{citation_key}')")
     
     # Generate transcripts WITHOUT citation for the main content
     # We'll add citation audio separately to ensure it's always first
@@ -1273,7 +1390,7 @@ def generate_card_audio(
     back_path = audio_dir / back_filename
     
     # Save transcripts to markdown files for debugging
-    transcripts_dir = audio_dir.parent / "audio-transcripts"
+    transcripts_dir = audio_dir.parent / "complementary_transcripts"
     transcripts_dir.mkdir(exist_ok=True)
     
     # Save front transcript

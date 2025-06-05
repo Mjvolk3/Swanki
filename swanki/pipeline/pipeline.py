@@ -45,6 +45,8 @@ import subprocess
 import logging
 import re
 from dotenv import load_dotenv
+from tenacity import Retrying, stop_after_attempt, wait_exponential, retry_if_exception_type
+from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -616,7 +618,15 @@ Image summaries:
         content that spans multiple pages, improving coherence.
         """
         all_cards = []
-
+        
+        # Handle case where window_size is larger than available files
+        if window_size > len(markdown_files):
+            logger.warning(f"Window size ({window_size}) is larger than number of files ({len(markdown_files)}). Using all available files.")
+            window_size = len(markdown_files)
+        
+        # Ensure we generate at least one window
+        num_windows = max(1, (len(markdown_files) - window_size) // skip + 1)
+        
         for i in range(0, len(markdown_files) - window_size + 1, skip):
             window_files = markdown_files[i : i + window_size]
 
@@ -642,13 +652,10 @@ Image summaries:
             ).replace('{technical_terms}', str(doc_summary.technical_terms)
             ).replace('{content}', combined_content)
             
-            print(f"\n=== CARD GENERATION PROMPT ===")
-            print(f"Requesting {num_cards * len(window_files)} regular cards and {processing_config.get('cloze_cards_per_page', 2) * len(window_files)} cloze cards")
-            print(f"First 500 chars of prompt: {actual_prompt[:500]}...")
-            print("=== END PROMPT ===\n")
+            # Debug logging removed for cleaner output
+            logger.debug(f"Requesting {num_cards * len(window_files)} regular cards and {processing_config.get('cloze_cards_per_page', 2) * len(window_files)} cloze cards")
             
             # Generate regular cards first
-            print("Generating regular Q&A cards...")
             regular_prompt = f"""Generate EXACTLY {num_cards * len(window_files)} regular Q&A flashcards from this content.
 
 Context from document summary:
@@ -664,17 +671,31 @@ FORMAT RULES:
 2. Answer goes on the next line (back of card)
 3. Tags go as a single bullet: - #tag1, #tag2, #tag3
 4. NO CLOZE CARDS - only regular Q&A format
+5. NEVER use generic tags like #equation, #definition - use conceptual tags like #causal-inference.dag
 
 CRITICAL REQUIREMENTS:
 1. Cards MUST be self-contained - students won't have access to the paper, figures, or other references
 2. NEVER reference external content: "According to [12]", "As shown in Figure 3", "The paper states"
-3. Each card tests ONE concept and includes all context needed to understand it
-4. Focus on mathematical equations and formulas when present
-5. Use LaTeX with $ for inline math, $$ for display math
-6. NEVER use LaTeX tables (\\\\begin{{tabular}})
+3. NEVER say "in the context of the document" or "as described in the document"
+4. NEVER ask about specific authors: "What is Lachapelle et al.'s method?" - ask about the METHOD itself
+5. NEVER ask "What does X stand for?" - ask what X IS or HOW it works instead
+6. Each card tests ONE concept and includes all context needed to understand it
+7. PRIORITIZE creating cards for EVERY mathematical equation, formula, or algorithm in the content
+8. Use LaTeX with $ for inline math, $$ for display math
+9. NEVER use LaTeX tables (\\\\begin{{tabular}})
+10. For EVERY math symbol (h, F, g_j, etc.), define what it represents IN THE CARD
+
+EQUATION PRIORITY:
+- Create AT LEAST one card for EVERY equation in the content
+- For key equations (like $X = (I - W^T)$, $E[X_j | X_{{pa(j)}}] = g_j(f_j(X))$), create multiple cards:
+  * One asking what the equation represents
+  * One asking about specific components/terms
+  * One about its significance or application
+- Even simple equations deserve cards (e.g., "What does $h(W) = 0$ represent in DAG optimization?")
 
 Generate {num_cards * len(window_files)} regular Q&A cards now."""
 
+            # Configure retries for validation errors
             regular_response = self.instructor.chat.completions.create(
                 model=llm_config.get("model", "gpt-4"),
                 messages=[
@@ -688,11 +709,14 @@ Generate {num_cards * len(window_files)} regular Q&A cards now."""
                     }
                 ],
                 response_model=CardGenerationResponse,
-                max_retries=llm_config.get("max_retries", 3),
+                max_retries=Retrying(
+                    stop=stop_after_attempt(3),
+                    wait=wait_exponential(multiplier=1, min=4, max=10),
+                    reraise=True
+                ),
             )
             
             # Generate cloze cards separately
-            print("Generating cloze deletion cards...")
             cloze_count = processing_config.get("cloze_cards_per_page", 2) * len(window_files)
             cloze_prompt = f"""Generate EXACTLY {cloze_count} cloze deletion flashcards from this content.
 
@@ -705,28 +729,48 @@ CRITICAL RULES:
 1. Cards MUST be self-contained - no references to "the paper", figures, or external content
 2. For equations: Hide PARTS of equations, not entire equations
 3. Hide meaningful concepts, not arbitrary numbers or references
+4. EVERY card MUST have AT LEAST 2 meaningful tags on the "- #tag1, #tag2" line
+5. PRIORITIZE equations - create cloze cards for key mathematical expressions
+6. MATH IN CLOZE: When hiding parts of math expressions, the ENTIRE math notation must stay together
+   - WRONG: "In {{{{c1::$E[X_j$}}}} | {{{{c2::$X_{{pa(j)}}]$}}}}" (splits the equation)
+   - WRONG: "The model {{{{c1::$E[X_j | X_{{}}}} {{{{c2::pa}}}} {{{{c3::(j)}}}}$" (splits subscript)
+   - RIGHT: "In the model $E[X_j | {{{{c1::X_{{pa(j)}}}}}}] = {{{{c2::g_j(f_j(X))}}}}$"
+   - RIGHT: "The equation {{{{c1::$E[X_j | X_{{pa(j)}}] = g_j(f_j(X))$}}}} represents conditional expectation"
+
+EQUATION FOCUS:
+- For EVERY major equation, create at least one cloze card
+- Hide key variables, operators, or results in equations
+- Keep mathematical notation intact - don't split subscripts, superscripts, or operators
+- Examples: 
+  * "The transformation uses {{c1::$h(W) = 0$}} to ensure {{c2::acyclicity}}"
+  * "The model $E[X_j | X_{{pa(j)}}] = {{{{c1::g_j(f_j(X))}}}}$ represents {{{{c2::conditional expectation}}}}"
 
 GOOD Examples:
 ## The {{{{c1::Pythagorean theorem}}}} states that {{{{c2::$a^2 + b^2 = c^2$}}}} for right triangles.
 
-- #mathematics.geometry
+- #mathematics.geometry, #theorems.pythagorean
 
 ## In gradient descent, the update rule is $\\theta = \\theta - {{{{c1::α}}}} {{{{c2::∇L(θ)}}}}$ where {{{{c3::α is the learning rate}}}}.
 
-- #optimization, #machine-learning
+- #optimization.gradient-descent, #machine-learning.algorithms
 
 BAD Examples (AVOID):
-- "The original method uses {{{{c1::algorithm X}}}}" (What original method?)
-- "{{{{c1::$E[X|Y] = g(f(X))$}}}}" (Don't hide entire equations)
+- "The original method uses {{{{c1::algorithm X}}}}" (What original method? AND missing tags!)
+- "{{{{c1::$E[X|Y] = g(f(X))$}}}}" (Don't hide entire equations AND missing tags!)
+- "In the context of the document, {{{{c1::h(W) = 0}}}} ensures acyclicity" (Remove "in the context"!)
+- "{{{{c1::NAS}}}} is used for model optimization" (Undefined acronym!)
+- Tags: #equation, #definition (Generic tags - use conceptual ones!)
 
+REMEMBER: EVERY cloze card MUST have tags just like regular cards!
 Generate {cloze_count} cloze cards now. Focus on key definitions, formulas, and facts."""
 
+            # Configure retries for validation errors
             cloze_response = self.instructor.chat.completions.create(
                 model=llm_config.get("model", "gpt-4"),
                 messages=[
                     {
                         "role": "system",
-                        "content": "Generate ONLY cloze deletion flashcards using {{c1::text}} syntax."
+                        "content": "Generate ONLY cloze deletion flashcards using {{c1::text}} syntax. Ensure that when including math equations in cloze cards, the ENTIRE equation must be inside the cloze markers. Example: {{c1:\\(E = mc^2\\)}} not just {{c1:E}}."
                     },
                     {
                         "role": "user",
@@ -734,7 +778,11 @@ Generate {cloze_count} cloze cards now. Focus on key definitions, formulas, and 
                     }
                 ],
                 response_model=CardGenerationResponse,
-                max_retries=2,
+                max_retries=Retrying(
+                    stop=stop_after_attempt(3),
+                    wait=wait_exponential(multiplier=1, min=4, max=10),
+                    reraise=True
+                ),
             )
             
             # Combine responses
@@ -746,25 +794,17 @@ Generate {cloze_count} cloze cards now. Focus on key definitions, formulas, and 
             # Debug: Check what cards were generated
             regular_cards = [c for c in response.cards if "{{c" not in c.front.text]
             cloze_cards = [c for c in response.cards if "{{c" in c.front.text]
-            print(f"Generated: {len(regular_cards)} regular cards, {len(cloze_cards)} cloze cards")
+            logger.debug(f"Generated: {len(regular_cards)} regular cards, {len(cloze_cards)} cloze cards")
             
             # Check for math content
             math_cards = [c for c in response.cards if "$" in c.front.text or "$" in c.back.text]
-            print(f"Math cards: {len(math_cards)}")
+            logger.debug(f"Math cards: {len(math_cards)}")
             
             # Check for references
             ref_cards = [c for c in response.cards if any(ref in c.front.text.lower() or ref in c.back.text.lower() 
                                                           for ref in ["ref.", "reference", "according to", "["])]
             if ref_cards:
-                print(f"WARNING: {len(ref_cards)} cards contain references that should have been removed")
-                for i, card in enumerate(ref_cards[:2]):  # Show first 2 examples
-                    print(f"  Example {i+1}: {card.front.text[:100]}...")
-            
-            # Show example of what was generated
-            if response.cards:
-                print("\nFirst card generated:")
-                print(f"  Front: {response.cards[0].front.text}")
-                print(f"  Back: {response.cards[0].back.text[:150]}...")
+                logger.debug(f"{len(ref_cards)} cards contain references that should have been removed")
             
             # Add the cards from the combined response
             all_cards.extend(response.cards)
@@ -847,9 +887,7 @@ Generate {cloze_count} cloze cards now. Focus on key definitions, formulas, and 
                 if require_math and not detect_math_content(image_info["context"]):
                     continue
 
-                print(
-                    f"Generating {cards_per_image} cards for image: {image_info['path']}"
-                )
+                logger.debug(f"Generating {cards_per_image} cards for image: {image_info['path']}")
 
                 # Get surrounding content (more context around the image)
                 file_content = content
@@ -870,11 +908,11 @@ Generate {cloze_count} cloze cards now. Focus on key definitions, formulas, and 
                             img_summary.image_url in image_info['path'] or
                             Path(image_info['path']).name == Path(img_summary.image_url).name):
                             image_summary_text = img_summary.summary
-                            logger.info(f"Found image summary for {image_info['path']}: {image_summary_text[:50]}...")
+                            logger.debug(f"Found image summary for {image_info['path']}: {image_summary_text[:50]}...")
                             break
                     
                     if not image_summary_text:
-                        logger.warning(f"No matching image summary found for {image_info['path']}")
+                        logger.debug(f"No matching image summary found for {image_info['path']}")
                         logger.debug(f"  Available summaries: {[img.image_url for img in image_summaries]}")
                 
                 # Create a specialized prompt for image cards
@@ -1021,15 +1059,11 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                     back_count = sum(
                         1 for card in response.cards if card.back.image_path
                     )
-                    print(
-                        f"Generated {len(response.cards)} cards for image {image_info['path']}"
-                    )
-                    print(
-                        f"  Image placement - Front: {front_count}, Back: {back_count} (strategy: {placement_strategy})"
-                    )
+                    logger.debug(f"Generated {len(response.cards)} cards for image {image_info['path']}")
+                    logger.debug(f"  Image placement - Front: {front_count}, Back: {back_count} (strategy: {placement_strategy})")
 
                 except Exception as e:
-                    print(f"Error generating cards for image {image_info['path']}: {e}")
+                    logger.error(f"Error generating cards for image {image_info['path']}: {e}")
                     continue
 
         return image_cards
@@ -1168,7 +1202,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
         # Generate complementary audio (card audio)
         if audio_config.get("generate_complementary", False):
-            print("Generating complementary audio...")
+            logger.info("Generating complementary audio...")
             audio_dir = self.output_base / "gen-md-complementary-audio"
             audio_dir.mkdir(exist_ok=True)
 
@@ -1218,7 +1252,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
         # Generate summary audio
         if audio_config.get("generate_summary", False):
-            print("Generating summary audio...")
+            logger.info("Generating summary audio...")
             summary_text = f"{summary.summary}\n\nKey Contributions:\n" + "\n".join(
                 [f"- {contrib}" for contrib in summary.key_contributions]
             )
@@ -1243,7 +1277,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
         # Generate reading audio (full document)
         if audio_config.get("generate_reading", False):
-            print("Generating reading audio...")
+            logger.info("Generating reading audio...")
             # Combine all cleaned markdown content
             full_content = "\n\n".join([f.read_text() for f in cleaned_files])
             reading_audio_path = (
@@ -1267,7 +1301,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
         # Generate lecture audio (educational style)
         if audio_config.get("generate_lecture", False):
-            print("Generating lecture audio...")
+            logger.info("Generating lecture audio...")
             lecture_audio_path = (
                 self.output_base / f"{self.audio_prefix}-lecture-audio.mp3"
             )
@@ -1321,7 +1355,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                         )
                     )
             outputs["cards_audio"] = audio_path
-            print(f"Written cards with audio: {audio_path.name}")
+            logger.debug(f"Written cards with audio: {audio_path.name}")
             
             # Create a summary of audio transcripts for debugging
             transcripts_dir = self.output_base / "audio-transcripts"

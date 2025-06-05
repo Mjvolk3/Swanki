@@ -97,7 +97,11 @@ def process_with_config(cfg: DictConfig) -> None:
             citation_key=cfg.citation_key if hasattr(cfg, 'citation_key') else None,
             output_dir=cfg.output_dir if hasattr(cfg, 'output_dir') else None
         )
-        print(f"Generated outputs: {outputs}")
+        # Only print essential output info
+        if outputs.get('anki_file'):
+            print(f"✓ Cards generated: {outputs['anki_file']}")
+        if outputs.get('audio_files'):
+            print(f"✓ Audio files: {len(outputs.get('audio_files', []))} generated")
     else:
         print("No PDF provided. Use: swanki pdf_path=path/to/file.pdf citation_key=@author2023")
 
@@ -230,7 +234,13 @@ Examples:
   # Use legacy mode (backward compatibility)
   swanki --legacy -f paper.pdf --citation-key @smith2023 --num-cards 3
   
-Configuration files are stored in: .swanki_config/ (in current directory)
+Configuration:
+  Files are stored in: .swanki_config/ (in current directory)
+  
+  First-time setup:
+  - You'll be prompted once to create default configs
+  - To skip prompts: export SWANKI_NONINTERACTIVE=1
+  - Or for a single run: SWANKI_NONINTERACTIVE=1 swanki pdf_path=...
 
 Template Variables:
   {citation_key} - Replaced with the citation key provided

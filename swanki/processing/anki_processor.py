@@ -221,18 +221,22 @@ class AnkiProcessor:
             is_cloze = "{{c" in card['front']
             model_name = "Cloze" if is_cloze else "Basic"
             
+            # Convert LaTeX dollar notation to MathJax for Anki
+            front_content = self._convert_latex_to_mathjax(card['front'])
+            back_content = self._convert_latex_to_mathjax(card['back'])
+            
             # Prepare fields
             if is_cloze:
                 # For cloze cards, put front content in Text and back content in Back Extra
                 fields = {
-                    "Text": card['front'],  # Front already has the cloze text and front audio
-                    "Back Extra": card['back']  # All back content (including audio) goes in Back Extra
+                    "Text": front_content,  # Front already has the cloze text and front audio
+                    "Back Extra": back_content  # All back content (including audio) goes in Back Extra
                 }
                 search_key = "Text"
             else:
                 fields = {
-                    "Front": card['front'],
-                    "Back": card['back']
+                    "Front": front_content,
+                    "Back": back_content
                 }
                 search_key = "Front"
             
@@ -604,6 +608,26 @@ class AnkiProcessor:
                 return f'<img src="{os.path.basename(url)}">'
         
         text = IMAGE_RE.sub(replace_image, text)
+        
+        return text
+    
+    def _convert_latex_to_mathjax(self, text: str) -> str:
+        """Convert LaTeX dollar notation to MathJax format for Anki.
+        
+        Parameters
+        ----------
+        text : str
+            Text containing LaTeX dollar notation
+            
+        Returns
+        -------
+        str
+            Text with MathJax notation for Anki
+        """
+        # Convert $...$ to \(...\) for inline math
+        text = re.sub(r'(?<!\$)\$(?!\$)(.+?)\$(?!\$)', r'\\(\1\\)', text)
+        # Convert $$...$$ to \[...\] for display math
+        text = re.sub(r'\$\$(.+?)\$\$', r'\\[\1\\]', text, flags=re.DOTALL)
         
         return text
     

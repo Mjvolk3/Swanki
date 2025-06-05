@@ -94,7 +94,7 @@ class ConfigGenerator:
             print(f"\n{'='*60}")
             print("FIRST TIME SETUP: No configuration found")
             print(f"{'='*60}")
-            print(f"\nSwanki needs to create default configuration files at:")
+            print(f"\nSwanki will create default configuration files at:")
             print(f"  {config_dir}")
             print("\nThese configs control:")
             print("  - Number of cards generated per page")
@@ -105,7 +105,7 @@ class ConfigGenerator:
             
             if interactive:
                 print(f"\n{'='*60}")
-                response = input("\nCreate configs and continue with defaults? [Y/n]: ").strip().lower()
+                response = input("\nCreate configs with defaults? [Y/n]: ").strip().lower()
                 
                 if response and response not in ['y', 'yes', '']:
                     print("\nConfiguration cancelled. You can manually create configs at:")
@@ -118,26 +118,12 @@ class ConfigGenerator:
             config_dir.mkdir(parents=True, exist_ok=True)
             cls._generate_all_defaults(config_dir)
             
-            print(f"\n✓ Default configurations created successfully!")
-            print(f"\nYou can customize these settings by editing files in:")
-            print(f"  {config_dir}/")
-            print(f"\nKey config files:")
-            print(f"  - pipeline/default.yaml  : Card generation settings")
-            print(f"  - prompts/default.yaml   : LLM prompts")
-            print(f"  - audio/default.yaml     : Audio generation options")
-            print(f"  - anki/default.yaml      : Anki integration")
+            print(f"\n✓ Configurations created! Processing will continue with defaults.")
+            print(f"\nTo customize settings, edit files in: {config_dir}/")
+            print(f"Key files: pipeline/default.yaml, prompts/default.yaml, audio/default.yaml")
             
-            if interactive:
-                print(f"\n{'='*60}")
-                response = input("\nProceed with default settings? [Y/n]: ").strip().lower()
-                
-                if response and response not in ['y', 'yes', '']:
-                    print("\nExiting. Please review and customize the configs, then run your command again.")
-                    print(f"Config location: {config_dir}/")
-                    import sys
-                    sys.exit(0)
-            
-            print(f"\nContinuing with default configurations...\n")
+            # No second prompt - just continue
+            print(f"\n{'='*60}\n")
         
         return config_dir
     
@@ -312,12 +298,15 @@ Every card must contain ALL information needed to understand and answer it. Stud
 
 FORBIDDEN CONTENT - NEVER CREATE CARDS WITH:
 - References to other papers: "According to Smith et al. [12]..." or "As shown in reference [7]..."
-- ANY reference numbers: "ref. [6]", "[1]", "(Smith, 2023)", "the framework in [6]"
+- ANY reference numbers: "ref. [6]", "[1]", "(Smith, 2023)", "the framework in [6]", "reference ${ }^{6}$", "${ }^{12}$", "{ }^{7}"
 - Figure/table references: "Figure 3 shows..." or "As seen in Table 2..."
 - Context-dependent phrases: "The above equation...", "This method...", "The aforementioned..."
 - Vague referents: "this framework", "the model", "this approach" (without explaining WHAT framework/model/approach)
+- Document references: "in the context of the document", "as described in the document", "the document states"
 - LaTeX tables (\\\\begin{{tabular}}) - they don't render properly in Anki
 - External citations that students can't access
+- Author-focused questions: "How does Lachapelle et al. approach...", "What is Zheng et al.'s method..."
+- Simple acronym expansions: "What does SEM stand for?" (instead ask about what SEM IS or HOW it works)
 
 CRITICAL: If the content mentions "ref. [X]" or "framework in [Y]", you MUST:
 1. Extract the actual innovation/method being described
@@ -338,6 +327,10 @@ BAD EXAMPLES TO AVOID:
 ❌ "What transformation is applied in this framework?" (WHAT framework?)
 ❌ "How does the model handle missing data?" (WHAT model?)
 ❌ "What is the advantage of this approach?" (WHAT approach?)
+❌ "In the context of the document, what does h(W) = 0 represent?" (Remove "in the context of the document")
+❌ "What innovation did the framework described in reference ${ }^{6}$ bring?" (Remove reference number)
+❌ "Describe how Lachapelle et al. approach causal inference" (Focus on the method, not the authors)
+❌ "What does NAS stand for?" (Simple memorization - ask what NAS DOES instead)
 
 GOOD EXAMPLES:
 ✓ "What transformation is applied in the causal inference framework that combines DAGs with deep learning?"
@@ -349,14 +342,23 @@ CLOZE DELETION CARD FORMAT (YOU MUST CREATE {num_cloze} OF THESE):
 
 - #tag1, #tag2
 
+CRITICAL: Every cloze card MUST have tags on the "- #tag1, #tag2" line just like regular cards!
+
 IMPORTANT CLOZE RULES:
 - Hide meaningful concepts, definitions, or key terms
-- For equations: Hide PARTS of equations, not entire equations
+- For equations: You can hide PARTS of simple equations OR entire complex equations
+- CRITICAL: When mentioning an equation, the ENTIRE equation must be inside cloze markers
 - Make cards educational - test understanding, not memorization
 - Each card must stand alone without external context
 
+CRITICAL MATH CLOZE RULES:
+- If you mention "the equation" followed by math, the ENTIRE equation goes inside {{c1::...}}
+- NEVER write: "The equation {{c1::something}} \\(actual equation\\)"
+- CORRECT: "The equation {{c1::\\(E[X_j | X_{pa(j)}] = g_j(f_j(X))\\)}} expresses..."
+- For simple equations, you can hide parts: "The derivative \\(\\frac{d}{dx}(x^2) = {{c1::2x}}\\)"
+
 Example GOOD cloze cards:
-## The gradient of \\(f(x) = x^2\\) is {{c1::$2x$}}, which represents the {{c2::rate of change}}.
+## The gradient of \\(f(x) = x^2\\) is {{c1::2x}}, which represents the {{c2::rate of change}}.
 
 - #calculus.derivatives, #mathematics
 
@@ -364,15 +366,24 @@ Example GOOD cloze cards:
 
 - #bayesian-networks, #graphical-models
 
-## The expectation \\(E[X_j \\mid X_{pa(j)}]\\) can be expressed as {{c1::$g_j(f_j(X))$}} where {{c2::$g_j$ and $f_j$ are learned functions}}.
+## The equation {{c1::\\(E[X_j \\mid X_{pa(j)}] = g_j(f_j(X))\\)}} expresses the {{c2::conditional expectation of a node given its parents}}.
 
 - #statistics, #conditional-expectation
+
+## In causal modeling, conditional dependencies are expressed using {{c1::\\(\\sum_{i=1}^{n} w_{ij}x_i + b_j\\)}} as the {{c2::structural equation}}.
+
+- #causal-inference, #structural-equations
+
+## The transformation {{c1::\\(F(W)\\)}} maps {{c2::weighted adjacency matrices}} to {{c3::directed acyclic graphs}}.
+
+- #graph-theory, #transformations, #dag-learning
 
 Example BAD cloze cards to AVOID:
 - "According to [12], the algorithm is {{c1::efficient}}" (References external paper)
 - "The original constraints are replaced by {{c1::continuous equality}}" (What original constraints?)
 - "As shown in Figure 3, performance {{c1::improves}}" (No access to Figure 3)
-- "{{c1::$E[X_j \\mid X_{pa(j)}] = g_j(f_j(X))$}}" (Don't hide entire equations)
+- "The equation {{c1::describes relationships}} \\(E[X | Y] = f(Y)\\)" (Equation is outside cloze!)
+- "Using equation {{c1::MathJax}} to express dependencies" (Meaningless placeholder)
 
 REGULAR Q&A CARD FORMAT (YOU MUST CREATE {num_cards} OF THESE):
 ## [Self-contained question that provides all necessary context]
@@ -403,6 +414,22 @@ Example BAD regular cards to AVOID:
 
 (Bad - students can't see Table 3)
 
+## In the context of the document, what does the equation $h(W) = 0$ represent?
+
+(Bad - "in the context of the document" is vague, and h is undefined)
+
+## What is the significance of Zheng et al.'s nonparametric model in DAG learning?
+
+(Bad - asks about specific authors instead of the concept)
+
+## What does SEM stand for, and how is it used in this context?
+
+(Bad - "What does X stand for" is rote memorization, and "in this context" is vague)
+
+## What approach does Lachapelle et al. use for causal inference?
+
+(Bad - focuses on authors rather than the method itself)
+
 CRITICAL REQUIREMENTS:
 1. YOU MUST generate EXACTLY {num_cloze} cloze deletion cards (with {{c1::...}} syntax)
 2. YOU MUST generate EXACTLY {num_cards} regular Q&A cards
@@ -410,7 +437,13 @@ CRITICAL REQUIREMENTS:
 4. EVERY card MUST have AT LEAST 2 meaningful tags on the "- #tag1, #tag2" line
 5. Tags should be hierarchical when appropriate (e.g., #algorithms.sorting, #optimization.gradient-based)
 6. Never start the question with the citation - it will be added automatically
-7. Focus on mathematical equations and formulas when present
+7. PRIORITIZE creating cards about:
+   - Mathematical equations, formulas, and their meanings
+   - Algorithm steps, complexity, and implementation details  
+   - Proofs, derivations, and mathematical relationships
+   - Statistical methods and their applications
+   - Computational techniques and optimizations
+   - ANY mathematical notation present in the content (e.g., \\(F(W)\\), \\(I - W^T\\), etc.)
 8. Use MathJax format: \\(...\\) for inline math, \\[...\\] for display math
 9. NEVER use $ or $$ delimiters - Anki uses \\( \\) and \\[ \\]
 10. NEVER use LaTeX tables (\\\\begin{{tabular}})
@@ -418,8 +451,19 @@ CRITICAL REQUIREMENTS:
     Example: {{c1::The formula \\(\\frac{a}{\\frac{b}{c} }\\) shows...}} (note the space before })
 12. For cloze cards with :: in content: Use HTML comment
     Example: {{c1::std:<!-- -->:variant is a C++ feature}}
-13. For equations in cloze cards: hide parts, not whole equations
+13. For equation cloze cards: When referencing "the equation", include the ENTIRE equation in cloze
+    Example: "The equation {{c1::\\(E = mc^2\\)}} demonstrates..." NOT "The equation {{c1::E=mc²}} \\(E = mc^2\\)..."
 14. Each card must teach a concept, not test memorization of references
+15. IMPORTANT: When you find ANY mathematical notation, CREATE CARDS about it!
+16. NEVER use generic tags like #equation, #formula, #definition, #concept, #method
+    Use specific conceptual tags: #optimization.gradient-descent, #causal-inference.dag, #machine-learning.regularization
+17. ALWAYS define mathematical symbols within the card: "where h is a smooth function" not just "h(W) = 0"
+18. ALWAYS expand acronyms when first used: "NAS (Neural Architecture Search)" not just "NAS"
+19. For EVERY mathematical symbol or function (h, F, g_j, etc.), ensure the card defines what it represents
+20. Focus on WHAT methods do and HOW they work, not WHO proposed them
+21. Transform author-centric questions into concept-centric ones:
+    ❌ "What is Zheng et al.'s approach?" 
+    ✓ "How does the nonparametric DAG learning method work?"
 
 Start generating cards now. First generate all {num_cloze} cloze cards, then generate all {num_cards} regular cards."""
                 },

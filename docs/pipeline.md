@@ -112,7 +112,7 @@ graph TD
 
 ### 3. Card Generation
 
-Cards are generated using a sliding window approach for better context. Both text-based and image-based cards are supported with various placement strategies.
+Cards are generated using a sliding window approach for better context. Both text-based and image-based cards are supported with various placement strategies. See the [Sliding Window Processing](configuration.md#sliding-window-processing) section in the configuration guide for detailed information on how to configure window sizes and skip parameters.
 
 ```{mermaid}
 graph TD

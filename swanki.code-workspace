@@ -6,8 +6,13 @@
         },
         {
             "name": "Swanki_Data",
-            "path": "../Swanki_Data"
+            "path": "../Swanki_Data",
         },
+        {
+            "name": "instructor",
+            "path": "../instructor"
+        },
+        
     ],
     "settings": {
         "dendron.rootDir": ".",
