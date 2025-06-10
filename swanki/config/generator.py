@@ -159,7 +159,8 @@ class ConfigGenerator:
                 {"models": "default"},
                 {"audio": "default"},
                 {"output": "default"},
-                {"anki": "default"}
+                {"anki": "default"},
+                {"refinement": "default"}
             ],
             "pdf_path": None,  # Will be provided by user
             "citation_key": None,  # Will be provided by user
@@ -170,6 +171,7 @@ class ConfigGenerator:
             "audio": None,     # Will be overridden by defaults
             "output": None,    # Will be overridden by defaults
             "anki": None,      # Will be overridden by defaults
+            "refinement": None, # Will be overridden by defaults
             "hydra": {
                 "run": {
                     "dir": "outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}"
@@ -298,7 +300,7 @@ Every card must contain ALL information needed to understand and answer it. Stud
 
 FORBIDDEN CONTENT - NEVER CREATE CARDS WITH:
 - References to other papers: "According to Smith et al. [12]..." or "As shown in reference [7]..."
-- ANY reference numbers: "ref. [6]", "[1]", "(Smith, 2023)", "the framework in [6]", "reference ${ }^{6}$", "${ }^{12}$", "{ }^{7}"
+- ANY reference numbers: "ref. [6]", "[1]", "(Smith, 2023)", "the framework in [6]", "reference ^6", "^12", "^7"
 - Figure/table references: "Figure 3 shows..." or "As seen in Table 2..."
 - Context-dependent phrases: "The above equation...", "This method...", "The aforementioned..."
 - Vague referents: "this framework", "the model", "this approach" (without explaining WHAT framework/model/approach)
@@ -328,7 +330,7 @@ BAD EXAMPLES TO AVOID:
 ❌ "How does the model handle missing data?" (WHAT model?)
 ❌ "What is the advantage of this approach?" (WHAT approach?)
 ❌ "In the context of the document, what does h(W) = 0 represent?" (Remove "in the context of the document")
-❌ "What innovation did the framework described in reference ${ }^{6}$ bring?" (Remove reference number)
+❌ "What innovation did the framework described in reference ^6 bring?" (Remove reference number)
 ❌ "Describe how Lachapelle et al. approach causal inference" (Focus on the method, not the authors)
 ❌ "What does NAS stand for?" (Simple memorization - ask what NAS DOES instead)
 
@@ -654,6 +656,205 @@ Content to present:
                 "enabled": True,
                 "deck_name": "Research::Papers::{deck_name}",  # Custom hierarchy with output_dir or citation_key
                 "auto_send": False
+            }
+        })
+        
+        # Refinement configs
+        refinement_dir = config_dir / "refinement"
+        refinement_dir.mkdir(exist_ok=True)
+        
+        cls._write_yaml(refinement_dir / "default.yaml", {
+            "refinement": {
+                "enabled": True,  # Enabled by default for better card quality
+                "max_iterations": 3,
+                "early_exit_on_quality": 0.9,
+                
+                # Content types to refine
+                "content_types": ["regular", "cloze", "image"],
+                
+                # Whether to refine audio transcripts
+                "include_audio": False,
+                
+                # Feedback prompts for different content types
+                "feedback_prompts": {
+                    "regular_cards": """Check these regular cards for quality issues:
+1. External references ([1], "According to X", "Figure 3")
+2. Vague context ("this framework", "the model")
+3. Generic tags (#equation vs #calculus.derivatives)
+4. Author-centric questions ("What is Smith's method?")
+5. Undefined mathematical symbols
+6. Rote memorization questions
+
+If ALL cards meet quality standards, set done=True.
+Otherwise list specific issues with card numbers.""",
+                    
+                    "cloze_cards": """Check these cloze cards for issues:
+1. More than 2 cloze deletions per card
+2. Math equations split across cloze markers
+3. Entire equations not inside cloze when referenced
+4. Testing memorization instead of understanding
+5. Missing or generic tags
+
+Example of correct math cloze:
+"The equation {{c1::\\(E = mc^2\\)}} shows..."
+
+If ALL cards are correct, set done=True.""",
+                    
+                    "image_cards": """Check these image-based cards:
+1. Questions that just ask to describe the image
+2. Image summaries that give away the answer
+3. Image markdown included in text
+4. Not testing understanding of concepts
+
+Good questions test WHY/HOW, not just WHAT is shown.
+If ALL cards meet standards, set done=True.""",
+                    
+                    # Card audio transcripts - different for each card type
+                    "regular_card_audio": """Check this REGULAR card audio transcript:
+1. Math notation must be converted to natural language
+2. Acronyms expanded on first use
+3. Citation key pronounced clearly at start
+4. Technical terms have pronunciation guides
+5. Both front and back should be readable
+
+If transcript is clear for audio, set done=True.""",
+                    
+                    "cloze_card_audio": """Check this CLOZE card audio transcript:
+
+FRONT audio must:
+1. Replace ALL {{c1::text}} with "blank"
+2. Replace ALL {{c2::text}} with "blank"
+3. Citation key pronounced clearly at start
+4. Math outside cloze converted to natural language
+
+BACK audio must:
+1. Read the COMPLETE text including cloze content
+2. NO "blank" - reveal all hidden content
+3. Math notation converted to natural language
+
+If BOTH transcripts follow these rules, set done=True.""",
+                    
+                    "image_card_audio": """Check this IMAGE card audio transcript:
+1. Must include "Image description:" followed by full description
+2. Image description must be detailed (what type, layout, components)
+3. Math in image description converted to natural language
+4. Question/answer audio includes the image context
+5. Citation key pronounced clearly at start
+
+If image is well-described for audio-only learning, set done=True.""",
+                    
+                    # Document-level audio formats
+                    "summary_audio": """Check this SUMMARY audio transcript:
+1. Professional, informative tone
+2. Citation key mentioned naturally early
+3. All acronyms expanded
+4. Math notation humanized
+5. Focus on key contributions and findings
+
+If summary is clear and professional, set done=True.""",
+                    
+                    "reading_audio": """Check this READING audio transcript:
+1. Full document narration
+2. All math notation converted to words
+3. Citation key mentioned at beginning
+4. Figure/table descriptions included
+5. Clear pronunciation of technical terms
+
+If reading is complete and clear, set done=True.""",
+                    
+                    "lecture_audio": """Check this LECTURE audio transcript:
+1. Educational presentation style
+2. Direct start without lengthy intro
+3. Citation key mentioned naturally
+4. Avoids theatrical language
+5. Math and technical terms clearly explained
+
+If lecture is educational and clear, set done=True."""
+                },
+                
+                # Refinement prompts for fixing issues
+                "refinement_prompts": {
+                    "regular_cards": """Fix ALL the issues identified in the feedback.
+Maintain the same number of cards.
+Ensure every card is self-contained.
+Use specific conceptual tags.""",
+                    
+                    "cloze_cards": """Fix ALL cloze card issues:
+- Reduce to max 2 cloze deletions
+- Keep math equations together
+- Ensure understanding-based questions
+- Add proper hierarchical tags""",
+                    
+                    "image_cards": """Improve image cards to:
+- Test conceptual understanding
+- Avoid revealing answers in summaries
+- Remove any image markdown
+- Focus on WHY/HOW questions""",
+                    
+                    # Card audio refinement prompts
+                    "regular_card_audio": """Fix audio transcript for regular card:
+- Convert ALL math notation to natural language
+- Expand acronyms: "CNN" -> "Convolutional Neural Network (CNN)"
+- Add pronunciation: "Dijkstra (DIKE-stra)"
+- Ensure citation key is clear at start""",
+                    
+                    "cloze_card_audio": """Fix CLOZE card audio transcripts:
+FRONT: Replace ALL cloze content with "blank"
+- {{c1::E = mc²}} -> "The equation blank shows..."
+BACK: Read COMPLETE text with cloze content revealed
+- "The equation E equals m c squared shows...\"""",
+                    
+                    "image_card_audio": """Fix IMAGE card audio transcript:
+- Add detailed image description at start
+- "Image description: This figure shows a flowchart with..."
+- Include all visual elements for audio-only learners
+- Convert any math in descriptions to words""",
+                    
+                    # Document audio refinement prompts  
+                    "summary_audio": """Refine summary audio:
+- Professional tone throughout
+- Natural citation key mention
+- Expand all acronyms
+- Focus on key findings""",
+                    
+                    "reading_audio": """Refine reading audio:
+- Complete document narration
+- Describe all figures/tables
+- Convert all math to speakable form
+- Add section transitions""",
+                    
+                    "lecture_audio": """Refine lecture audio:
+- Educational, not theatrical
+- Direct start, concise end
+- Clear explanations
+- Natural flow"""
+                }
+            }
+        })
+        
+        cls._write_yaml(refinement_dir / "strict.yaml", {
+            "refinement": {
+                "enabled": True,
+                "max_iterations": 5,
+                "early_exit_on_quality": 0.95,
+                "content_types": ["regular", "cloze", "image"],
+                "include_audio": True
+            }
+        })
+        
+        cls._write_yaml(refinement_dir / "minimal.yaml", {
+            "refinement": {
+                "enabled": True,
+                "max_iterations": 1,
+                "early_exit_on_quality": 0.7,
+                "content_types": ["regular", "cloze"],
+                "include_audio": False
+            }
+        })
+        
+        cls._write_yaml(refinement_dir / "disabled.yaml", {
+            "refinement": {
+                "enabled": False
             }
         })
     

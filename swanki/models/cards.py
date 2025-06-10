@@ -30,7 +30,7 @@ Examples
 """
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import List, Optional, Literal, Union
+from typing import List, Optional, Literal, Union, Dict
 import uuid
 import logging
 
@@ -612,3 +612,155 @@ class CardGenerationResponse(BaseModel):
         if len(v) == 0:
             raise ValueError("Must generate at least one card")
         return v
+
+
+class CardFeedback(BaseModel):
+    """Structured feedback for card quality issues.
+    
+    Used in the self-refine pattern to provide specific feedback
+    about issues found in generated cards and whether refinement is needed.
+    
+    Parameters
+    ----------
+    feedback : List[str]
+        List of specific issues to fix in the cards
+    done : bool
+        True if cards meet quality standards, False if refinement needed
+    
+    Examples
+    --------
+    >>> feedback = CardFeedback(
+    ...     feedback=[
+    ...         "Card 1: Contains external reference [1]",
+    ...         "Card 3: Uses generic tag #equation instead of #calculus.derivatives"
+    ...     ],
+    ...     done=False
+    ... )
+    """
+    feedback: List[str] = Field(
+        description="List of specific issues to fix in the cards"
+    )
+    done: bool = Field(
+        description="True if cards meet quality standards, False if refinement needed"
+    )
+
+
+class CardIssue(BaseModel):
+    """Individual issue found in a card.
+    
+    Provides structured information about a specific quality issue
+    in a card, including the type of issue and how to fix it.
+    
+    Parameters
+    ----------
+    card_index : int
+        Index of the card with the issue (0-based)
+    issue_type : str
+        Type of issue detected
+    description : str
+        Detailed description of the issue
+    example : str
+        Example from the card showing the issue
+    suggestion : str
+        How to fix this issue
+    """
+    card_index: int
+    issue_type: Literal[
+        "external_reference", "insufficient_context", "generic_tags",
+        "rote_memorization", "math_formatting", "cloze_problem",
+        "undefined_acronym", "author_centric", "image_issue", "audio_issue"
+    ]
+    description: str
+    example: str = Field(description="Example from the card showing the issue")
+    suggestion: str = Field(description="How to fix this issue")
+
+
+class AudioTranscriptFeedback(BaseModel):
+    """Feedback for audio transcript quality.
+    
+    Used to evaluate whether generated audio transcripts are suitable
+    for text-to-speech and contain all necessary information.
+    
+    Parameters
+    ----------
+    feedback : List[str]
+        List of specific issues in the transcript
+    done : bool
+        True if transcript is ready for audio generation
+    """
+    feedback: List[str] = Field(
+        description="List of specific transcript issues to fix"
+    )
+    done: bool = Field(
+        description="True if transcript is suitable for audio generation"
+    )
+
+
+class RefinementHistory(BaseModel):
+    """Track refinement history for debugging and analysis.
+    
+    Keeps a record of all refinement iterations including the original
+    cards, feedback received, and refined versions.
+    
+    Parameters
+    ----------
+    iterations : List[Dict]
+        List of refinement iterations
+    
+    Methods
+    -------
+    add_iteration(cards, feedback, refined_cards)
+        Add a new refinement iteration to history
+    """
+    iterations: List[Dict] = Field(default_factory=list)
+    
+    def add_iteration(self, cards: List[PlainCard], feedback: CardFeedback, 
+                     refined_cards: Optional[List[PlainCard]] = None):
+        """Add a refinement iteration to history.
+        
+        Parameters
+        ----------
+        cards : List[PlainCard]
+            Cards before refinement
+        feedback : CardFeedback
+            Feedback received for these cards
+        refined_cards : List[PlainCard], optional
+            Cards after refinement (if refinement occurred)
+        """
+        iteration = {
+            "iteration_number": len(self.iterations) + 1,
+            "original_cards": [card.model_dump() for card in cards],
+            "feedback": feedback.model_dump(),
+            "refined_cards": [card.model_dump() for card in refined_cards] if refined_cards else None
+        }
+        self.iterations.append(iteration)
+
+
+class EnhancedCardGenerationResponse(CardGenerationResponse):
+    """Extended response with quality tracking.
+    
+    Adds quality metrics and refinement tracking to the standard
+    card generation response.
+    
+    Parameters
+    ----------
+    cards : List[PlainCard]
+        List of generated flashcards
+    skipped_sections : List[str], optional
+        Sections not suitable for card generation
+    quality_score : float, optional
+        Self-assessed quality score 0-1
+    iteration : int, optional
+        Refinement iteration number
+    refinement_history : RefinementHistory, optional
+        Full history of refinements
+    """
+    quality_score: Optional[float] = Field(
+        None, description="Self-assessed quality score 0-1"
+    )
+    iteration: Optional[int] = Field(
+        None, description="Refinement iteration number"
+    )
+    refinement_history: Optional[RefinementHistory] = Field(
+        None, description="History of refinement iterations"
+    )
