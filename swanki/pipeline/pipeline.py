@@ -56,6 +56,10 @@ from ..models import (
     ImageSummary,
     ProcessingState,
     PlainCard,
+    CardFeedback,
+    AudioTranscriptFeedback,
+    RefinementHistory,
+    EnhancedCardGenerationResponse,
 )
 
 # Import new processing modules
@@ -785,6 +789,27 @@ Generate {cloze_count} cloze cards now. Focus on key definitions, formulas, and 
                 ),
             )
             
+            # Apply self-refine if enabled
+            refinement_config = self.config.get("refinement", {}).get("refinement", {})
+            if refinement_config.get("enabled", False):
+                logger.info("Applying self-refine to improve card quality...")
+                
+                # Refine regular cards
+                if regular_response.cards and "regular" in refinement_config.get("content_types", ["regular", "cloze"]):
+                    regular_response = self._self_refine_cards(
+                        regular_response,
+                        doc_summary,
+                        "regular"
+                    )
+                
+                # Refine cloze cards
+                if cloze_response.cards and "cloze" in refinement_config.get("content_types", ["regular", "cloze"]):
+                    cloze_response = self._self_refine_cards(
+                        cloze_response,
+                        doc_summary,
+                        "cloze"
+                    )
+            
             # Combine responses
             response = CardGenerationResponse(
                 cards=regular_response.cards + cloze_response.cards,
@@ -980,6 +1005,16 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                         response_model=CardGenerationResponse,
                         max_retries=llm_config.get("max_retries", 3),
                     )
+
+                    # Apply self-refine if enabled for image cards
+                    refinement_config = self.config.get("refinement", {}).get("refinement", {})
+                    if refinement_config.get("enabled", False) and "image" in refinement_config.get("content_types", ["regular", "cloze", "image"]):
+                        logger.info(f"Applying self-refine to image cards for {image_info['path']}...")
+                        response = self._self_refine_cards(
+                            response,
+                            doc_summary,
+                            "image"
+                        )
 
                     # Add image paths to the generated cards
                     for idx, card in enumerate(response.cards):
@@ -1576,3 +1611,412 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         except Exception as e:
             logger.error(f"Failed to send cards to Anki: {e}")
             raise
+
+    def _self_refine_cards(
+        self,
+        response: CardGenerationResponse,
+        doc_summary: DocumentSummary,
+        card_type: str
+    ) -> CardGenerationResponse:
+        """Apply self-refine pattern to improve card quality.
+        
+        Iteratively generates feedback and refines cards until they meet
+        quality standards or reach maximum iterations.
+        
+        Parameters
+        ----------
+        response : CardGenerationResponse
+            Initial card generation response
+        doc_summary : DocumentSummary
+            Document summary for context
+        card_type : str
+            Type of cards ('regular', 'cloze', or 'image')
+            
+        Returns
+        -------
+        CardGenerationResponse
+            Refined cards response
+        """
+        refinement_config = self.config.get("refinement", {}).get("refinement", {})
+        max_iterations = refinement_config.get("max_iterations", 3)
+        
+        # Track refinement history
+        history = RefinementHistory()
+        
+        for iteration in range(max_iterations):
+            # Generate feedback
+            feedback = self._generate_card_feedback(
+                response.cards,
+                doc_summary,
+                card_type
+            )
+            
+            # Check if cards are good enough
+            if feedback.done:
+                logger.info(f"{card_type.capitalize()} cards passed quality check after {iteration} iterations")
+                break
+            
+            # Log feedback
+            logger.info(f"Iteration {iteration + 1} feedback for {card_type} cards:")
+            for issue in feedback.feedback:
+                logger.info(f"  - {issue}")
+            
+            # Refine cards based on feedback
+            refined_response = self._refine_cards(
+                response,
+                feedback,
+                doc_summary,
+                card_type
+            )
+            
+            # Save to history
+            history.add_iteration(response.cards, feedback, refined_response.cards)
+            
+            # Update response for next iteration
+            response = refined_response
+            
+        return response
+    
+    def _generate_card_feedback(
+        self,
+        cards: List[PlainCard],
+        doc_summary: DocumentSummary,
+        card_type: str
+    ) -> CardFeedback:
+        """Generate quality feedback for cards.
+        
+        Parameters
+        ----------
+        cards : List[PlainCard]
+            Cards to evaluate
+        doc_summary : DocumentSummary
+            Document context
+        card_type : str
+            Type of cards being evaluated
+            
+        Returns
+        -------
+        CardFeedback
+            Structured feedback about card quality
+        """
+        refinement_config = self.config.get("refinement", {}).get("refinement", {})
+        feedback_prompts = refinement_config.get("feedback_prompts", {})
+        
+        # Format cards for evaluation
+        cards_text = self._format_cards_for_feedback(cards)
+        
+        # Get appropriate feedback prompt
+        feedback_prompt = feedback_prompts.get(f"{card_type}_cards", "")
+        
+        # Get LLM config
+        models_config = self.config.get("models", {}).get("models", {})
+        llm_config = models_config.get("llm", {})
+        
+        system_prompt = f"""You are an expert flashcard quality evaluator.
+Check for these issues in {card_type} cards:
+1. External references ([1], "According to X", "Figure 3")
+2. Insufficient context ("this", "the model")
+3. Generic tags (#equation vs #calculus.derivatives)
+4. Rote memorization ("What does X stand for?")
+5. Math formatting issues
+6. Cloze problems (multiple deletions, split equations)
+7. Undefined acronyms
+8. Author-centric questions
+
+If ALL cards are high quality, set done=True.
+Otherwise provide specific, actionable feedback."""
+        
+        return self.instructor.chat.completions.create(
+            model=llm_config.get("model", "gpt-4"),
+            response_model=CardFeedback,
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": f"""
+Document context:
+Title: {doc_summary.title}
+Acronyms: {doc_summary.acronyms}
+Technical terms: {doc_summary.technical_terms}
+
+Cards to evaluate:
+{cards_text}
+
+{feedback_prompt}
+"""
+                }
+            ],
+            max_retries=Retrying(
+                stop=stop_after_attempt(2),
+                wait=wait_exponential(multiplier=1, min=2, max=5)
+            )
+        )
+    
+    def _refine_cards(
+        self,
+        response: CardGenerationResponse,
+        feedback: CardFeedback,
+        doc_summary: DocumentSummary,
+        card_type: str
+    ) -> CardGenerationResponse:
+        """Refine cards based on feedback.
+        
+        Parameters
+        ----------
+        response : CardGenerationResponse
+            Original cards
+        feedback : CardFeedback
+            Feedback to address
+        doc_summary : DocumentSummary
+            Document context
+        card_type : str
+            Type of cards
+            
+        Returns
+        -------
+        CardGenerationResponse
+            Refined cards
+        """
+        refinement_config = self.config.get("refinement", {}).get("refinement", {})
+        refinement_prompts = refinement_config.get("refinement_prompts", {})
+        
+        # Format cards and feedback
+        cards_text = self._format_cards_for_feedback(response.cards)
+        feedback_text = "\n".join([f"- {f}" for f in feedback.feedback])
+        
+        # Get refinement prompt
+        refinement_prompt = refinement_prompts.get(f"{card_type}_cards", "")
+        
+        # Get LLM config
+        models_config = self.config.get("models", {}).get("models", {})
+        llm_config = models_config.get("llm", {})
+        
+        return self.instructor.chat.completions.create(
+            model=llm_config.get("model", "gpt-4"),
+            response_model=CardGenerationResponse,
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"""You are an expert flashcard creator.
+Refine the {card_type} cards to address ALL feedback issues.
+Maintain the same number and types of cards."""
+                },
+                {
+                    "role": "user",
+                    "content": f"""
+Original cards:
+{cards_text}
+
+Feedback to address:
+{feedback_text}
+
+Document context:
+Title: {doc_summary.title}
+Acronyms: {doc_summary.acronyms}
+Technical terms: {doc_summary.technical_terms}
+
+{refinement_prompt}
+
+Generate {len(response.cards)} improved {card_type} cards addressing all feedback.
+"""
+                }
+            ],
+            max_retries=Retrying(
+                stop=stop_after_attempt(2),
+                wait=wait_exponential(multiplier=1, min=2, max=5)
+            )
+        )
+    
+    def _format_cards_for_feedback(self, cards: List[PlainCard]) -> str:
+        """Format cards for feedback evaluation.
+        
+        Parameters
+        ----------
+        cards : List[PlainCard]
+            Cards to format
+            
+        Returns
+        -------
+        str
+            Formatted card text
+        """
+        formatted = []
+        for i, card in enumerate(cards):
+            formatted.append(f"Card {i + 1}:")
+            formatted.append(f"Front: {card.front.text}")
+            if not ("{{c" in card.front.text):  # Regular card
+                formatted.append(f"Back: {card.back.text}")
+            formatted.append(f"Tags: {', '.join(card.tags)}")
+            formatted.append("")  # Empty line between cards
+        
+        return "\n".join(formatted)
+    
+    def _self_refine_audio_transcript(
+        self,
+        transcript: str,
+        card_type: str,
+        doc_summary: DocumentSummary
+    ) -> str:
+        """Apply self-refine to audio transcripts.
+        
+        Parameters
+        ----------
+        transcript : str
+            Original audio transcript
+        card_type : str
+            Type of card ('regular', 'cloze', etc.)
+        doc_summary : DocumentSummary
+            Document context
+            
+        Returns
+        -------
+        str
+            Refined transcript suitable for TTS
+        """
+        refinement_config = self.config.get("refinement", {}).get("refinement", {})
+        
+        if not refinement_config.get("include_audio", False):
+            return transcript
+        
+        max_iterations = refinement_config.get("max_iterations", 3)
+        
+        for iteration in range(max_iterations):
+            # Generate feedback for transcript
+            feedback = self._generate_audio_feedback(transcript, card_type, doc_summary)
+            
+            if feedback.done:
+                logger.info(f"Audio transcript passed quality check after {iteration} iterations")
+                break
+            
+            # Refine transcript
+            transcript = self._refine_audio_transcript(
+                transcript,
+                feedback,
+                card_type,
+                doc_summary
+            )
+        
+        return transcript
+    
+    def _generate_audio_feedback(
+        self,
+        transcript: str,
+        card_type: str,
+        doc_summary: DocumentSummary
+    ) -> AudioTranscriptFeedback:
+        """Generate feedback for audio transcript.
+        
+        Parameters
+        ----------
+        transcript : str
+            Transcript to evaluate
+        card_type : str
+            Type of content
+        doc_summary : DocumentSummary
+            Document context
+            
+        Returns
+        -------
+        AudioTranscriptFeedback
+            Feedback about transcript quality
+        """
+        refinement_config = self.config.get("refinement", {}).get("refinement", {})
+        feedback_prompts = refinement_config.get("feedback_prompts", {})
+        
+        # Get LLM config
+        models_config = self.config.get("models", {}).get("models", {})
+        llm_config = models_config.get("llm", {})
+        
+        return self.instructor.chat.completions.create(
+            model=llm_config.get("model", "gpt-4"),
+            response_model=AudioTranscriptFeedback,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert in audio transcript quality for text-to-speech."
+                },
+                {
+                    "role": "user",
+                    "content": f"""
+Transcript to evaluate:
+{transcript}
+
+Card type: {card_type}
+Citation key: {doc_summary.citation_key if hasattr(doc_summary, 'citation_key') else 'Unknown'}
+Acronyms in document: {doc_summary.acronyms}
+
+{feedback_prompts.get(f'{card_type}_audio', feedback_prompts.get('audio_transcript', ''))}
+"""
+                }
+            ]
+        )
+    
+    def _refine_audio_transcript(
+        self,
+        transcript: str,
+        feedback: AudioTranscriptFeedback,
+        card_type: str,
+        doc_summary: DocumentSummary
+    ) -> str:
+        """Refine audio transcript based on feedback.
+        
+        Parameters
+        ----------
+        transcript : str
+            Original transcript
+        feedback : AudioTranscriptFeedback
+            Feedback to address
+        card_type : str
+            Type of content
+        doc_summary : DocumentSummary
+            Document context
+            
+        Returns
+        -------
+        str
+            Refined transcript
+        """
+        refinement_config = self.config.get("refinement", {}).get("refinement", {})
+        refinement_prompts = refinement_config.get("refinement_prompts", {})
+        
+        # Get LLM config
+        models_config = self.config.get("models", {}).get("models", {})
+        llm_config = models_config.get("llm", {})
+        
+        feedback_text = "\n".join([f"- {f}" for f in feedback.feedback])
+        
+        messages = [
+            {
+                "role": "system",
+                "content": "You are an expert at creating clear audio transcripts for text-to-speech."
+            },
+            {
+                "role": "user",
+                "content": f"""
+Original transcript:
+{transcript}
+
+Issues to fix:
+{feedback_text}
+
+Context:
+- Card type: {card_type}
+- Document acronyms: {doc_summary.acronyms}
+
+{refinement_prompts.get(f'{card_type}_audio', refinement_prompts.get('audio_transcript', ''))}
+
+Rewrite the transcript addressing all issues.
+"""
+            }
+        ]
+        
+        response = self.instructor.chat.completions.create(
+            model=llm_config.get("model", "gpt-4"),
+            messages=messages,
+            response_model=None  # Just get raw text response
+        )
+        
+        return response.choices[0].message.content
