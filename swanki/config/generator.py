@@ -118,11 +118,30 @@ class ConfigGenerator:
             config_dir.mkdir(parents=True, exist_ok=True)
             cls._generate_all_defaults(config_dir)
             
-            print(f"\n✓ Configurations created! Processing will continue with defaults.")
+            print(f"\n✓ Configurations created!")
             print(f"\nTo customize settings, edit files in: {config_dir}/")
             print(f"Key files: pipeline/default.yaml, prompts/default.yaml, audio/default.yaml")
             
-            # No second prompt - just continue
+            # Add second prompt to allow user to halt and edit configs
+            if interactive:
+                print(f"\n{'='*60}")
+                print("\nWould you like to:")
+                print("  1. Continue processing with default settings")
+                print("  2. Halt to edit configuration files first")
+                print(f"{'='*60}")
+                
+                response = input("\nContinue with defaults? [Y/n]: ").strip().lower()
+                
+                if response and response not in ['y', 'yes', '']:
+                    print("\nProcessing halted. You can now edit the configuration files at:")
+                    print(f"  {config_dir}/")
+                    print("\nOnce you've customized the settings, run the command again.")
+                    print("The configuration files will be used automatically.")
+                    import sys
+                    sys.exit(0)
+                
+                print(f"\nContinuing with default settings...")
+            
             print(f"\n{'='*60}\n")
         
         return config_dir
