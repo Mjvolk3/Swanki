@@ -1644,36 +1644,46 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         history = RefinementHistory()
         
         for iteration in range(max_iterations):
-            # Generate feedback
-            feedback = self._generate_card_feedback(
-                response.cards,
-                doc_summary,
-                card_type
-            )
-            
-            # Check if cards are good enough
-            if feedback.done:
-                logger.info(f"{card_type.capitalize()} cards passed quality check after {iteration} iterations")
+            try:
+                # Generate feedback
+                feedback = self._generate_card_feedback(
+                    response.cards,
+                    doc_summary,
+                    card_type
+                )
+                
+                # Check if cards are good enough
+                if feedback.done:
+                    logger.info(f"{card_type.capitalize()} cards passed quality check after {iteration} iterations")
+                    break
+                
+                # Log feedback
+                logger.info(f"Iteration {iteration + 1} feedback for {card_type} cards:")
+                for issue in feedback.feedback:
+                    logger.info(f"  - {issue}")
+                
+                # Refine cards based on feedback
+                refined_response = self._refine_cards(
+                    response,
+                    feedback,
+                    doc_summary,
+                    card_type
+                )
+                
+                # Save to history
+                history.add_iteration(response.cards, feedback, refined_response.cards)
+                
+                # Update response for next iteration
+                response = refined_response
+                
+            except ValidationError as e:
+                logger.warning(f"Validation error during refinement iteration {iteration + 1}: {e}")
+                logger.info(f"Continuing with current cards for {card_type} type")
+                # Don't update response, keep current version
                 break
-            
-            # Log feedback
-            logger.info(f"Iteration {iteration + 1} feedback for {card_type} cards:")
-            for issue in feedback.feedback:
-                logger.info(f"  - {issue}")
-            
-            # Refine cards based on feedback
-            refined_response = self._refine_cards(
-                response,
-                feedback,
-                doc_summary,
-                card_type
-            )
-            
-            # Save to history
-            history.add_iteration(response.cards, feedback, refined_response.cards)
-            
-            # Update response for next iteration
-            response = refined_response
+            except Exception as e:
+                logger.error(f"Unexpected error during refinement: {e}")
+                break
             
         return response
     
@@ -1790,23 +1800,35 @@ Cards to evaluate:
         # Get refinement prompt
         refinement_prompt = refinement_prompts.get(f"{card_type}_cards", "")
         
+        # Add specific guidance for cloze cards with math
+        if card_type == "cloze":
+            refinement_prompt += """
+
+IMPORTANT for cloze cards with math:
+- If an equation has multiple parts, you can hide different parts in separate cloze markers
+- Numeric values like {{c1::0.1}} are valid - don't avoid them
+- Example with multiple parts: "In {{c1::\\alpha = 0.1}}, the learning rate is {{c2::0.1}}"
+- Example with full equation: "The equation {{c1::\\(E = mc^2\\)}} relates energy to mass"
+"""
+        
         # Get LLM config
         models_config = self.config.get("models", {}).get("models", {})
         llm_config = models_config.get("llm", {})
         
-        return self.instructor.chat.completions.create(
-            model=llm_config.get("model", "gpt-4"),
-            response_model=CardGenerationResponse,
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"""You are an expert flashcard creator.
+        try:
+            return self.instructor.chat.completions.create(
+                model=llm_config.get("model", "gpt-4"),
+                response_model=CardGenerationResponse,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": f"""You are an expert flashcard creator.
 Refine the {card_type} cards to address ALL feedback issues.
 Maintain the same number and types of cards."""
-                },
-                {
-                    "role": "user",
-                    "content": f"""
+                    },
+                    {
+                        "role": "user",
+                        "content": f"""
 Original cards:
 {cards_text}
 
@@ -1822,13 +1844,19 @@ Technical terms: {doc_summary.technical_terms}
 
 Generate {len(response.cards)} improved {card_type} cards addressing all feedback.
 """
-                }
-            ],
-            max_retries=Retrying(
-                stop=stop_after_attempt(2),
-                wait=wait_exponential(multiplier=1, min=2, max=5)
+                    }
+                ],
+                max_retries=Retrying(
+                    stop=stop_after_attempt(2),
+                    wait=wait_exponential(multiplier=1, min=2, max=5),
+                    retry=retry_if_exception_type(ValidationError)
+                )
             )
-        )
+        except ValidationError as e:
+            # If validation still fails, log the error and return original
+            logger.error(f"Validation error during refinement: {e}")
+            logger.warning("Returning original cards due to refinement validation error")
+            return response
     
     def _format_cards_for_feedback(self, cards: List[PlainCard]) -> str:
         """Format cards for feedback evaluation.
