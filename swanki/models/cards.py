@@ -155,18 +155,39 @@ class CardContent(BaseModel):
                 
                 for pattern in math_patterns:
                     if re.search(pattern, text_without_clozes):
-                        # Check if the cloze content is too simple (like just "Mathjax" or a word)
+                        # Check if the cloze content looks like a placeholder rather than actual content
+                        # Be very specific about what constitutes a placeholder
+                        placeholder_patterns = [
+                            r'^(mathjax|equation|formula|expression|math)$',
+                            r'^(the\s+)?(equation|formula|expression)$',
+                        ]
+                        
+                        # Common meaningless placeholders that indicate poor card design
+                        bad_placeholders = ['mathjax', 'equation', 'formula', 'expression', 'math', 'latex']
+                        
                         for cloze in clozes:
                             cloze_content = cloze.group(1).strip()
-                            # If cloze content is too short or doesn't contain math, it's likely wrong
-                            if (len(cloze_content) < 10 and 
-                                not any(re.search(p, cloze_content) for p in math_patterns)):
-                                raise ValueError(
-                                    f"Math equation appears to be outside cloze deletion. "
-                                    f"Found cloze with content '{cloze_content}' but math notation exists outside. "
-                                    f"For math cloze cards, the entire equation should be inside {{{{c1::equation}}}}. "
-                                    f"Example: 'The equation {{{{c1::\\(E = mc^2\\)}}}} shows mass-energy equivalence.'"
-                                )
+                            
+                            # Check if it's definitely a bad placeholder
+                            is_bad_placeholder = cloze_content.lower() in bad_placeholders
+                            
+                            # If it has LaTeX/math in the cloze content, it's probably OK
+                            has_math_in_cloze = any(re.search(p, cloze_content) for p in math_patterns)
+                            
+                            # If it's a bad placeholder AND there's math outside, that's an error
+                            if is_bad_placeholder and not has_math_in_cloze:
+                                # Double-check: is there substantial math notation outside?
+                                # Remove this cloze and check if significant math remains
+                                temp_text = v.replace(cloze.group(0), 'TEMP')
+                                math_outside = sum(1 for p in math_patterns if re.search(p, temp_text))
+                                
+                                if math_outside >= 2:  # Multiple math indicators outside
+                                    raise ValueError(
+                                        f"Math equation appears to be outside cloze deletion. "
+                                        f"Found cloze with placeholder '{cloze_content}' but math notation exists outside. "
+                                        f"For math cloze cards, the entire equation should be inside {{{{c1::equation}}}}. "
+                                        f"Example: 'The equation {{{{c1::\\(E = mc^2\\)}}}} shows mass-energy equivalence.'"
+                                    )
         
         # Note: We keep LaTeX dollar notation in the card model
         # Conversion to MathJax happens only when sending to Anki
