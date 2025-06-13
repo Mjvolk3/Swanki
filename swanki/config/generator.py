@@ -575,53 +575,71 @@ Content to present:
                 "generate_complementary": False,
                 "generate_summary": False,
                 "generate_reading": False,
+                "generate_lecture": False,
                 "complementary_speed": 1.6,
                 "summary_speed": 1.1,
                 "reading_speed": 1.2,
+                "lecture_speed": 1.1,
                 "format": "mp3",
                 "quality": "high"
             }
         })
         
-        # Only card audio
-        cls._write_yaml(audio_dir / "cards.yaml", {
+        # None - no audio generation (just for clarity)
+        cls._write_yaml(audio_dir / "none.yaml", {
+            "audio": {
+                "generate_complementary": False,
+                "generate_summary": False,
+                "generate_reading": False,
+                "generate_lecture": False
+            }
+        })
+        
+        # Essential - cards and summary only (most common use case)
+        cls._write_yaml(audio_dir / "essential.yaml", {
             "audio": {
                 "generate_complementary": True,
-                "generate_summary": False,
-                "generate_reading": False,
-                "complementary_speed": 1.6
-            }
-        })
-        
-        # Only summary audio
-        cls._write_yaml(audio_dir / "summary.yaml", {
-            "audio": {
-                "generate_complementary": False,
                 "generate_summary": True,
                 "generate_reading": False,
-                "summary_speed": 1.1
+                "generate_lecture": False,
+                "complementary_speed": 1.6,
+                "summary_speed": 1.1,
+                "reading_speed": 1.2,
+                "lecture_speed": 1.1,
+                "format": "mp3",
+                "quality": "high"
             }
         })
         
-        # Only reading audio
-        cls._write_yaml(audio_dir / "reading.yaml", {
+        # All but reading - complementary, summary, and lecture
+        cls._write_yaml(audio_dir / "all_but_reading.yaml", {
             "audio": {
-                "generate_complementary": False,
-                "generate_summary": False,
-                "generate_reading": True,
-                "reading_speed": 1.2
+                "generate_complementary": True,
+                "generate_summary": True,
+                "generate_reading": False,
+                "generate_lecture": True,
+                "complementary_speed": 1.6,
+                "summary_speed": 1.1,
+                "reading_speed": 1.2,
+                "lecture_speed": 1.1,
+                "format": "mp3",
+                "quality": "high"
             }
         })
         
-        # All audio types
+        # Full - all audio types
         cls._write_yaml(audio_dir / "full.yaml", {
             "audio": {
                 "generate_complementary": True,
                 "generate_summary": True,
                 "generate_reading": True,
+                "generate_lecture": True,
                 "complementary_speed": 1.6,
                 "summary_speed": 1.1,
-                "reading_speed": 1.2
+                "reading_speed": 1.2,
+                "lecture_speed": 1.1,
+                "format": "mp3",
+                "quality": "high"
             }
         })
         
