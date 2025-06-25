@@ -43,7 +43,7 @@ class ImageSummary(BaseModel):
     image_url : str
         URL or path to the extracted image file
     summary : str
-        2-3 sentence description of the image content
+        Detailed description of the image content (up to 300 words)
     extracted_text : str, optional
         Any text or equations extracted from the image via OCR
     
@@ -74,15 +74,15 @@ class ImageSummary(BaseModel):
     """
     page_idx: int
     image_url: str
-    summary: str = Field(..., description="2-3 sentence description")
+    summary: str = Field(..., description="Detailed description (up to 300 words)")
     extracted_text: Optional[str] = Field(None, description="Any text/equations in image")
     
     @field_validator('summary')
     def summary_length(cls, v):
-        """Validate that image summary is concise.
+        """Validate that image summary is reasonably sized.
         
-        Ensures the summary doesn't exceed 150 words to maintain
-        brevity suitable for flashcard generation.
+        Ensures the summary doesn't exceed 300 words to maintain
+        clarity while allowing for detailed technical descriptions.
         
         Parameters
         ----------
@@ -97,10 +97,10 @@ class ImageSummary(BaseModel):
         Raises
         ------
         ValueError
-            If summary exceeds 150 words
+            If summary exceeds 300 words
         """
         words = len(v.split())
-        if words > 150:  # Increased limit for technical images
+        if words > 300:  # Increased limit for complex technical images
             raise ValueError(f"Summary too long: {words} words")
         return v
 

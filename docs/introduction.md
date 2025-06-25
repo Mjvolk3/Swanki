@@ -138,3 +138,7 @@ swanki-to-anki ${CITATION}_*
 - [Configuration Guide](configuration.md) - Learn about customizing prompts and settings
 - [CLI Usage](cli-usage.md) - Detailed command reference
 - [Quickstart](quickstart.md) - Get started quickly
+
+
+swanki pdf_path=/Users/michaelvolk/Documents/projects/Swanki_Data/Popper_LOSD/04_Part_2.pdf \ citation_key=popperLogicScientificDiscovery2002 +output_dir=popperLogicScientificDiscovery2002/popperLogicScientificDiscovery2002_04_Part_2 audio=all_but_reading anki=auto_send
+

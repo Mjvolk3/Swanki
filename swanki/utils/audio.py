@@ -919,7 +919,7 @@ def generate_summary_audio(
     
     # Save transcript for debugging/editing
     transcripts_dir = output_path.parent / "summary_transcript"
-    transcripts_dir.mkdir(exist_ok=True)
+    transcripts_dir.mkdir(parents=True, exist_ok=True)
     transcript_path = transcripts_dir / f"{output_path.stem}_transcript.md"
     with open(transcript_path, "w", encoding="utf-8") as f:
         f.write(f"# Summary Audio Transcript\n\n")
@@ -1050,7 +1050,7 @@ def generate_reading_audio(
     
     # Save transcript for debugging/editing
     transcripts_dir = output_path.parent / "full_read"
-    transcripts_dir.mkdir(exist_ok=True)
+    transcripts_dir.mkdir(parents=True, exist_ok=True)
     transcript_path = transcripts_dir / f"{output_path.stem}_transcript.md"
     with open(transcript_path, "w", encoding="utf-8") as f:
         f.write(f"# Full Reading Audio Transcript\n\n")
@@ -1239,7 +1239,7 @@ Content to present:
     
     # Save transcript for debugging/editing
     transcripts_dir = output_path.parent / "lecture_transcript"
-    transcripts_dir.mkdir(exist_ok=True)
+    transcripts_dir.mkdir(parents=True, exist_ok=True)
     transcript_path = transcripts_dir / f"{output_path.stem}_transcript.md"
     with open(transcript_path, "w", encoding="utf-8") as f:
         f.write(f"# Lecture Audio Transcript\n\n")
@@ -1391,7 +1391,7 @@ def generate_card_audio(
     
     # Save transcripts to markdown files for debugging
     transcripts_dir = audio_dir.parent / "complementary_transcripts"
-    transcripts_dir.mkdir(exist_ok=True)
+    transcripts_dir.mkdir(parents=True, exist_ok=True)
     
     # Save front transcript
     front_transcript_filename = f"{citation_key}_{card_uuid}_front.md" if citation_key else f"{card_uuid}_front.md"
