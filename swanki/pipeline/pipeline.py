@@ -230,7 +230,11 @@ class Pipeline:
         output_path = self.data_dir / base_name
 
         # Store base_name for audio file naming
-        self.audio_prefix = base_name
+        # Use only the last component if output_dir contains slashes
+        if output_dir and "/" in output_dir:
+            self.audio_prefix = Path(base_name).name
+        else:
+            self.audio_prefix = base_name
 
         # If directory exists, append a number
         if output_path.exists():
@@ -480,14 +484,34 @@ class Pipeline:
         image_summaries = []
         for idx, info in enumerate(image_infos):
             if "summary" in info:
-                image_summary = ImageSummary(
-                    image_url=info["url"],
-                    summary=info["summary"],
-                    alt_text=info.get("alt_text", ""),
-                    page_idx=idx,
-                    context=info.get("context", ""),
-                )
-                image_summaries.append(image_summary)
+                try:
+                    image_summary = ImageSummary(
+                        image_url=info["url"],
+                        summary=info["summary"],
+                        alt_text=info.get("alt_text", ""),
+                        page_idx=idx,
+                        context=info.get("context", ""),
+                    )
+                    image_summaries.append(image_summary)
+                except ValidationError as e:
+                    logger.warning(f"Image summary validation error for image {idx}: {e}")
+                    # Truncate the summary to fit within the limit
+                    words = info["summary"].split()
+                    truncated_summary = " ".join(words[:295]) + "..." if len(words) > 300 else info["summary"]
+                    
+                    try:
+                        image_summary = ImageSummary(
+                            image_url=info["url"],
+                            summary=truncated_summary,
+                            alt_text=info.get("alt_text", ""),
+                            page_idx=idx,
+                            context=info.get("context", ""),
+                        )
+                        image_summaries.append(image_summary)
+                        logger.info(f"Successfully added truncated summary for image {idx}")
+                    except Exception as e2:
+                        logger.error(f"Failed to add image {idx} even with truncation: {e2}")
+                        # Skip this image rather than crash the entire pipeline
 
         return image_summaries
 

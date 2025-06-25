@@ -9,6 +9,10 @@
             "path": "../Swanki_Data",
         },
         {
+            "name": "Deep-Learning-Foundations-and-Concepts",
+            "path": "../Deep-Learning-Foundations-and-Concepts"
+        },
+        {
             "name": "instructor",
             "path": "../instructor"
         },

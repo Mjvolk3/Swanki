@@ -101,6 +101,11 @@ class CardContent(BaseModel):
         # Convert all cloze numbers (c2, c3, etc.) to c1 for simplicity
         v = re.sub(r'\{\{c\d+::', '{{c1::', v)
         
+        # Count cloze deletions and warn if more than 2
+        cloze_count = v.count('{{c1::')
+        if cloze_count > 2:
+            logger.warning(f"Card has {cloze_count} cloze deletions (recommended max: 2). This may affect review experience.")
+        
         # Fix LaTeX/math conflicts within cloze deletions
         if '{{c1::' in v:
             # Find all cloze deletions and fix LaTeX conflicts within them
@@ -108,7 +113,17 @@ class CardContent(BaseModel):
                 cloze_content = match.group(1)
                 
                 # Check if this cloze contains LaTeX/math
-                if any(indicator in cloze_content for indicator in ['$', '\\frac', '\\sum', '\\int', '\\begin', '\\end']):
+                if any(indicator in cloze_content for indicator in ['$', '\\frac', '\\sum', '\\int', '\\begin', '\\end', '\\(', '\\text']):
+                    # First, validate and fix common LaTeX issues
+                    # Fix missing parentheses in expressions like "1 - \cos(x, y)" 
+                    # This pattern catches: number operator \command
+                    cloze_content = re.sub(r'(\d+)\s*(-|\+)\s*(\\[a-zA-Z]+)', r'(\1 \2 \3', cloze_content)
+                    
+                    # Fix malformed summation indices
+                    # Common error: \sum_{i=1}}^{m}} should be \sum_{i=1}^{m}
+                    cloze_content = re.sub(r'\\sum_\{([^}]+)\}\}', r'\\sum_{\1}', cloze_content)
+                    cloze_content = re.sub(r'\^\{([^}]+)\}\}', r'^{\1}', cloze_content)
+                    
                     # Fix }} within math expressions by adding space
                     # This prevents }} in LaTeX from being interpreted as cloze end
                     # Look for patterns like }{baz}} and change to }{baz} }
@@ -117,6 +132,23 @@ class CardContent(BaseModel):
                     # Fix :: within cloze content (e.g., std::variant)
                     # Add HTML comment to prevent :: from being interpreted as cloze separator
                     cloze_content = re.sub(r'::(?!})', r':<!-- -->:', cloze_content)
+                    
+                    # Ensure balanced parentheses for expressions
+                    # Count parentheses and add missing ones
+                    open_parens = cloze_content.count('(') - cloze_content.count('\\(')
+                    close_parens = cloze_content.count(')') - cloze_content.count('\\)')
+                    if open_parens > close_parens:
+                        cloze_content += ')' * (open_parens - close_parens)
+                    
+                    # Validate LaTeX command balance
+                    # Common patterns that should be balanced
+                    for cmd in ['\\frac', '\\text', '\\boldsymbol']:
+                        cmd_count = cloze_content.count(cmd + '{')
+                        # Count braces that follow this command
+                        pattern = re.escape(cmd) + r'\{[^}]*\}'
+                        matches = re.findall(pattern, cloze_content)
+                        if cmd_count > len(matches):
+                            logger.warning(f"Potentially unbalanced {cmd} command in cloze")
                 
                 return f'{{{{c1::{cloze_content}}}}}'
             

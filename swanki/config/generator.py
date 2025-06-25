@@ -12,7 +12,7 @@ ConfigGenerator
 Examples
 --------
 >>> from swanki.config import ConfigGenerator
->>> 
+>>>
 >>> # Ensure configs exist (called automatically by CLI)
 >>> config_dir = ConfigGenerator.ensure_configs()
 >>> print(f"Configs available at: {config_dir}")
@@ -24,7 +24,7 @@ Configuration structure:
 - Main config.yaml with defaults list
 - Subdirectories for each config group:
   - pipeline/: Processing settings
-  - prompts/: AI prompt templates  
+  - prompts/: AI prompt templates
   - models/: LLM and TTS settings
   - audio/: Audio generation options
   - output/: Output format settings
@@ -38,50 +38,50 @@ from typing import Dict, Any
 
 class ConfigGenerator:
     """Auto-generates default Hydra configs if not present.
-    
+
     Creates a complete configuration structure for Swanki with sensible
     defaults. Configs are created in a .swanki_config directory in the
     current working directory.
-    
+
     Attributes
     ----------
     DEFAULT_CONFIG_DIR : Path
         Default directory name for configs (.swanki_config)
-    
+
     Methods
     -------
     ensure_configs()
         Ensure config directory exists with all defaults
-    
+
     Examples
     --------
     >>> # Automatically called by CLI
     >>> config_dir = ConfigGenerator.ensure_configs()
-    >>> 
+    >>>
     >>> # Configs are now available for Hydra
     >>> # Users can override by editing files in .swanki_config/
     """
-    
+
     DEFAULT_CONFIG_DIR = Path(".swanki_config")
-    
+
     @classmethod
     def ensure_configs(cls, interactive: bool = True) -> Path:
         """Ensure config directory exists with all defaults.
-        
+
         Creates the configuration directory and generates all default
         configuration files if they don't already exist. Called automatically
         by the CLI before Hydra initialization.
-        
+
         Parameters
         ----------
         interactive : bool, optional
             Whether to prompt user when creating configs (default is True)
-        
+
         Returns
         -------
         Path
             Path to the configuration directory
-        
+
         Notes
         -----
         - Only creates configs if directory doesn't exist
@@ -89,7 +89,7 @@ class ConfigGenerator:
         - Creates in current working directory
         """
         config_dir = Path.cwd() / cls.DEFAULT_CONFIG_DIR
-        
+
         if not config_dir.exists():
             print(f"\n{'='*60}")
             print("FIRST TIME SETUP: No configuration found")
@@ -102,26 +102,33 @@ class ConfigGenerator:
             print("  - LLM model selection")
             print("  - Anki integration options")
             print("  - Output formats and organization")
-            
+
             if interactive:
                 print(f"\n{'='*60}")
-                response = input("\nCreate configs with defaults? [Y/n]: ").strip().lower()
-                
-                if response and response not in ['y', 'yes', '']:
-                    print("\nConfiguration cancelled. You can manually create configs at:")
+                response = (
+                    input("\nCreate configs with defaults? [Y/n]: ").strip().lower()
+                )
+
+                if response and response not in ["y", "yes", ""]:
+                    print(
+                        "\nConfiguration cancelled. You can manually create configs at:"
+                    )
                     print(f"  {config_dir}")
                     print("\nOr run the command again to use defaults.")
                     import sys
+
                     sys.exit(0)
-            
+
             print(f"\nCreating default configurations...")
             config_dir.mkdir(parents=True, exist_ok=True)
             cls._generate_all_defaults(config_dir)
-            
+
             print(f"\n✓ Configurations created!")
             print(f"\nTo customize settings, edit files in: {config_dir}/")
-            print(f"Key files: pipeline/default.yaml, prompts/default.yaml, audio/default.yaml")
-            
+            print(
+                f"Key files: pipeline/default.yaml, prompts/default.yaml, audio/default.yaml"
+            )
+
             # Add second prompt to allow user to halt and edit configs
             if interactive:
                 print(f"\n{'='*60}")
@@ -129,35 +136,40 @@ class ConfigGenerator:
                 print("  1. Continue processing with default settings")
                 print("  2. Halt to edit configuration files first")
                 print(f"{'='*60}")
-                
+
                 response = input("\nContinue with defaults? [Y/n]: ").strip().lower()
-                
-                if response and response not in ['y', 'yes', '']:
-                    print("\nProcessing halted. You can now edit the configuration files at:")
+
+                if response and response not in ["y", "yes", ""]:
+                    print(
+                        "\nProcessing halted. You can now edit the configuration files at:"
+                    )
                     print(f"  {config_dir}/")
-                    print("\nOnce you've customized the settings, run the command again.")
+                    print(
+                        "\nOnce you've customized the settings, run the command again."
+                    )
                     print("The configuration files will be used automatically.")
                     import sys
+
                     sys.exit(0)
-                
+
                 print(f"\nContinuing with default settings...")
-            
+
             print(f"\n{'='*60}\n")
-        
+
         return config_dir
-    
+
     @classmethod
     def _generate_all_defaults(cls, config_dir: Path):
         """Generate all default configuration files.
-        
+
         Creates the complete configuration structure with all config
         groups and their variants.
-        
+
         Parameters
         ----------
         config_dir : Path
             Root configuration directory
-        
+
         Notes
         -----
         Config groups created:
@@ -168,99 +180,109 @@ class ConfigGenerator:
         - output: Output formats (default)
         - anki: Anki integration (default, auto_send, custom_deck)
         """
-        
+
         # Main config
-        cls._write_yaml(config_dir / "config.yaml", {
-            "defaults": [
-                "_self_",
-                {"pipeline": "default"},
-                {"prompts": "default"}, 
-                {"models": "default"},
-                {"audio": "default"},
-                {"output": "default"},
-                {"anki": "default"},
-                {"refinement": "default"}
-            ],
-            "pdf_path": None,  # Will be provided by user
-            "citation_key": None,  # Will be provided by user
-            # Add placeholder keys so Hydra knows about them
-            "pipeline": None,  # Will be overridden by defaults
-            "prompts": None,   # Will be overridden by defaults
-            "models": None,    # Will be overridden by defaults
-            "audio": None,     # Will be overridden by defaults
-            "output": None,    # Will be overridden by defaults
-            "anki": None,      # Will be overridden by defaults
-            "refinement": None, # Will be overridden by defaults
-            "hydra": {
-                "run": {
-                    "dir": "outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}"
-                }
-            }
-        })
-        
+        cls._write_yaml(
+            config_dir / "config.yaml",
+            {
+                "defaults": [
+                    "_self_",
+                    {"pipeline": "default"},
+                    {"prompts": "default"},
+                    {"models": "default"},
+                    {"audio": "default"},
+                    {"output": "default"},
+                    {"anki": "default"},
+                    {"refinement": "default"},
+                ],
+                "pdf_path": None,  # Will be provided by user
+                "citation_key": None,  # Will be provided by user
+                # Add placeholder keys so Hydra knows about them
+                "pipeline": None,  # Will be overridden by defaults
+                "prompts": None,  # Will be overridden by defaults
+                "models": None,  # Will be overridden by defaults
+                "audio": None,  # Will be overridden by defaults
+                "output": None,  # Will be overridden by defaults
+                "anki": None,  # Will be overridden by defaults
+                "refinement": None,  # Will be overridden by defaults
+                "hydra": {"run": {"dir": "outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}"}},
+            },
+        )
+
         # Pipeline configs
         pipeline_dir = config_dir / "pipeline"
         pipeline_dir.mkdir(exist_ok=True)
-        
-        cls._write_yaml(pipeline_dir / "default.yaml", {
-            "processing": {
-                "window_size": 2,
-                "skip": 1,
-                "num_cards_per_page": 3,
-                "cloze_cards_per_page": 2,  # Number of cloze deletion cards per page
-                "chunk_size": 1000,
-                "overlap": 200,
-                "blocking_audio": True,  # Based on learnings
-                "image_cards": {
-                    "enabled": True,
-                    "cards_per_image": 3,
-                    "image_on_front": True,  # Whether image can appear on front of card
-                    "image_on_back": True,   # Whether image can appear on back of card
-                    "require_math_content": False,  # Only create cards for images with math
-                    "placement_strategy": "smart",  # How to decide placement when both front/back are true
-                    # "smart": Based on question content (if it references the image)
-                    # "alternate": Alternate between front and back
-                    # "random": Random placement with front_back_ratio
-                    # "prefer_front": Always front when possible
-                    # "prefer_back": Always back when possible
-                    "front_back_ratio": 0.5  # For random strategy: probability of front placement (0.0-1.0)
+
+        cls._write_yaml(
+            pipeline_dir / "default.yaml",
+            {
+                "processing": {
+                    "window_size": 2,
+                    "skip": 1,
+                    "num_cards_per_page": 3,
+                    "cloze_cards_per_page": 2,  # Number of cloze deletion cards per page
+                    "chunk_size": 1000,
+                    "overlap": 200,
+                    "blocking_audio": True,  # Based on learnings
+                    "image_cards": {
+                        "enabled": True,
+                        "cards_per_image": 3,
+                        "image_on_front": True,  # Whether image can appear on front of card
+                        "image_on_back": True,  # Whether image can appear on back of card
+                        "require_math_content": False,  # Only create cards for images with math
+                        "placement_strategy": "smart",  # How to decide placement when both front/back are true
+                        # "smart": Based on question content (if it references the image)
+                        # "alternate": Alternate between front and back
+                        # "random": Random placement with front_back_ratio
+                        # "prefer_front": Always front when possible
+                        # "prefer_back": Always back when possible
+                        "front_back_ratio": 0.5,  # For random strategy: probability of front placement (0.0-1.0)
+                    },
                 }
-            }
-        })
-        
-        cls._write_yaml(pipeline_dir / "comprehensive.yaml", {
-            "processing": {
-                "window_size": 3,
-                "skip": 1,
-                "num_cards_per_page": 5,
-                "cloze_cards_per_page": 3,  # More cloze cards for comprehensive mode
-                "chunk_size": 1500,
-                "overlap": 300,
-                "blocking_audio": True
-            }
-        })
-        
-        cls._write_yaml(pipeline_dir / "fast.yaml", {
-            "processing": {
-                "window_size": 1,
-                "skip": 1,
-                "num_cards_per_page": 2,
-                "cloze_cards_per_page": 1,  # Fewer cloze cards for fast mode
-                "chunk_size": 800,
-                "overlap": 100,
-                "blocking_audio": False
-            }
-        })
-        
+            },
+        )
+
+        cls._write_yaml(
+            pipeline_dir / "comprehensive.yaml",
+            {
+                "processing": {
+                    "window_size": 3,
+                    "skip": 1,
+                    "num_cards_per_page": 5,
+                    "cloze_cards_per_page": 3,  # More cloze cards for comprehensive mode
+                    "chunk_size": 1500,
+                    "overlap": 300,
+                    "blocking_audio": True,
+                }
+            },
+        )
+
+        cls._write_yaml(
+            pipeline_dir / "fast.yaml",
+            {
+                "processing": {
+                    "window_size": 1,
+                    "skip": 1,
+                    "num_cards_per_page": 2,
+                    "cloze_cards_per_page": 1,  # Fewer cloze cards for fast mode
+                    "chunk_size": 800,
+                    "overlap": 100,
+                    "blocking_audio": False,
+                }
+            },
+        )
+
         # Prompts configs
         prompts_dir = config_dir / "prompts"
         prompts_dir.mkdir(exist_ok=True)
-        
-        cls._write_yaml(prompts_dir / "default.yaml", {
-            "prompts": {
-                "summary": {
-                    "system": "You are an expert at creating concise, informative summaries of academic documents.",
-                    "document_summary": """Create a comprehensive summary of this document.
+
+        cls._write_yaml(
+            prompts_dir / "default.yaml",
+            {
+                "prompts": {
+                    "summary": {
+                        "system": "You are an expert at creating concise, informative summaries of academic documents.",
+                        "document_summary": """Create a comprehensive summary of this document.
 Focus on:
 1. Main thesis and key contributions
 2. All acronyms and their full forms
@@ -273,7 +295,7 @@ Document content:
 
 Image summaries:
 {image_summaries}""",
-                    "image_summary": """Provide a comprehensive description of this image for audio-only learners.
+                        "image_summary": """Provide a comprehensive description of this image for audio-only learners.
 
 Instructions:
 1. Describe the overall structure and layout of the image (4-6 sentences)
@@ -290,11 +312,11 @@ The description should be detailed enough that someone listening to audio only c
 - What relationships or processes are depicted
 - Any mathematical or technical notation shown
 
-Aim for 6-10 sentences that paint a complete picture without revealing answers to potential questions."""
-                },
-                "cards": {
-                    "system": "You are an expert at creating educational flashcards. Your ONLY job is to create the EXACT number of cards requested. You MUST create BOTH regular Q&A cards AND cloze deletion cards as specified. Count carefully and ensure you generate the exact numbers requested.",
-                    "generate_cards": """You are required to generate {num_cards} regular cards AND {num_cloze} cloze deletion cards.
+Aim for 6-10 sentences that paint a complete picture without revealing answers to potential questions.""",
+                    },
+                    "cards": {
+                        "system": "You are an expert at creating educational flashcards. Your ONLY job is to create the EXACT number of cards requested. You MUST create BOTH regular Q&A cards AND cloze deletion cards as specified. Count carefully and ensure you generate the exact numbers requested.",
+                        "generate_cards": """You are required to generate {num_cards} regular cards AND {num_cloze} cloze deletion cards.
 
 MANDATORY DISTRIBUTION:
 - Regular Q&A cards: {num_cards}
@@ -379,23 +401,23 @@ CRITICAL MATH CLOZE RULES:
 - For simple equations, you can hide parts: "The derivative \\(\\frac{d}{dx}(x^2) = {{c1::2x}}\\)"
 
 Example GOOD cloze cards:
-## The gradient of \\(f(x) = x^2\\) is {{c1::2x}}, which represents the {{c2::rate of change}}.
+## The gradient of \\(f(x) = x^2\\) is {{c1::2x}}, which represents the rate of change.
 
 - #calculus.derivatives, #mathematics
 
-## In Bayesian networks, conditional dependencies are represented by {{c1::directed edges}} in a {{c2::directed acyclic graph (DAG)}}.
+## In Bayesian networks, conditional dependencies are represented by {{c1::directed edges}} in a directed acyclic graph (DAG).
 
 - #bayesian-networks, #graphical-models
 
-## The equation {{c1::\\(E[X_j \\mid X_{pa(j)}] = g_j(f_j(X))\\)}} expresses the {{c2::conditional expectation of a node given its parents}}.
+## The equation {{c1::\\(E[X_j \\mid X_{pa(j)}] = g_j(f_j(X))\\)}} expresses the conditional expectation of a node given its parents.
 
 - #statistics, #conditional-expectation
 
-## In causal modeling, conditional dependencies are expressed using {{c1::\\(\\sum_{i=1}^{n} w_{ij}x_i + b_j\\)}} as the {{c2::structural equation}}.
+## In causal modeling, conditional dependencies are expressed using {{c1::\\(\\sum_{i=1}^{n} w_{ij}x_i + b_j\\)}} as the structural equation.
 
 - #causal-inference, #structural-equations
 
-## The transformation {{c1::\\(F(W)\\)}} maps {{c2::weighted adjacency matrices}} to {{c3::directed acyclic graphs}}.
+## The transformation {{c1::\\(F(W)\\)}} maps weighted adjacency matrices to directed acyclic graphs.
 
 - #graph-theory, #transformations, #dag-learning
 
@@ -474,22 +496,28 @@ CRITICAL REQUIREMENTS:
     Example: {{c1::std:<!-- -->:variant is a C++ feature}}
 13. For equation cloze cards: When referencing "the equation", include the ENTIRE equation in cloze
     Example: "The equation {{c1::\\(E = mc^2\\)}} demonstrates..." NOT "The equation {{c1::E=mc²}} \\(E = mc^2\\)..."
-14. Each card must teach a concept, not test memorization of references
-15. IMPORTANT: When you find ANY mathematical notation, CREATE CARDS about it!
-16. NEVER use generic tags like #equation, #formula, #definition, #concept, #method
+14. CRITICAL LaTeX/MathJax rules for cloze cards:
+    - Add parentheses around expressions: "1 - \\cos" → "(1 - \\cos)"
+    - Fix summation indices: NOT "\\sum_{i=1}}^{m}}" but "\\sum_{i=1}^{m}"
+    - Ensure balanced braces in LaTeX commands
+    - Maximum 1 cloze deletion per card (use {{c1::}})
+    - Keep entire mathematical expressions together in one cloze
+15. Each card must teach a concept, not test memorization of references
+16. IMPORTANT: When you find ANY mathematical notation, CREATE CARDS about it!
+17. NEVER use generic tags like #equation, #formula, #definition, #concept, #method
     Use specific conceptual tags: #optimization.gradient-descent, #causal-inference.dag, #machine-learning.regularization
-17. ALWAYS define mathematical symbols within the card: "where h is a smooth function" not just "h(W) = 0"
-18. ALWAYS expand acronyms when first used: "NAS (Neural Architecture Search)" not just "NAS"
-19. For EVERY mathematical symbol or function (h, F, g_j, etc.), ensure the card defines what it represents
-20. Focus on WHAT methods do and HOW they work, not WHO proposed them
-21. Transform author-centric questions into concept-centric ones:
+18. ALWAYS define mathematical symbols within the card: "where h is a smooth function" not just "h(W) = 0"
+19. ALWAYS expand acronyms when first used: "NAS (Neural Architecture Search)" not just "NAS"
+20. For EVERY mathematical symbol or function (h, F, g_j, etc.), ensure the card defines what it represents
+21. Focus on WHAT methods do and HOW they work, not WHO proposed them
+22. Transform author-centric questions into concept-centric ones:
     ❌ "What is Zheng et al.'s approach?" 
     ✓ "How does the nonparametric DAG learning method work?"
 
-Start generating cards now. First generate all {num_cloze} cloze cards, then generate all {num_cards} regular cards."""
-                },
-                "audio": {
-                    "transcript_cleaning": """Convert this text to be TTS-friendly:
+Start generating cards now. First generate all {num_cloze} cloze cards, then generate all {num_cards} regular cards.""",
+                    },
+                    "audio": {
+                        "transcript_cleaning": """Convert this text to be TTS-friendly:
 1. Expand acronyms on first use
 2. Convert math notation to words
 3. Add pronunciation guides for technical terms
@@ -498,10 +526,10 @@ Start generating cards now. First generate all {num_cloze} cloze cards, then gen
 Text: {text}
 Citation key: {citation_key}
 Known acronyms: {acronyms}""",
-                    "lecture_system": """You are creating a clear, informative audio presentation of academic content.
+                        "lecture_system": """You are creating a clear, informative audio presentation of academic content.
 Focus on clarity and educational value without unnecessary dramatization.
 Start directly with the content without lengthy introductions.""",
-                    "lecture_generation": """Create a clear educational presentation from this document.
+                        "lecture_generation": """Create a clear educational presentation from this document.
 
 Guidelines:
 1. Begin directly with the main content - no lengthy introductions
@@ -512,209 +540,245 @@ Guidelines:
 6. Mention the citation key naturally at the beginning: {citation_key}
 
 Content to present:
-{content}"""
+{content}""",
+                    },
                 }
-            }
-        })
-        
-        cls._write_yaml(prompts_dir / "technical.yaml", {
-            "prompts": {
-                "summary": {
-                    "system": "You are an expert in technical and scientific literature.",
-                    "document_summary": """Create a technical summary focusing on:
+            },
+        )
+
+        cls._write_yaml(
+            prompts_dir / "technical.yaml",
+            {
+                "prompts": {
+                    "summary": {
+                        "system": "You are an expert in technical and scientific literature.",
+                        "document_summary": """Create a technical summary focusing on:
 1. Mathematical formulations
 2. Algorithm descriptions
 3. Technical acronyms and notation
 4. Implementation details
 5. Experimental setup
 
-{content}"""
+{content}""",
+                    }
                 }
-            }
-        })
-        
+            },
+        )
+
         # Models configs
         models_dir = config_dir / "models"
         models_dir.mkdir(exist_ok=True)
-        
-        cls._write_yaml(models_dir / "default.yaml", {
-            "models": {
-                "llm": {
-                    "provider": "openai",
-                    "model": "gpt-4o",
-                    "temperature": 0.7,
-                    "max_retries": 3
-                },
-                "tts": {
-                    "provider": "elevenlabs",
-                    "voice_id": "21m00Tcm4TlvDq8ikWAM",  # Rachel
-                    "model": "eleven_monolingual_v1",
-                    "stability": 0.5,
-                    "similarity_boost": 0.5
+
+        cls._write_yaml(
+            models_dir / "default.yaml",
+            {
+                "models": {
+                    "llm": {
+                        "provider": "openai",
+                        "model": "gpt-4o",
+                        "temperature": 0.7,
+                        "max_retries": 3,
+                    },
+                    "tts": {
+                        "provider": "elevenlabs",
+                        "voice_id": "21m00Tcm4TlvDq8ikWAM",  # Rachel
+                        "model": "eleven_monolingual_v1",
+                        "stability": 0.5,
+                        "similarity_boost": 0.5,
+                    },
                 }
-            }
-        })
-        
-        cls._write_yaml(models_dir / "openai_tts.yaml", {
-            "models": {
-                "tts": {
-                    "provider": "openai",
-                    "voice": "nova",
-                    "model": "tts-1-hd",
-                    "speed": 1.0
+            },
+        )
+
+        cls._write_yaml(
+            models_dir / "openai_tts.yaml",
+            {
+                "models": {
+                    "tts": {
+                        "provider": "openai",
+                        "voice": "nova",
+                        "model": "tts-1-hd",
+                        "speed": 1.0,
+                    }
                 }
-            }
-        })
-        
+            },
+        )
+
         # Audio configs
         audio_dir = config_dir / "audio"
         audio_dir.mkdir(exist_ok=True)
-        
-        cls._write_yaml(audio_dir / "default.yaml", {
-            "audio": {
-                "generate_complementary": False,
-                "generate_summary": False,
-                "generate_reading": False,
-                "generate_lecture": False,
-                "complementary_speed": 1.6,
-                "summary_speed": 1.1,
-                "reading_speed": 1.2,
-                "lecture_speed": 1.1,
-                "format": "mp3",
-                "quality": "high"
-            }
-        })
-        
+
+        cls._write_yaml(
+            audio_dir / "default.yaml",
+            {
+                "audio": {
+                    "generate_complementary": False,
+                    "generate_summary": False,
+                    "generate_reading": False,
+                    "generate_lecture": False,
+                    "complementary_speed": 1.6,
+                    "summary_speed": 1.1,
+                    "reading_speed": 1.2,
+                    "lecture_speed": 1.1,
+                    "format": "mp3",
+                    "quality": "high",
+                }
+            },
+        )
+
         # None - no audio generation (just for clarity)
-        cls._write_yaml(audio_dir / "none.yaml", {
-            "audio": {
-                "generate_complementary": False,
-                "generate_summary": False,
-                "generate_reading": False,
-                "generate_lecture": False
-            }
-        })
-        
+        cls._write_yaml(
+            audio_dir / "none.yaml",
+            {
+                "audio": {
+                    "generate_complementary": False,
+                    "generate_summary": False,
+                    "generate_reading": False,
+                    "generate_lecture": False,
+                }
+            },
+        )
+
         # Essential - cards and summary only (most common use case)
-        cls._write_yaml(audio_dir / "essential.yaml", {
-            "audio": {
-                "generate_complementary": True,
-                "generate_summary": True,
-                "generate_reading": False,
-                "generate_lecture": False,
-                "complementary_speed": 1.6,
-                "summary_speed": 1.1,
-                "reading_speed": 1.2,
-                "lecture_speed": 1.1,
-                "format": "mp3",
-                "quality": "high"
-            }
-        })
-        
+        cls._write_yaml(
+            audio_dir / "essential.yaml",
+            {
+                "audio": {
+                    "generate_complementary": True,
+                    "generate_summary": True,
+                    "generate_reading": False,
+                    "generate_lecture": False,
+                    "complementary_speed": 1.6,
+                    "summary_speed": 1.1,
+                    "reading_speed": 1.2,
+                    "lecture_speed": 1.1,
+                    "format": "mp3",
+                    "quality": "high",
+                }
+            },
+        )
+
         # All but reading - complementary, summary, and lecture
-        cls._write_yaml(audio_dir / "all_but_reading.yaml", {
-            "audio": {
-                "generate_complementary": True,
-                "generate_summary": True,
-                "generate_reading": False,
-                "generate_lecture": True,
-                "complementary_speed": 1.6,
-                "summary_speed": 1.1,
-                "reading_speed": 1.2,
-                "lecture_speed": 1.1,
-                "format": "mp3",
-                "quality": "high"
-            }
-        })
-        
+        cls._write_yaml(
+            audio_dir / "all_but_reading.yaml",
+            {
+                "audio": {
+                    "generate_complementary": True,
+                    "generate_summary": True,
+                    "generate_reading": False,
+                    "generate_lecture": True,
+                    "complementary_speed": 1.6,
+                    "summary_speed": 1.1,
+                    "reading_speed": 1.2,
+                    "lecture_speed": 1.1,
+                    "format": "mp3",
+                    "quality": "high",
+                }
+            },
+        )
+
         # Full - all audio types
-        cls._write_yaml(audio_dir / "full.yaml", {
-            "audio": {
-                "generate_complementary": True,
-                "generate_summary": True,
-                "generate_reading": True,
-                "generate_lecture": True,
-                "complementary_speed": 1.6,
-                "summary_speed": 1.1,
-                "reading_speed": 1.2,
-                "lecture_speed": 1.1,
-                "format": "mp3",
-                "quality": "high"
-            }
-        })
-        
+        cls._write_yaml(
+            audio_dir / "full.yaml",
+            {
+                "audio": {
+                    "generate_complementary": True,
+                    "generate_summary": True,
+                    "generate_reading": True,
+                    "generate_lecture": True,
+                    "complementary_speed": 1.6,
+                    "summary_speed": 1.1,
+                    "reading_speed": 1.2,
+                    "lecture_speed": 1.1,
+                    "format": "mp3",
+                    "quality": "high",
+                }
+            },
+        )
+
         # Output configs
         output_dir = config_dir / "output"
         output_dir.mkdir(exist_ok=True)
-        
-        cls._write_yaml(output_dir / "default.yaml", {
-            "output": {
-                "base_dir": "swanki-out",
-                "formats": {
-                    "cards_plain": "cards-plain.md",
-                    "cards_audio": "cards-with-audio.md",
-                    "cards_combined": "cards-combined.md",
-                    "summary": "document-summary.md"
-                },
-                "organize_by_type": True,
-                "create_anki_deck": False,
-                "tag_format": "slugified"  # Options: "slugified", "spaces", "raw"
-            }
-        })
-        
+
+        cls._write_yaml(
+            output_dir / "default.yaml",
+            {
+                "output": {
+                    "base_dir": "swanki-out",
+                    "formats": {
+                        "cards_plain": "cards-plain.md",
+                        "cards_audio": "cards-with-audio.md",
+                        "cards_combined": "cards-combined.md",
+                        "summary": "document-summary.md",
+                    },
+                    "organize_by_type": True,
+                    "create_anki_deck": False,
+                    "tag_format": "slugified",  # Options: "slugified", "spaces", "raw"
+                }
+            },
+        )
+
         # Anki configs
         anki_dir = config_dir / "anki"
         anki_dir.mkdir(exist_ok=True)
-        
-        cls._write_yaml(anki_dir / "default.yaml", {
-            "anki": {
-                "enabled": False,
-                "deck_name": "{deck_name}",  # Uses output_dir if specified, otherwise citation_key
-                "host": "127.0.0.1",
-                "port": 8765,
-                "auto_send": False,  # Whether to automatically send cards after generation
-                "update_existing": True,  # Whether to update existing cards
-                "media_upload": True,  # Whether to upload media files (images, audio)
-                "card_format": "with_audio"  # Options: "plain", "with_audio"
-            }
-        })
-        
-        cls._write_yaml(anki_dir / "auto_send.yaml", {
-            "anki": {
-                "enabled": True,
-                "auto_send": True,
-                "deck_name": "{deck_name}",  # Uses output_dir if specified, otherwise citation_key
-                "card_format": "with_audio"
-            }
-        })
-        
-        cls._write_yaml(anki_dir / "custom_deck.yaml", {
-            "anki": {
-                "enabled": True,
-                "deck_name": "Research::Papers::{deck_name}",  # Custom hierarchy with output_dir or citation_key
-                "auto_send": False
-            }
-        })
-        
+
+        cls._write_yaml(
+            anki_dir / "default.yaml",
+            {
+                "anki": {
+                    "enabled": False,
+                    "deck_name": "{deck_name}",  # Uses output_dir if specified, otherwise citation_key
+                    "host": "127.0.0.1",
+                    "port": 8765,
+                    "auto_send": False,  # Whether to automatically send cards after generation
+                    "update_existing": True,  # Whether to update existing cards
+                    "media_upload": True,  # Whether to upload media files (images, audio)
+                    "card_format": "with_audio",  # Options: "plain", "with_audio"
+                }
+            },
+        )
+
+        cls._write_yaml(
+            anki_dir / "auto_send.yaml",
+            {
+                "anki": {
+                    "enabled": True,
+                    "auto_send": True,
+                    "deck_name": "{deck_name}",  # Uses output_dir if specified, otherwise citation_key
+                    "card_format": "with_audio",
+                }
+            },
+        )
+
+        cls._write_yaml(
+            anki_dir / "custom_deck.yaml",
+            {
+                "anki": {
+                    "enabled": True,
+                    "deck_name": "Research::Papers::{deck_name}",  # Custom hierarchy with output_dir or citation_key
+                    "auto_send": False,
+                }
+            },
+        )
+
         # Refinement configs
         refinement_dir = config_dir / "refinement"
         refinement_dir.mkdir(exist_ok=True)
-        
-        cls._write_yaml(refinement_dir / "default.yaml", {
-            "refinement": {
-                "enabled": True,  # Enabled by default for better card quality
-                "max_iterations": 3,
-                "early_exit_on_quality": 0.9,
-                
-                # Content types to refine
-                "content_types": ["regular", "cloze", "image"],
-                
-                # Whether to refine audio transcripts
-                "include_audio": False,
-                
-                # Feedback prompts for different content types
-                "feedback_prompts": {
-                    "regular_cards": """Check these regular cards for quality issues:
+
+        cls._write_yaml(
+            refinement_dir / "default.yaml",
+            {
+                "refinement": {
+                    "enabled": True,  # Enabled by default for better card quality
+                    "max_iterations": 3,
+                    "early_exit_on_quality": 0.9,
+                    # Content types to refine
+                    "content_types": ["regular", "cloze", "image"],
+                    # Whether to refine audio transcripts
+                    "include_audio": False,
+                    # Feedback prompts for different content types
+                    "feedback_prompts": {
+                        "regular_cards": """Check these regular cards for quality issues:
 1. External references ([1], "According to X", "Figure 3")
 2. Vague context ("this framework", "the model")
 3. Generic tags (#equation vs #calculus.derivatives)
@@ -724,20 +788,24 @@ Content to present:
 
 If ALL cards meet quality standards, set done=True.
 Otherwise list specific issues with card numbers.""",
-                    
-                    "cloze_cards": """Check these cloze cards for issues:
-1. More than 2 cloze deletions per card
+                        "cloze_cards": """Check these cloze cards for issues:
+1. More than 1 cloze deletion per card (warning only)
 2. Math equations split across cloze markers
 3. Entire equations not inside cloze when referenced
 4. Testing memorization instead of understanding
 5. Missing or generic tags
+6. Malformed LaTeX/MathJax within cloze deletions:
+   - Missing parentheses around expressions (e.g., "1 - \\cos" should be "(1 - \\cos")
+   - Extra closing braces in summations/fractions
+   - Unbalanced braces or parentheses
+   - Incorrect MathJax delimiters
 
 Example of correct math cloze:
 "The equation {{c1::\\(E = mc^2\\)}} shows..."
+"The loss is {{c1::\\(\\frac{1}{m^2} \\sum_{i=1}^{m} (1 - \\cos(e_i, e_j))\\)}}"
 
 If ALL cards are correct, set done=True.""",
-                    
-                    "image_cards": """Check these image-based cards:
+                        "image_cards": """Check these image-based cards:
 1. Questions that just ask to describe the image
 2. Image summaries that give away the answer
 3. Image markdown included in text
@@ -745,9 +813,8 @@ If ALL cards are correct, set done=True.""",
 
 Good questions test WHY/HOW, not just WHAT is shown.
 If ALL cards meet standards, set done=True.""",
-                    
-                    # Card audio transcripts - different for each card type
-                    "regular_card_audio": """Check this REGULAR card audio transcript:
+                        # Card audio transcripts - different for each card type
+                        "regular_card_audio": """Check this REGULAR card audio transcript:
 1. Math notation must be converted to natural language
 2. Acronyms expanded on first use
 3. Citation key pronounced clearly at start
@@ -755,14 +822,12 @@ If ALL cards meet standards, set done=True.""",
 5. Both front and back should be readable
 
 If transcript is clear for audio, set done=True.""",
-                    
-                    "cloze_card_audio": """Check this CLOZE card audio transcript:
+                        "cloze_card_audio": """Check this CLOZE card audio transcript:
 
 FRONT audio must:
 1. Replace ALL {{c1::text}} with "blank"
-2. Replace ALL {{c2::text}} with "blank"
-3. Citation key pronounced clearly at start
-4. Math outside cloze converted to natural language
+2. Citation key pronounced clearly at start
+3. Math outside cloze converted to natural language
 
 BACK audio must:
 1. Read the COMPLETE text including cloze content
@@ -770,8 +835,7 @@ BACK audio must:
 3. Math notation converted to natural language
 
 If BOTH transcripts follow these rules, set done=True.""",
-                    
-                    "image_card_audio": """Check this IMAGE card audio transcript:
+                        "image_card_audio": """Check this IMAGE card audio transcript:
 1. Must include "Image description:" followed by full description
 2. Image description must be detailed (what type, layout, components)
 3. Math in image description converted to natural language
@@ -779,9 +843,8 @@ If BOTH transcripts follow these rules, set done=True.""",
 5. Citation key pronounced clearly at start
 
 If image is well-described for audio-only learning, set done=True.""",
-                    
-                    # Document-level audio formats
-                    "summary_audio": """Check this SUMMARY audio transcript:
+                        # Document-level audio formats
+                        "summary_audio": """Check this SUMMARY audio transcript:
 1. Professional, informative tone
 2. Citation key mentioned naturally early
 3. All acronyms expanded
@@ -789,8 +852,7 @@ If image is well-described for audio-only learning, set done=True.""",
 5. Focus on key contributions and findings
 
 If summary is clear and professional, set done=True.""",
-                    
-                    "reading_audio": """Check this READING audio transcript:
+                        "reading_audio": """Check this READING audio transcript:
 1. Full document narration
 2. All math notation converted to words
 3. Citation key mentioned at beginning
@@ -798,118 +860,118 @@ If summary is clear and professional, set done=True.""",
 5. Clear pronunciation of technical terms
 
 If reading is complete and clear, set done=True.""",
-                    
-                    "lecture_audio": """Check this LECTURE audio transcript:
+                        "lecture_audio": """Check this LECTURE audio transcript:
 1. Educational presentation style
 2. Direct start without lengthy intro
 3. Citation key mentioned naturally
 4. Avoids theatrical language
 5. Math and technical terms clearly explained
 
-If lecture is educational and clear, set done=True."""
-                },
-                
-                # Refinement prompts for fixing issues
-                "refinement_prompts": {
-                    "regular_cards": """Fix ALL the issues identified in the feedback.
+If lecture is educational and clear, set done=True.""",
+                    },
+                    # Refinement prompts for fixing issues
+                    "refinement_prompts": {
+                        "regular_cards": """Fix ALL the issues identified in the feedback.
 Maintain the same number of cards.
 Ensure every card is self-contained.
 Use specific conceptual tags.""",
-                    
-                    "cloze_cards": """Fix ALL cloze card issues:
-- Reduce to max 2 cloze deletions
-- Keep math equations together
+                        "cloze_cards": """Fix ALL cloze card issues:
+- Reduce to max 1 cloze deletion (split cards if needed)
+- Keep math equations together inside cloze markers
+- Fix LaTeX/MathJax formatting:
+  * Add missing parentheses: "1 - \\cos" → "(1 - \\cos)"
+  * Fix double closing braces: "\\sum_{i=1}}^{m}}" → "\\sum_{i=1}^{m}"
+  * Ensure balanced braces and parentheses
+  * Use MathJax delimiters: \\( ... \\) for inline, \\[ ... \\] for display
 - Ensure understanding-based questions
 - Add proper hierarchical tags""",
-                    
-                    "image_cards": """Improve image cards to:
+                        "image_cards": """Improve image cards to:
 - Test conceptual understanding
 - Avoid revealing answers in summaries
 - Remove any image markdown
 - Focus on WHY/HOW questions""",
-                    
-                    # Card audio refinement prompts
-                    "regular_card_audio": """Fix audio transcript for regular card:
+                        # Card audio refinement prompts
+                        "regular_card_audio": """Fix audio transcript for regular card:
 - Convert ALL math notation to natural language
 - Expand acronyms: "CNN" -> "Convolutional Neural Network (CNN)"
 - Add pronunciation: "Dijkstra (DIKE-stra)"
 - Ensure citation key is clear at start""",
-                    
-                    "cloze_card_audio": """Fix CLOZE card audio transcripts:
+                        "cloze_card_audio": """Fix CLOZE card audio transcripts:
 FRONT: Replace ALL cloze content with "blank"
 - {{c1::E = mc²}} -> "The equation blank shows..."
 BACK: Read COMPLETE text with cloze content revealed
 - "The equation E equals m c squared shows...\"""",
-                    
-                    "image_card_audio": """Fix IMAGE card audio transcript:
+                        "image_card_audio": """Fix IMAGE card audio transcript:
 - Add detailed image description at start
 - "Image description: This figure shows a flowchart with..."
 - Include all visual elements for audio-only learners
 - Convert any math in descriptions to words""",
-                    
-                    # Document audio refinement prompts  
-                    "summary_audio": """Refine summary audio:
+                        # Document audio refinement prompts
+                        "summary_audio": """Refine summary audio:
 - Professional tone throughout
 - Natural citation key mention
 - Expand all acronyms
 - Focus on key findings""",
-                    
-                    "reading_audio": """Refine reading audio:
+                        "reading_audio": """Refine reading audio:
 - Complete document narration
 - Describe all figures/tables
 - Convert all math to speakable form
 - Add section transitions""",
-                    
-                    "lecture_audio": """Refine lecture audio:
+                        "lecture_audio": """Refine lecture audio:
 - Educational, not theatrical
 - Direct start, concise end
 - Clear explanations
-- Natural flow"""
+- Natural flow""",
+                    },
                 }
-            }
-        })
-        
-        cls._write_yaml(refinement_dir / "strict.yaml", {
-            "refinement": {
-                "enabled": True,
-                "max_iterations": 5,
-                "early_exit_on_quality": 0.95,
-                "content_types": ["regular", "cloze", "image"],
-                "include_audio": True
-            }
-        })
-        
-        cls._write_yaml(refinement_dir / "minimal.yaml", {
-            "refinement": {
-                "enabled": True,
-                "max_iterations": 1,
-                "early_exit_on_quality": 0.7,
-                "content_types": ["regular", "cloze"],
-                "include_audio": False
-            }
-        })
-        
-        cls._write_yaml(refinement_dir / "disabled.yaml", {
-            "refinement": {
-                "enabled": False
-            }
-        })
-    
+            },
+        )
+
+        cls._write_yaml(
+            refinement_dir / "strict.yaml",
+            {
+                "refinement": {
+                    "enabled": True,
+                    "max_iterations": 5,
+                    "early_exit_on_quality": 0.95,
+                    "content_types": ["regular", "cloze", "image"],
+                    "include_audio": True,
+                }
+            },
+        )
+
+        cls._write_yaml(
+            refinement_dir / "minimal.yaml",
+            {
+                "refinement": {
+                    "enabled": True,
+                    "max_iterations": 1,
+                    "early_exit_on_quality": 0.7,
+                    "content_types": ["regular", "cloze"],
+                    "include_audio": False,
+                }
+            },
+        )
+
+        cls._write_yaml(
+            refinement_dir / "disabled.yaml", {"refinement": {"enabled": False}}
+        )
+
     @staticmethod
     def _write_yaml(path: Path, data: Dict[str, Any]):
         """Write YAML file with nice formatting.
-        
+
         Parameters
         ----------
         path : Path
             Output file path
         data : Dict[str, Any]
             Configuration data to write
-        
+
         Notes
         -----
         - Uses default_flow_style=False for readable output
         - Preserves key order with sort_keys=False
         """
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             yaml.dump(data, f, default_flow_style=False, sort_keys=False)
