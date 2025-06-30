@@ -217,20 +217,20 @@ class ConfigGenerator:
             pipeline_dir / "default.yaml",
             {
                 "processing": {
-                    "window_size": 2,
-                    "skip": 1,
+                    "context_radius": 1,  # Number of pages before/after focal page for context (0 = no context)
                     "num_cards_per_page": 3,
                     "cloze_cards_per_page": 2,  # Number of cloze deletion cards per page
                     "chunk_size": 1000,
                     "overlap": 200,
                     "blocking_audio": True,  # Based on learnings
+                    "confirm_before_generation": True,  # Ask user confirmation after card estimation
                     "image_cards": {
                         "enabled": True,
                         "cards_per_image": 3,
                         "image_on_front": True,  # Whether image can appear on front of card
                         "image_on_back": True,  # Whether image can appear on back of card
                         "require_math_content": False,  # Only create cards for images with math
-                        "placement_strategy": "smart",  # How to decide placement when both front/back are true
+                        "placement_strategy": "prefer_front",  # How to decide placement when both front/back are true
                         # "smart": Based on question content (if it references the image)
                         # "alternate": Alternate between front and back
                         # "random": Random placement with front_back_ratio
@@ -246,13 +246,13 @@ class ConfigGenerator:
             pipeline_dir / "comprehensive.yaml",
             {
                 "processing": {
-                    "window_size": 3,
-                    "skip": 1,
+                    "context_radius": 2,  # Larger context for comprehensive mode
                     "num_cards_per_page": 5,
                     "cloze_cards_per_page": 3,  # More cloze cards for comprehensive mode
                     "chunk_size": 1500,
                     "overlap": 300,
                     "blocking_audio": True,
+                    "confirm_before_generation": True,
                 }
             },
         )
@@ -261,13 +261,13 @@ class ConfigGenerator:
             pipeline_dir / "fast.yaml",
             {
                 "processing": {
-                    "window_size": 1,
-                    "skip": 1,
+                    "context_radius": 0,  # No context for fast mode
                     "num_cards_per_page": 2,
                     "cloze_cards_per_page": 1,  # Fewer cloze cards for fast mode
                     "chunk_size": 800,
                     "overlap": 100,
                     "blocking_audio": False,
+                    "confirm_before_generation": False,  # Skip confirmation for fast mode
                 }
             },
         )
@@ -281,14 +281,59 @@ class ConfigGenerator:
             {
                 "prompts": {
                     "summary": {
-                        "system": "You are an expert at creating concise, informative summaries of academic documents.",
-                        "document_summary": """Create a comprehensive summary of this document.
-Focus on:
-1. Main thesis and key contributions
-2. All acronyms and their full forms
-3. Technical terms that need clear definitions
-4. Methodology and approach
-5. Key findings
+                        "system": "You are an expert educator creating lecture-style summaries that help students deeply understand academic material. Your summaries should be comprehensive, engaging, and educational.",
+                        "document_summary": """Create a comprehensive lecture-style summary that an eager student would use to understand this material deeply.
+
+Structure your summary as follows:
+
+1. **Introduction and Motivation** (why this matters)
+   - Context and background
+   - Why students should care about this topic
+   - Connection to broader fields
+
+2. **Core Concepts and Definitions**
+   - All key terms explained clearly
+   - Intuitive explanations before formal definitions
+   - Relationships between concepts
+
+3. **Key Mathematical Formulations** (with intuitive explanations)
+   - Important equations with explanations of what they mean
+   - Variable definitions and significance
+   - Physical or conceptual interpretations
+
+4. **Methodology and Techniques**
+   - Step-by-step explanation of approaches
+   - Why these methods were chosen
+   - Strengths and limitations
+
+5. **Main Results and Their Significance**
+   - Key findings explained clearly
+   - What these results mean in practice
+   - Impact on the field
+
+6. **Practical Applications and Examples**
+   - Real-world uses
+   - Concrete examples to illustrate concepts
+   - How students might apply this knowledge
+
+7. **Connections to Broader Topics**
+   - How this relates to other areas
+   - Future directions
+   - Open questions
+
+Additional requirements:
+- Include ALL important equations with explanations of what they mean intuitively
+- Define ALL technical terms and acronyms clearly (provide a comprehensive list)
+- Explain the "why" behind concepts, not just the "what"
+- Use analogies and examples to clarify complex ideas
+- Write as if preparing students for deep understanding, not memorization
+- Highlight conceptual insights and "aha" moments
+
+Target length: 
+- For short documents (1-5 pages): 100-500 words
+- For medium documents (6-20 pages): 300-800 words  
+- For long documents (20+ pages): 500-1500 words
+Be comprehensive and educational while being appropriate to document length.
 
 Document content:
 {content}
@@ -331,13 +376,26 @@ Technical terms: {technical_terms}
 Content:
 {content}
 
-CRITICAL RULE: CARDS MUST BE SELF-CONTAINED
-Every card must contain ALL information needed to understand and answer it. Students will NOT have access to:
+CRITICAL RULES FOR SELF-CONTAINED CARDS:
+1. Every card must contain ALL information needed to understand and answer it
+2. If an equation is part of a larger example, PROVIDE THE CONTEXT
+3. If values or parameters are mentioned, SPECIFY WHAT THEY ARE
+4. If comparing quantities, PROVIDE THE BASELINE FOR COMPARISON
+5. Always include enough background to make the card meaningful
+
+Students will NOT have access to:
 - The original paper or document
 - Other papers or references
 - Figures, tables, or diagrams (unless embedded in the card)
 - Previous or subsequent cards
 - Any external context
+
+CONTEXT REQUIREMENTS:
+- For equations: Explain what variables represent and their typical values/ranges
+- For comparisons: State what is being compared to (e.g., "30 bins compared to typical 10-20 bins")
+- For transformations: Describe the starting point and end result
+- For examples: Provide the full setup, not just a fragment
+- For technical terms: Include a brief definition if not commonly known
 
 FORBIDDEN CONTENT - NEVER CREATE CARDS WITH:
 - References to other papers: "According to Smith et al. [12]..." or "As shown in reference [7]..."
@@ -374,25 +432,45 @@ BAD EXAMPLES TO AVOID:
 ❌ "What innovation did the framework described in reference ^6 bring?" (Remove reference number)
 ❌ "Describe how Lachapelle et al. approach causal inference" (Focus on the method, not the authors)
 ❌ "What does NAS stand for?" (Simple memorization - ask what NAS DOES instead)
+❌ "The equation MathJax represents the maximum entropy solution" (No context about constraints)
+❌ "A histogram with 30 bins shows higher entropy" (No comparison baseline)
+❌ "How does the red curve help understanding?" (What red curve? No image reference allowed)
 
-GOOD EXAMPLES:
+GOOD EXAMPLES WITH PROPER CONTEXT:
 ✓ "What transformation is applied in the causal inference framework that combines DAGs with deep learning?"
 ✓ "How does the multi-layer perceptron model handle missing data in the feature matrix?"
 ✓ "What is the advantage of combining causal inference with deep learning for dimensionality reduction?"
+✓ "In maximum entropy estimation with moment constraints E[x]=μ and E[x²]=σ²+μ², what does the resulting distribution represent?"
+✓ "When comparing probability distributions, why does a histogram spread over 30 bins (versus concentrated in 5-10 bins) indicate higher entropy?"
+✓ "For the nonlinear transformation y₁ = tanh(x₁) and y₂ = x₂ + 0.1x₁², how does this affect the original Gaussian distribution?"
 
 CLOZE DELETION CARD FORMAT (YOU MUST CREATE {num_cloze} OF THESE):
 ## [Self-contained statement with {{c1::hidden text}} that tests understanding]
 
 - #tag1, #tag2
 
-CRITICAL: Every cloze card MUST have tags on the "- #tag1, #tag2" line just like regular cards!
+CRITICAL CLOZE FORMAT RULES:
+1. ALL content including {{c1::...}} MUST be in the ## header line (the front)
+2. NEVER put {{c1::...}} in the answer/back section
+3. The back section should be EMPTY (it will only contain audio in post-processing)
+4. Every cloze card MUST have tags on the "- #tag1, #tag2" line
 
 IMPORTANT CLOZE RULES:
-- Hide meaningful concepts, definitions, or key terms
-- For equations: You can hide PARTS of simple equations OR entire complex equations
+- PRIORITIZE hiding definitions, technical terms, and difficult concepts
+- Focus on terminology that students need to understand deeply
+- Hide the MEANING or DEFINITION of complex terms, not just the term itself
+- For equations: Hide what the equation REPRESENTS or key components
 - CRITICAL: When mentioning an equation, the ENTIRE equation must be inside cloze markers
-- Make cards educational - test understanding, not memorization
+- Make cards educational - test understanding of concepts, not memorization
 - Each card must stand alone without external context
+
+CLOZE CARD PRIORITIES (in order of importance):
+1. Definitions of technical terms and jargon
+2. What complex concepts mean or represent
+3. Key properties or characteristics of methods/algorithms
+4. Important relationships between concepts
+5. Significance or purpose of equations/formulas
+6. Critical distinctions between similar concepts
 
 CRITICAL MATH CLOZE RULES:
 - If you mention "the equation" followed by math, the ENTIRE equation goes inside {{c1::...}}
@@ -400,26 +478,30 @@ CRITICAL MATH CLOZE RULES:
 - CORRECT: "The equation {{c1::\\(E[X_j | X_{pa(j)}] = g_j(f_j(X))\\)}} expresses..."
 - For simple equations, you can hide parts: "The derivative \\(\\frac{d}{dx}(x^2) = {{c1::2x}}\\)"
 
-Example GOOD cloze cards:
-## The gradient of \\(f(x) = x^2\\) is {{c1::2x}}, which represents the rate of change.
+Example GOOD cloze cards focusing on definitions and concepts:
+## Regularization in machine learning refers to {{c1::techniques that add constraints or penalties to prevent overfitting by limiting model complexity}}.
 
-- #calculus.derivatives, #mathematics
+- #machine-learning.regularization, #overfitting-prevention
 
-## In Bayesian networks, conditional dependencies are represented by {{c1::directed edges}} in a directed acyclic graph (DAG).
+## A Directed Acyclic Graph (DAG) is {{c1::a graph with directed edges and no cycles, meaning you cannot start at a node and follow edges to return to the same node}}.
 
-- #bayesian-networks, #graphical-models
+- #graph-theory.dags, #data-structures
 
-## The equation {{c1::\\(E[X_j \\mid X_{pa(j)}] = g_j(f_j(X))\\)}} expresses the conditional expectation of a node given its parents.
+## The backpropagation algorithm works by {{c1::computing gradients of the loss function with respect to weights by applying the chain rule recursively from output to input layers}}.
 
-- #statistics, #conditional-expectation
+- #neural-networks.training, #optimization.gradients
 
-## In causal modeling, conditional dependencies are expressed using {{c1::\\(\\sum_{i=1}^{n} w_{ij}x_i + b_j\\)}} as the structural equation.
+## In statistics, a p-value represents {{c1::the probability of obtaining test results at least as extreme as observed, assuming the null hypothesis is true}}.
 
-- #causal-inference, #structural-equations
+- #statistics.hypothesis-testing, #p-values
 
-## The transformation {{c1::\\(F(W)\\)}} maps weighted adjacency matrices to directed acyclic graphs.
+## The vanishing gradient problem occurs when {{c1::gradients become exponentially small as they propagate backwards through many layers, preventing effective weight updates in deep networks}}.
 
-- #graph-theory, #transformations, #dag-learning
+- #deep-learning.challenges, #neural-networks.gradients
+
+## Attention mechanisms in neural networks allow models to {{c1::dynamically focus on different parts of the input by computing weighted combinations based on learned relevance scores}}.
+
+- #deep-learning.attention, #transformer-architecture
 
 Example BAD cloze cards to AVOID:
 - "According to [12], the algorithm is {{c1::efficient}}" (References external paper)
@@ -427,15 +509,54 @@ Example BAD cloze cards to AVOID:
 - "As shown in Figure 3, performance {{c1::improves}}" (No access to Figure 3)
 - "The equation {{c1::describes relationships}} \\(E[X | Y] = f(Y)\\)" (Equation is outside cloze!)
 - "Using equation {{c1::MathJax}} to express dependencies" (Meaningless placeholder)
+- "The probability is \\[{{c1::p(x|\\mu,\\sigma^2) = \\frac{1}{\\sqrt{2\\pi\\sigma^2}}e^{-\\frac{(x-\\mu)^2}{2\\sigma^2}}}}\\]" (Display math inside cloze!)
+- "The equation \\[p(t|x,w,\\sigma^2)={{c1::\\mathcal{N}(t|y(x,w),\\sigma^2)}}\\]" (Display math with cloze inside!)
+
+CRITICAL FORMAT ERRORS TO AVOID:
+❌ WRONG - Putting cloze in the back/answer:
+## In visual data, what function transforms density modes?
+
+{{c1::The sigmoid function}} transforms the modes.
+
+- #visualization
+
+❌ WRONG - Q&A format with cloze in answer:
+## What is the probability of data in Bayesian inference?
+
+The equation {{c1::\\(p(\\mathcal{D})=\\int p(\\mathcal{D} | \\mathbf{w}) p(\\mathbf{w}) \\, \\mathrm{d} \\mathbf{w}\\)}} represents the probability.
+
+- #bayesian
+
+✅ CORRECT - All content in the front with cloze:
+## In visual data, {{c1::the sigmoid function}} transforms density modes as indicated by color curves.
+
+- #visualization, #sigmoid
+
+✅ CORRECT - Equation cloze all in front:
+## In Bayesian inference, the probability of data is given by {{c1::\\(p(\\mathcal{D})=\\int p(\\mathcal{D} | \\mathbf{w}) p(\\mathbf{w}) \\, \\mathrm{d} \\mathbf{w}\\)}}.
+
+- #bayesian-inference, #probability
+
+GOOD alternatives for complex equations:
+- "The Gaussian distribution has the form \\[p(x|\\mu,\\sigma^2) = \\frac{1}{\\sqrt{2\\pi\\sigma^2}}e^{-\\frac{(x-\\mu)^2}{2\\sigma^2}}\\] where the normalization factor is {{c1::1/\\sqrt{2\\pi\\sigma^2}}}"
+- "In linear regression, we model \\(p(t|x,w,\\sigma^2) = \\mathcal{N}(t|y(x,w),\\sigma^2)\\), which means the target follows {{c1::a Gaussian distribution centered at the prediction y(x,w)}}"
 
 REGULAR Q&A CARD FORMAT (YOU MUST CREATE {num_cards} OF THESE):
-## [Self-contained question that provides all necessary context]
+## [MUST BE A QUESTION - start with What/How/Why/When/Which/Calculate/Explain/Compare]
 
 [Complete answer that doesn't reference external content]
 
 - #tag1, #tag2
 
-Example GOOD regular cards:
+CRITICAL Q&A RULES:
+- EVERY regular card MUST ask a question in the ## header
+- NEVER use statements for regular cards (save statements for cloze cards only)
+- Include all necessary context IN THE QUESTION
+- Good question starters: "What is...", "How does...", "Why does...", "Calculate...", "Explain how...", "Compare..."
+- BAD: "The significance of applying a change of variables to a Gaussian distribution"
+- GOOD: "What is the significance of applying a change of variables to a Gaussian distribution?"
+
+Example GOOD regular cards WITH CONTEXT:
 ## What is the time complexity of quicksort in the average case?
 
 The average case time complexity of quicksort is O(n log n), where n is the number of elements to sort. This assumes random pivot selection and balanced partitions.
@@ -447,6 +568,18 @@ The average case time complexity of quicksort is O(n log n), where n is the numb
 Gradient descent iteratively updates parameters by moving in the direction opposite to the gradient. At each step, it computes the gradient of the loss function and updates parameters: θ = θ - α∇L(θ), where α is the learning rate.
 
 - #optimization, #machine-learning.algorithms
+
+## In polynomial regression with basis functions φⱼ(x) = xʲ for j=0 to M, how does the design matrix Φ relate inputs to the model?
+
+The design matrix Φ has shape N×(M+1) where N is the number of data points. Each row i contains [1, xᵢ, xᵢ², ..., xᵢᴹ], transforming the input xᵢ into the polynomial basis. This allows linear regression in the transformed feature space.
+
+- #regression.polynomial, #linear-algebra.matrices
+
+## When using variational inference to approximate p(w|D) with q(w), what does the ELBO (evidence lower bound) represent?
+
+The ELBO represents a lower bound on log p(D), the log marginal likelihood. It equals log p(D) - KL[q(w)||p(w|D)], so maximizing ELBO minimizes the KL divergence between the approximate and true posterior. It provides both a tractable optimization objective and a measure of approximation quality.
+
+- #bayesian-inference.variational, #optimization.objectives
 
 Example BAD regular cards to AVOID:
 ## According to the paper, what is the main contribution?
@@ -479,6 +612,7 @@ CRITICAL REQUIREMENTS:
 3. EVERY card MUST be completely self-contained - no external references
 4. EVERY card MUST have AT LEAST 2 meaningful tags on the "- #tag1, #tag2" line
 5. Tags should be hierarchical when appropriate (e.g., #algorithms.sorting, #optimization.gradient-based)
+   IMPORTANT: Use hyphens (-) instead of underscores (_) in tags: #machine-learning NOT #machine_learning
 6. Never start the question with the citation - it will be added automatically
 7. PRIORITIZE creating cards about:
    - Mathematical equations, formulas, and their meanings
@@ -497,15 +631,20 @@ CRITICAL REQUIREMENTS:
 13. For equation cloze cards: When referencing "the equation", include the ENTIRE equation in cloze
     Example: "The equation {{c1::\\(E = mc^2\\)}} demonstrates..." NOT "The equation {{c1::E=mc²}} \\(E = mc^2\\)..."
 14. CRITICAL LaTeX/MathJax rules for cloze cards:
+    - AVOID complex LaTeX inside cloze deletions - prefer simple expressions or conceptual answers
+    - NEVER use display math \\[...\\] inside cloze - use inline \\(...\\) only
+    - For complex equations, put the cloze around the CONCEPT, not the formula
     - Add parentheses around expressions: "1 - \\cos" → "(1 - \\cos)"
     - Fix summation indices: NOT "\\sum_{i=1}}^{m}}" but "\\sum_{i=1}^{m}"
     - Ensure balanced braces in LaTeX commands
     - Maximum 1 cloze deletion per card (use {{c1::}})
     - Keep entire mathematical expressions together in one cloze
+    - NEVER split cloze deletions across multiple lines
 15. Each card must teach a concept, not test memorization of references
 16. IMPORTANT: When you find ANY mathematical notation, CREATE CARDS about it!
 17. NEVER use generic tags like #equation, #formula, #definition, #concept, #method
     Use specific conceptual tags: #optimization.gradient-descent, #causal-inference.dag, #machine-learning.regularization
+    TAG FORMAT RULES: Use hyphens (-) not underscores (_) or spaces. #deep-learning NOT #deep_learning or #deep learning
 18. ALWAYS define mathematical symbols within the card: "where h is a smooth function" not just "h(W) = 0"
 19. ALWAYS expand acronyms when first used: "NAS (Neural Architecture Search)" not just "NAS"
 20. For EVERY mathematical symbol or function (h, F, g_j, etc.), ensure the card defines what it represents
@@ -789,20 +928,32 @@ Content to present:
 If ALL cards meet quality standards, set done=True.
 Otherwise list specific issues with card numbers.""",
                         "cloze_cards": """Check these cloze cards for issues:
-1. More than 1 cloze deletion per card (warning only)
-2. Math equations split across cloze markers
-3. Entire equations not inside cloze when referenced
-4. Testing memorization instead of understanding
-5. Missing or generic tags
-6. Malformed LaTeX/MathJax within cloze deletions:
+1. NOT focusing on definitions and difficult concepts
+   - GOOD: Hiding what a term means or how a concept works
+   - BAD: Hiding random facts or simple values
+2. More than 1 cloze deletion per card (warning only)
+3. Math equations split across cloze markers
+4. Entire equations not inside cloze when referenced
+5. Testing memorization instead of understanding
+6. Missing or generic tags
+7. Malformed LaTeX/MathJax within cloze deletions:
    - Missing parentheses around expressions (e.g., "1 - \\cos" should be "(1 - \\cos")
    - Extra closing braces in summations/fractions
    - Unbalanced braces or parentheses
    - Incorrect MathJax delimiters
+7. CRITICAL: Display math \\[...\\] inside cloze deletions
+   - BAD: "\\[{{c1::equation}}\\]" or "{{c1::\\[equation\\]}}"
+   - GOOD: "{{c1::\\(equation\\)}}" for inline math
+8. CRITICAL: Multiline cloze deletions (cloze split across lines)
+   - Check if {{c1:: starts on one line but }} ends on another
+9. Complex LaTeX inside cloze - prefer conceptual answers
+   - BAD: {{c1::complex multi-line equation}}
+   - GOOD: {{c1::a Gaussian distribution}} or {{c1::the normalization factor}}
 
 Example of correct math cloze:
-"The equation {{c1::\\(E = mc^2\\)}} shows..."
-"The loss is {{c1::\\(\\frac{1}{m^2} \\sum_{i=1}^{m} (1 - \\cos(e_i, e_j))\\)}}"
+"The equation {{c1::\\(E = mc^2\\)}} shows..." (simple inline math)
+"The Gaussian has normalization factor {{c1::1/\\sqrt{2\\pi\\sigma^2}}}" (simple part)
+"This represents {{c1::a conditional probability distribution}}" (conceptual)
 
 If ALL cards are correct, set done=True.""",
                         "image_cards": """Check these image-based cards:
@@ -882,7 +1033,12 @@ Use specific conceptual tags.""",
   * Add missing parentheses: "1 - \\cos" → "(1 - \\cos)"
   * Fix double closing braces: "\\sum_{i=1}}^{m}}" → "\\sum_{i=1}^{m}"
   * Ensure balanced braces and parentheses
-  * Use MathJax delimiters: \\( ... \\) for inline, \\[ ... \\] for display
+  * NEVER use display math \\[...\\] inside cloze - convert to inline \\(...)\\)
+  * Join multiline cloze deletions into single lines
+- For complex equations, prefer conceptual cloze:
+  * BAD: {{c1::complex equation with many terms}}
+  * GOOD: The equation [show equation] represents {{c1::a Gaussian distribution}}
+- Avoid overly complex LaTeX in cloze - use simpler expressions or concepts
 - Ensure understanding-based questions
 - Add proper hierarchical tags""",
                         "image_cards": """Improve image cards to:
@@ -972,6 +1128,16 @@ BACK: Read COMPLETE text with cloze content revealed
         -----
         - Uses default_flow_style=False for readable output
         - Preserves key order with sort_keys=False
+        - Multiline strings use literal style (|) for readability
         """
+        # Custom representer for multiline strings
+        def str_representer(dumper, data):
+            if '\n' in data:
+                # Use literal style for multiline strings
+                return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
+            return dumper.represent_scalar('tag:yaml.org,2002:str', data)
+        
+        yaml.add_representer(str, str_representer)
+        
         with open(path, "w") as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+            yaml.dump(data, f, default_flow_style=False, sort_keys=False, width=120)

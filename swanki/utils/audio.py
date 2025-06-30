@@ -712,9 +712,22 @@ def generate_citation_audio(
     """
     voice_id = voice_id or DEFAULT_VOICE_ID
     
-    # Humanize the citation
-    from ..utils.formatting import humanize_citation_key
-    humanized = humanize_citation_key(citation_key)
+    # Humanize the citation with error handling
+    try:
+        from ..utils.formatting import humanize_citation_key
+        humanized = humanize_citation_key(citation_key)
+        
+        # Validate humanized output
+        if not humanized or len(humanized) < 3:
+            logger.warning(f"Citation key '{citation_key}' produced invalid humanized form: '{humanized}'")
+            # Fallback to a simple format
+            humanized = citation_key.replace('_', ' ').replace('-', ' ').title()
+            logger.info(f"Using fallback humanization: '{humanized}'")
+    except Exception as e:
+        logger.error(f"Error humanizing citation key '{citation_key}': {e}")
+        # Use a safe fallback
+        humanized = citation_key.replace('_', ' ').replace('-', ' ').title()
+        logger.info(f"Using fallback humanization after error: '{humanized}'")
     
     # Log the humanized citation for debugging
     logger.debug(f"Citation audio generation: '{citation_key}' -> '{humanized}'")
