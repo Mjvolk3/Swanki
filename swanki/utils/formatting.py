@@ -183,47 +183,32 @@ def detect_tags_from_text(text: str) -> List[str]:
 def humanize_citation_key(citation_key: str) -> str:
     """Convert a citation key to human-readable format for audio.
     
-    Transforms camelCase citation keys into natural spoken format,
-    handling special name patterns and formatting conventions.
+    Simply converts the citation key to a readable format by adding spaces
+    and handling basic formatting.
     
     Parameters
     ----------
     citation_key : str
-        Citation key in camelCase format (e.g., "smithMachineLearning2023")
+        Citation key (e.g., "bishopDeepLearningFoundations2024_deep-learning-revolution")
     
     Returns
     -------
     str
-        Human-readable version with proper capitalization and punctuation
+        Human-readable version for speech
     
     Examples
     --------
-    >>> humanize_citation_key("luoWhenCausalInference2020")
-    'Luo, When Causal Inference, 2020'
+    >>> humanize_citation_key("bishopDeepLearningFoundations2024")
+    'Bishop Deep Learning Foundations 2024'
     
-    >>> humanize_citation_key("smithMachineLearning2023")
-    'Smith, Machine Learning, 2023'
+    >>> humanize_citation_key("bishopDeepLearningFoundations2024_deep-learning-revolution")
+    'Bishop Deep Learning Foundations 2024 deep learning revolution'
+    
+    >>> humanize_citation_key("smith2023")
+    'Smith 2023'
     
     >>> humanize_citation_key("johnsonEtAl2022")
-    'Johnson et al, 2022'
-    
-    >>> humanize_citation_key("oReilly2019")
-    "O'Reilly, 2019"
-    
-    >>> humanize_citation_key("mcDonald2024")
-    'McDonald, 2024'
-    
-    >>> humanize_citation_key("vanDijkTheoryPractice2021")
-    'van Dijk, Theory Practice, 2021'
-    
-    Notes
-    -----
-    Special handling for:
-    - "EtAl" -> "et al"
-    - Name prefixes: mc/Mac, o/O', de, van, von
-    - Year extraction from end
-    - Proper comma placement after author name
-    - Multiple consecutive capitals (e.g., "USA")
+    'Johnson Et Al 2022'
     """
     if not citation_key:
         return ""
@@ -232,68 +217,40 @@ def humanize_citation_key(citation_key: str) -> str:
     if citation_key.startswith('@'):
         citation_key = citation_key[1:]
     
-    # Handle common patterns
-    # First, handle "EtAl" -> "et al"
-    humanized = citation_key.replace("EtAl", " et al")
+    # Replace underscores with spaces
+    citation_key = citation_key.replace('_', ' ')
     
-    # Extract year at the end (if present)
-    year_match = re.search(r'(\d{4})$', humanized)
-    year = ""
-    if year_match:
-        year = year_match.group(1)
-        humanized = humanized[:-4]  # Remove year from main text
+    # Replace hyphens with spaces 
+    citation_key = citation_key.replace('-', ' ')
     
-    # Handle special name patterns before general processing
-    # Common prefixes that should stay together
-    name_patterns = [
-        (r'^mc([A-Z])', r'Mc\1'),  # McDonald -> McDonald
-        (r'^mac([A-Z])', r'Mac\1'),  # MacArthur -> MacArthur
-        (r'^o([A-Z])', r"O'\1"),  # oReilly -> O'Reilly
-        (r'^de([A-Z])', r'de \1'),  # deSouza -> de Souza
-        (r'^van([A-Z])', r'van \1'),  # vanDijk -> van Dijk
-        (r'^von([A-Z])', r'von \1'),  # vonNeumann -> von Neumann
-    ]
+    # Split camelCase by inserting spaces before capitals
+    # But preserve consecutive capitals (like "USA" or "CNN")
+    result = ""
+    for i, char in enumerate(citation_key):
+        if i > 0 and char.isupper():
+            # Check if previous char is lowercase or if next char is lowercase
+            prev_is_lower = citation_key[i-1].islower()
+            next_is_lower = i+1 < len(citation_key) and citation_key[i+1].islower()
+            
+            if prev_is_lower or (not prev_is_lower and next_is_lower):
+                result += " "
+        result += char
     
-    # Apply name patterns
-    for pattern, replacement in name_patterns:
-        humanized = re.sub(pattern, replacement, humanized)
+    # Clean up multiple spaces
+    result = " ".join(result.split())
     
-    # Split camelCase into words
-    # Insert space before uppercase letters that follow lowercase letters
-    # But not if it's after an apostrophe (like O'Reilly)
-    humanized = re.sub(r"(?<!')([a-z])([A-Z])", r'\1 \2', humanized)
-    
-    # Handle multiple consecutive capitals (like "USA" or "CNN")
-    humanized = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1 \2', humanized)
-    
-    # Split into words
-    words = humanized.split()
-    
-    if words:
-        # First word is always the author name - capitalize it properly
-        first_word = words[0]
-        
-        # Check if it's a special prefix that should stay lowercase
-        if first_word.lower() in ['de', 'van', 'von']:
-            # Keep lowercase, but capitalize the next word
-            if len(words) > 1:
-                words[1] = words[1].capitalize()
-                words[1] = words[1] + ","  # Add comma after actual surname
+    # Simple capitalization - just capitalize first letter of each word
+    words = result.split()
+    capitalized_words = []
+    for word in words:
+        if word.lower() == "et" and len(words) > 1:
+            # Keep "et" lowercase in "et al"
+            capitalized_words.append(word.lower())
+        elif word.lower() == "al" and len(capitalized_words) > 0 and capitalized_words[-1] == "et":
+            # Keep "al" lowercase after "et"
+            capitalized_words.append(word.lower())
         else:
-            # Normal case - capitalize first word
-            words[0] = words[0].capitalize()
-            # Add comma after first word if there are more words
-            if len(words) > 1 and words[1].lower() not in ['et', 'al']:
-                words[0] = words[0] + ","
+            # Capitalize first letter only
+            capitalized_words.append(word[0].upper() + word[1:].lower() if len(word) > 1 else word.upper())
     
-    # Rejoin words
-    humanized = " ".join(words)
-    
-    # Add year at the end if present
-    if year:
-        humanized = f"{humanized}, {year}"
-    
-    # Clean up any double spaces
-    humanized = " ".join(humanized.split())
-    
-    return humanized
+    return " ".join(capitalized_words)

@@ -21,7 +21,7 @@ Examples
 ...     main_topic="Neural network architectures",
 ...     key_contributions=["New activation function", "Improved backprop"],
 ...     methodology="Experimental study with benchmarks",
-...     summary="This paper presents..." # 200-500 words
+...     summary="This paper presents..." # 100-1500 words
 ... )
 """
 
@@ -111,7 +111,8 @@ class DocumentSummary(BaseModel):
     Captures the essential information from an academic document including
     bibliographic data, key contributions, methodology, and a structured
     summary. Also maintains dictionaries of acronyms and technical terms
-    for reference.
+    for reference. Designed to create lecture-style summaries that help
+    students deeply understand the material.
     
     Parameters
     ----------
@@ -129,8 +130,14 @@ class DocumentSummary(BaseModel):
         Dictionary mapping acronyms to their definitions
     technical_terms : Dict[str, str], optional
         Dictionary of technical terms and their definitions
+    key_equations : List[str], optional
+        Important equations with intuitive explanations
+    conceptual_framework : str, optional
+        How concepts relate to each other
+    learning_objectives : List[str], optional
+        What students should understand after studying
     summary : str
-        Comprehensive summary (200-500 words)
+        Comprehensive lecture-style summary (100-1500 words)
     
     Attributes
     ----------
@@ -148,13 +155,19 @@ class DocumentSummary(BaseModel):
         Acronym definitions
     technical_terms : Dict[str, str]
         Technical term definitions
+    key_equations : List[str]
+        Important equations with explanations
+    conceptual_framework : str
+        Conceptual relationships
+    learning_objectives : List[str]
+        Learning goals
     summary : str
         Full summary text
     
     Raises
     ------
     ValueError
-        If summary is not between 200-500 words
+        If summary is not between 500-1500 words
         If more than 5 key contributions provided
     
     Examples
@@ -173,7 +186,15 @@ class DocumentSummary(BaseModel):
     ...     technical_terms={
     ...         "self-attention": "Mechanism to relate different positions in a sequence"
     ...     },
-    ...     summary="This paper introduces the Transformer..." # 200-500 word summary
+    ...     key_equations=[
+    ...         "Attention(Q,K,V) = softmax(QK^T/√d_k)V - Computes weighted sum of values based on query-key similarity"
+    ...     ],
+    ...     conceptual_framework="Transformers replace recurrence with attention mechanisms...",
+    ...     learning_objectives=[
+    ...         "Understand how self-attention replaces recurrent connections",
+    ...         "Explain multi-head attention and its benefits"
+    ...     ],
+    ...     summary="This comprehensive lecture covers..." # 100-1500 word summary
     ... )
     """
     title: str
@@ -183,14 +204,18 @@ class DocumentSummary(BaseModel):
     methodology: str
     acronyms: Dict[str, str] = Field(default_factory=dict, description="Acronym definitions")
     technical_terms: Dict[str, str] = Field(default_factory=dict, description="Technical term definitions")
-    summary: str = Field(..., description="200-500 word summary")
+    key_equations: List[str] = Field(default_factory=list, description="Important equations with explanations")
+    conceptual_framework: Optional[str] = Field(None, description="How concepts relate to each other")
+    learning_objectives: List[str] = Field(default_factory=list, description="What students should understand")
+    summary: str = Field(..., description="100-1500 word summary")
     
     @field_validator('summary')
     def summary_length(cls, v):
         """Validate document summary length.
         
-        Ensures the summary is comprehensive yet concise, falling within
-        the 200-500 word range suitable for document overview.
+        Ensures the summary is appropriate for the document length.
+        For shorter documents, allows shorter summaries while maintaining
+        quality. For longer documents, encourages comprehensive coverage.
         
         Parameters
         ----------
@@ -205,9 +230,11 @@ class DocumentSummary(BaseModel):
         Raises
         ------
         ValueError
-            If summary is not between 200-500 words
+            If summary is too short (<100 words) or too long (>1500 words)
         """
         words = len(v.split())
-        if not 200 <= words <= 500:
-            raise ValueError(f"Summary should be 200-500 words, got {words}")
+        if words < 100:
+            raise ValueError(f"Summary too short: {words} words (minimum 100)")
+        if words > 1500:
+            raise ValueError(f"Summary too long: {words} words (maximum 1500)")
         return v

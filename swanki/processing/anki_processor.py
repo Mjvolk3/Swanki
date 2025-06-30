@@ -215,8 +215,12 @@ class AnkiProcessor:
         # Process each card
         cards_added = 0
         cards_updated = 0
+        failed_cards = []  # Track failed cards for summary
         
-        for card in cards:
+        for card_idx, card in enumerate(cards):
+            # Validate and fix cloze card format before processing
+            self._validate_and_fix_cloze_format(card)
+            
             # Determine card type
             is_cloze = "{{c" in card['front']
             model_name = "Cloze" if is_cloze else "Basic"
@@ -264,6 +268,17 @@ class AnkiProcessor:
                 if note_id:
                     cards_added += 1
                     logger.debug(f"Added new card: {card['front'][:50]}...")
+                else:
+                    # Log failed card with more details
+                    card_preview = card['front'].split('\n')[0][:100]  # First line, max 100 chars
+                    logger.error(f"Failed to add card #{card_idx + 1}: {card_preview}...")
+                    logger.debug(f"Card type: {model_name}, Tags: {card['tags']}")
+                    failed_cards.append({
+                        'index': card_idx + 1,
+                        'preview': card_preview,
+                        'type': model_name,
+                        'tags': card['tags']
+                    })
             elif update_existing:
                 # Update existing card
                 note_info = self._get_note_info(existing_ids[:1])
@@ -277,6 +292,18 @@ class AnkiProcessor:
             self._sync()
         
         logger.info(f"Successfully processed {len(cards)} cards: {cards_added} added, {cards_updated} updated")
+        
+        # Report failed cards if any
+        if failed_cards:
+            logger.warning(f"\n{len(failed_cards)} cards failed to import:")
+            for failed in failed_cards:
+                logger.warning(f"  Card #{failed['index']}: {failed['preview'][:60]}...")
+            logger.info("\nCommon reasons for import failures:")
+            logger.info("  - Duplicate cards already in deck")
+            logger.info("  - Invalid LaTeX/MathJax formatting")
+            logger.info("  - Special characters in content")
+            logger.info("  - Missing note type (Basic/Cloze) in Anki")
+        
         return cards_added, cards_updated
     
     def _create_deck(self, deck_name: str) -> bool:
@@ -343,7 +370,16 @@ class AnkiProcessor:
             )
             result = response.json()
             if result.get("error"):
-                logger.error(f"Failed to add note: {result['error']}")
+                # Extract card preview for better error identification
+                card_preview = fields.get('Text', fields.get('Front', 'Unknown card'))
+                card_preview = card_preview.split('\n')[0][:80]  # First line, max 80 chars
+                logger.error(f"Failed to add note: {result['error']} | Card: {card_preview}...")
+                # Log additional details for debugging
+                if "duplicate" in result['error'].lower():
+                    logger.debug("This appears to be a duplicate card")
+                elif "invalid" in result['error'].lower():
+                    logger.debug(f"Invalid content - check for special characters or formatting issues")
+                    logger.debug(f"Tags: {tags}")
                 return None
             return result.get("result")
         except Exception as e:
@@ -576,6 +612,9 @@ class AnkiProcessor:
         # Remove code fences around math
         text = MATH_FENCE_RE.sub(lambda m: m.group(1), text)
         
+        # Fix problematic cloze deletions
+        text = self._fix_cloze_issues(text)
+        
         # Convert markdown code blocks to HTML for better Anki rendering
         # This preserves syntax highlighting in Anki
         code_block_pattern = r'```(\w+)?\n(.*?)```'
@@ -611,6 +650,111 @@ class AnkiProcessor:
         
         return text
     
+    def _validate_and_fix_cloze_format(self, card: Dict[str, Any]) -> None:
+        """Validate and fix cloze card formatting issues.
+        
+        Ensures cloze deletions are in the front, not the back.
+        This catches cards that were incorrectly generated.
+        
+        Parameters
+        ----------
+        card : Dict[str, Any]
+            Card dictionary with 'front', 'back', and 'tags'
+        """
+        # Check if cloze markers are in the wrong place
+        has_cloze_in_front = "{{c" in card['front']
+        has_cloze_in_back = "{{c" in card['back']
+        
+        if has_cloze_in_back and not has_cloze_in_front:
+            # Misformatted cloze card - cloze is in back instead of front
+            logger.warning(f"Fixing misformatted cloze card: cloze markers found in back instead of front")
+            
+            # Extract cloze content from back
+            cloze_pattern = r'\{\{c\d+::(.+?)\}\}'
+            cloze_matches = re.findall(cloze_pattern, card['back'], re.DOTALL)
+            
+            if cloze_matches:
+                cloze_content = cloze_matches[0].strip()
+                
+                # Transform the card based on front content
+                if card['front'].endswith('?'):
+                    # It's a question - transform to statement with cloze
+                    base_text = card['front'].rstrip('?').strip()
+                    
+                    # Common transformations
+                    if re.match(r'^What is the (.+)$', base_text, re.IGNORECASE):
+                        card['front'] = re.sub(r'^What is the (.+)$', r'The \1 is {{c1::' + cloze_content + '}}', base_text, flags=re.IGNORECASE)
+                    elif re.match(r'^Which (.+)$', base_text, re.IGNORECASE):
+                        card['front'] = f"{{{{c1::{cloze_content}}}}} {base_text[6:]}"
+                    elif re.match(r'^In (.+), what (.+)$', base_text, re.IGNORECASE):
+                        match = re.match(r'^In (.+), what (.+)$', base_text, re.IGNORECASE)
+                        card['front'] = f"In {match.group(1)}, {{{{c1::{cloze_content}}}}} {match.group(2)}"
+                    else:
+                        # Generic transformation
+                        card['front'] = f"{base_text} is {{{{c1::{cloze_content}}}}}"
+                else:
+                    # Not a question - just append cloze
+                    card['front'] = f"{card['front']} {{{{c1::{cloze_content}}}}}"
+                
+                # Clear the back (should only have audio for cloze)
+                card['back'] = ""
+                logger.info(f"Fixed cloze format - moved to front: {card['front'][:80]}...")
+        
+        elif has_cloze_in_back and has_cloze_in_front:
+            # Both have cloze - remove from back
+            logger.warning("Cloze card has markers in both front and back - removing from back")
+            card['back'] = re.sub(r'\{\{c\d+::[^}]+\}\}', '', card['back']).strip()
+    
+    def _fix_cloze_issues(self, text: str) -> str:
+        """Fix common cloze deletion issues that cause Anki import failures.
+        
+        Parameters
+        ----------
+        text : str
+            Text containing cloze deletions
+            
+        Returns
+        -------
+        str
+            Text with fixed cloze deletions
+        """
+        # Fix multiline cloze deletions
+        # Pattern to find cloze that spans multiple lines
+        multiline_cloze_pattern = r'({{c\d+::(?:[^}]|\n)*?}})'
+        
+        def fix_multiline_cloze(match):
+            cloze_text = match.group(1)
+            # Replace newlines with spaces inside cloze
+            fixed_cloze = cloze_text.replace('\n', ' ')
+            # Clean up multiple spaces
+            fixed_cloze = re.sub(r'\s+', ' ', fixed_cloze)
+            return fixed_cloze
+        
+        text = re.sub(multiline_cloze_pattern, fix_multiline_cloze, text, flags=re.DOTALL)
+        
+        # Fix display math inside cloze deletions
+        # Pattern: {{c1::\[...\]}} or \[{{c1::...}}\]
+        display_math_in_cloze = r'{{(c\d+::)\\\[(.*?)\\\]}}' 
+        text = re.sub(display_math_in_cloze, r'{{\1\\(\2\\)}}', text, flags=re.DOTALL)
+        
+        # Pattern: \[...{{c1::...}}...\]
+        cloze_in_display_math = r'\\\[(.*?){{(c\d+::.*?}})(.*?)\\\]'
+        
+        def fix_cloze_in_display(match):
+            before = match.group(1)
+            cloze = match.group(2)
+            after = match.group(3)
+            # Convert to inline math with cloze
+            return f'\\({before}{{{cloze}{after}\\)'
+        
+        text = re.sub(cloze_in_display_math, fix_cloze_in_display, text, flags=re.DOTALL)
+        
+        # Fix LaTeX issues inside cloze
+        # Add spaces before }} to avoid LaTeX conflicts
+        text = re.sub(r'({{c\d+::.*?)}}(?=})', r'\1 }}', text)
+        
+        return text
+    
     def _convert_latex_to_mathjax(self, text: str) -> str:
         """Convert LaTeX dollar notation to MathJax format for Anki.
         
@@ -628,6 +772,15 @@ class AnkiProcessor:
         text = re.sub(r'(?<!\$)\$(?!\$)(.+?)\$(?!\$)', r'\\(\1\\)', text)
         # Convert $$...$$ to \[...\] for display math
         text = re.sub(r'\$\$(.+?)\$\$', r'\\[\1\\]', text, flags=re.DOTALL)
+        
+        # Clean up problematic LaTeX that might cause Anki import issues
+        # Replace \left( and \right) with regular parentheses in MathJax
+        text = text.replace('\\left(', '(').replace('\\right)', ')')
+        text = text.replace('\\left[', '[').replace('\\right]', ']')
+        text = text.replace('\\left\\{', '\\{').replace('\\right\\}', '\\}')
+        
+        # Fix spacing issues that might cause problems
+        text = re.sub(r'\s+\\mathrm{d}', r'\\,\\mathrm{d}', text)  # Add thin space before differentials
         
         return text
     

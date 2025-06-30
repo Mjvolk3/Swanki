@@ -128,8 +128,8 @@ class Pipeline:
         Extract and summarize images
     generate_document_summary(markdown_files, image_summaries)
         Generate comprehensive document summary
-    generate_cards_with_window(markdown_files, doc_summary, window_size, skip, num_cards)
-        Generate cards using sliding window
+    generate_cards_with_context(markdown_files, doc_summary, context_radius, num_cards)
+        Generate cards for focal pages with surrounding context
     generate_image_cards(markdown_files, doc_summary, ...)
         Generate cards from images
     generate_outputs(cards, summary, output_dir)
@@ -276,15 +276,28 @@ class Pipeline:
         doc_summary = self.generate_document_summary(cleaned_files, image_summaries)
         self.state.document_summary = doc_summary
 
-        # 6. Generate cards with sliding window
-        self.state.current_stage = "card_generation"
+        # 5.5. Estimate card count
         pipeline_config = self.config.get("pipeline", {})
         processing_config = pipeline_config.get("processing", {})
-        all_cards = self.generate_cards_with_window(
+        estimated_cards = self.estimate_card_count(cleaned_files, image_summaries, processing_config)
+        
+        # Check if user confirmation is required
+        confirm_required = processing_config.get("confirm_before_generation", True)
+        if confirm_required:
+            logger.info(f"Proceeding with card generation (estimated: {estimated_cards} cards)")
+            response = input(f"\nContinue with card generation? ({estimated_cards} cards estimated) [Y/n]: ").strip().lower()
+            if response and response not in ['y', 'yes', '']:
+                logger.info("Card generation cancelled by user")
+                raise KeyboardInterrupt("User cancelled card generation")
+        else:
+            logger.info(f"Proceeding with card generation (estimated: {estimated_cards} cards)")
+
+        # 6. Generate cards with sliding window
+        self.state.current_stage = "card_generation"
+        all_cards = self.generate_cards_with_context(
             cleaned_files,
             doc_summary,
-            window_size=processing_config.get("window_size", 2),
-            skip=processing_config.get("skip", 1),
+            context_radius=processing_config.get("context_radius", 1),
             num_cards=processing_config.get("num_cards_per_page", 3),
         )
 
@@ -597,19 +610,19 @@ Image summaries:
 
         return response
 
-    def generate_cards_with_window(
+    def generate_cards_with_context(
         self,
         markdown_files: List[Path],
         doc_summary: DocumentSummary,
-        window_size: int,
-        skip: int,
+        context_radius: int,
         num_cards: int,
     ) -> List[PlainCard]:
-        """Generate flashcards using sliding window approach.
+        """Generate flashcards for each page with surrounding context.
 
-        Processes markdown files in overlapping windows to generate
-        cards with better context. This helps create more coherent
-        cards that can reference content across page boundaries.
+        Processes each page as a focal point, using surrounding pages
+        within the context radius to provide additional context for
+        better question generation. Only generates cards for the focal
+        page, not the context pages.
 
         Parameters
         ----------
@@ -617,12 +630,11 @@ Image summaries:
             List of markdown files to process
         doc_summary : DocumentSummary
             Document summary for context
-        window_size : int
-            Number of files to process together
-        skip : int
-            Number of files to skip between windows
+        context_radius : int
+            Number of pages before/after focal page to include as context
+            (0 = no context, 1 = ±1 page, 2 = ±2 pages, etc.)
         num_cards : int
-            Number of cards to generate per page
+            Number of cards to generate per focal page
 
         Returns
         -------
@@ -631,35 +643,45 @@ Image summaries:
 
         Examples
         --------
-        >>> # Process files in groups of 2, moving 1 file at a time
-        >>> cards = pipeline.generate_cards_with_window(
+        >>> # Process each page with ±1 page context
+        >>> cards = pipeline.generate_cards_with_context(
         ...     markdown_files=files,
         ...     doc_summary=summary,
-        ...     window_size=2,
-        ...     skip=1,
+        ...     context_radius=1,
         ...     num_cards=3
         ... )
 
         Notes
         -----
-        The sliding window approach ensures cards can reference
-        content that spans multiple pages, improving coherence.
+        Context pages provide supporting information but cards are
+        only generated from the focal page content. This ensures
+        consistent card counts while improving question quality.
         """
         all_cards = []
         
-        # Handle case where window_size is larger than available files
-        if window_size > len(markdown_files):
-            logger.warning(f"Window size ({window_size}) is larger than number of files ({len(markdown_files)}). Using all available files.")
-            window_size = len(markdown_files)
-        
-        # Ensure we generate at least one window
-        num_windows = max(1, (len(markdown_files) - window_size) // skip + 1)
-        
-        for i in range(0, len(markdown_files) - window_size + 1, skip):
-            window_files = markdown_files[i : i + window_size]
-
-            # Combine content from window
-            combined_content = "\\n\\n".join([f.read_text() for f in window_files])
+        # Process each page as focal with surrounding context
+        for focal_idx in range(len(markdown_files)):
+            # Determine context window
+            start_idx = max(0, focal_idx - context_radius)
+            end_idx = min(len(markdown_files), focal_idx + context_radius + 1)
+            
+            # Get focal page
+            focal_page = markdown_files[focal_idx]
+            focal_content = focal_page.read_text()
+            
+            # Get context pages
+            context_pages = []
+            for idx in range(start_idx, end_idx):
+                if idx != focal_idx:  # Skip the focal page itself
+                    context_pages.append(markdown_files[idx])
+            
+            # Build content with clear separation
+            if context_pages:
+                # Add context before focal content
+                context_content = "\\n\\n".join([f.read_text() for f in context_pages])
+                combined_content = f"[CONTEXT FROM SURROUNDING PAGES]\\n{context_content}\\n\\n[FOCAL PAGE CONTENT]\\n{focal_content}"
+            else:
+                combined_content = focal_content
 
             # Get config values
             prompts_config = self.config.get("prompts", {}).get("prompts", {})
@@ -673,26 +695,31 @@ Image summaries:
             actual_prompt = cards_prompts.get(
                 "generate_cards",
                 "Create {num_cards} flashcards from this content.",
-            ).replace('{num_cards}', str(num_cards * len(window_files))
-            ).replace('{num_cloze}', str(processing_config.get("cloze_cards_per_page", 2) * len(window_files))
+            ).replace('{num_cards}', str(num_cards)
+            ).replace('{num_cloze}', str(processing_config.get("cloze_cards_per_page", 2))
             ).replace('{title}', doc_summary.title
             ).replace('{acronyms}', str(doc_summary.acronyms)
             ).replace('{technical_terms}', str(doc_summary.technical_terms)
             ).replace('{content}', combined_content)
             
-            # Debug logging removed for cleaner output
-            logger.debug(f"Requesting {num_cards * len(window_files)} regular cards and {processing_config.get('cloze_cards_per_page', 2) * len(window_files)} cloze cards")
+            # Debug logging
+            logger.debug(f"Processing page {focal_idx + 1}/{len(markdown_files)} with context radius {context_radius}")
+            logger.debug(f"Requesting {num_cards} regular cards and {processing_config.get('cloze_cards_per_page', 2)} cloze cards from focal page")
             
             # Generate regular cards first
-            regular_prompt = f"""Generate EXACTLY {num_cards * len(window_files)} regular Q&A flashcards from this content.
+            regular_prompt = f"""Generate EXACTLY {num_cards} regular Q&A flashcards from the FOCAL PAGE CONTENT ONLY.
 
 Context from document summary:
 Title: {doc_summary.title}
 Acronyms: {doc_summary.acronyms}
 Technical terms: {doc_summary.technical_terms}
 
-Content:
+Content provided:
 {combined_content}
+
+IMPORTANT: The content above may include context from surrounding pages marked as [CONTEXT FROM SURROUNDING PAGES].
+Use this context to better understand concepts and references, but ONLY generate cards from content in the [FOCAL PAGE CONTENT] section.
+If there are no such markers, the entire content is the focal page.
 
 FORMAT RULES:
 1. Use ## for the question (front of card)
@@ -721,7 +748,7 @@ EQUATION PRIORITY:
   * One about its significance or application
 - Even simple equations deserve cards (e.g., "What does $h(W) = 0$ represent in DAG optimization?")
 
-Generate {num_cards * len(window_files)} regular Q&A cards now."""
+Generate {num_cards} regular Q&A cards now from the FOCAL PAGE CONTENT ONLY."""
 
             # Configure retries for validation errors
             regular_response = self.instructor.chat.completions.create(
@@ -745,11 +772,13 @@ Generate {num_cards * len(window_files)} regular Q&A cards now."""
             )
             
             # Generate cloze cards separately
-            cloze_count = processing_config.get("cloze_cards_per_page", 2) * len(window_files)
-            cloze_prompt = f"""Generate EXACTLY {cloze_count} cloze deletion flashcards from this content.
+            cloze_count = processing_config.get("cloze_cards_per_page", 2)
+            cloze_prompt = f"""Generate EXACTLY {cloze_count} cloze deletion flashcards from the FOCAL PAGE CONTENT ONLY.
 
-Content:
+Content provided:
 {combined_content}
+
+IMPORTANT: Use context from surrounding pages to understand concepts, but ONLY generate cards from the [FOCAL PAGE CONTENT] section.
 
 FORMAT: Each card MUST use {{{{c1::hidden text}}}} syntax for cloze deletions.
 
@@ -790,7 +819,7 @@ BAD Examples (AVOID):
 - Tags: #equation, #definition (Generic tags - use conceptual ones!)
 
 REMEMBER: EVERY cloze card MUST have tags just like regular cards!
-Generate {cloze_count} cloze cards now. Focus on key definitions, formulas, and facts."""
+Generate {cloze_count} cloze cards now FROM THE FOCAL PAGE CONTENT ONLY. Focus on key definitions, formulas, and facts."""
 
             # Configure retries for validation errors
             cloze_response = self.instructor.chat.completions.create(
@@ -1127,6 +1156,84 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
         return image_cards
 
+    def estimate_card_count(
+        self, markdown_files: List[Path], image_summaries: List[ImageSummary], processing_config: Dict[str, Any]
+    ) -> int:
+        """Estimate the total number of cards that will be generated.
+        
+        Calculates expected card count based on:
+        - Number of pages
+        - Context radius for surrounding pages
+        - Cards per page settings
+        - Number of images and image card settings
+        
+        Parameters
+        ----------
+        markdown_files : List[Path]
+            List of markdown files (pages)
+        image_summaries : List[ImageSummary]
+            List of image summaries
+        processing_config : Dict[str, Any]
+            Processing configuration
+            
+        Returns
+        -------
+        int
+            Estimated total number of cards
+            
+        Notes
+        -----
+        This provides an estimate before actual card generation begins,
+        helping users understand the expected output size.
+        """
+        num_pages = len(markdown_files)
+        num_images = len(image_summaries)
+        
+        # Get configuration values
+        context_radius = processing_config.get("context_radius", 1)
+        cards_per_page = processing_config.get("num_cards_per_page", 3)
+        cloze_per_page = processing_config.get("cloze_cards_per_page", 2)
+        
+        # Image card settings
+        image_config = processing_config.get("image_cards", {})
+        image_cards_enabled = image_config.get("enabled", True)
+        cards_per_image = image_config.get("cards_per_image", 3)
+        
+        # All pages are focal pages now (no skip)
+        num_focal_pages = num_pages
+        
+        # Calculate cards from text content (only from focal pages)
+        cards_per_focal = cards_per_page + cloze_per_page
+        text_cards = num_focal_pages * cards_per_focal
+        
+        # Calculate cards from images
+        image_cards = num_images * cards_per_image if image_cards_enabled else 0
+        
+        # Total estimate
+        total_estimated = text_cards + image_cards
+        
+        # Log the estimation details
+        logger.info("="*50)
+        logger.info("CARD ESTIMATION:")
+        logger.info(f"  Pages: {num_pages}")
+        logger.info(f"  Images: {num_images}")
+        logger.info(f"  Processing configuration:")
+        logger.info(f"    - Context radius: ±{context_radius} pages")
+        logger.info(f"    - Focal pages to process: {num_focal_pages} (all pages)")
+        logger.info(f"  Cards per focal page:")
+        logger.info(f"    - Regular cards: {cards_per_page}")
+        logger.info(f"    - Cloze cards: {cloze_per_page}")
+        logger.info(f"    - Total per page: {cards_per_focal}")
+        logger.info(f"  Estimated text cards: {num_focal_pages} pages × {cards_per_focal} cards = {text_cards}")
+        if image_cards_enabled:
+            logger.info(f"  Estimated image cards: {num_images} images × {cards_per_image} cards = {image_cards}")
+        else:
+            logger.info(f"  Image cards: disabled")
+        logger.info(f"  TOTAL ESTIMATED CARDS: {total_estimated}")
+        logger.info("="*50)
+        
+        return total_estimated
+
     def generate_outputs(
         self, cards: List[PlainCard], summary: DocumentSummary, output_dir: Path
     ) -> Dict[str, Path]:
@@ -1186,13 +1293,44 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         with open(summary_path, "w") as f:
             f.write(f"# {summary.title}\\n\\n")
             f.write(f"**Authors:** {', '.join(summary.authors)}\\n\\n")
+            f.write(f"**Main Topic:** {summary.main_topic}\\n\\n")
+            f.write(f"**Methodology:** {summary.methodology}\\n\\n")
+            
+            # Learning objectives if present
+            if summary.learning_objectives:
+                f.write(f"## Learning Objectives\\n\\n")
+                for objective in summary.learning_objectives:
+                    f.write(f"- {objective}\\n")
+                f.write("\\n")
+            
             f.write(f"## Summary\\n\\n{summary.summary}\\n\\n")
+            
+            # Key equations if present
+            if summary.key_equations:
+                f.write(f"## Key Equations\\n\\n")
+                for equation in summary.key_equations:
+                    f.write(f"- {equation}\\n")
+                f.write("\\n")
+            
+            # Conceptual framework if present
+            if summary.conceptual_framework:
+                f.write(f"## Conceptual Framework\\n\\n{summary.conceptual_framework}\\n\\n")
+            
             f.write(f"## Key Contributions\\n\\n")
             for contrib in summary.key_contributions:
                 f.write(f"- {contrib}\\n")
-            f.write(f"\\n## Acronyms\\n\\n")
-            for acronym, definition in summary.acronyms.items():
-                f.write(f"- **{acronym}**: {definition}\\n")
+            
+            # Acronyms
+            if summary.acronyms:
+                f.write(f"\\n## Acronyms\\n\\n")
+                for acronym, definition in summary.acronyms.items():
+                    f.write(f"- **{acronym}**: {definition}\\n")
+            
+            # Technical terms
+            if summary.technical_terms:
+                f.write(f"\\n## Technical Terms\\n\\n")
+                for term, definition in summary.technical_terms.items():
+                    f.write(f"- **{term}**: {definition}\\n")
         outputs["summary"] = summary_path
 
         return outputs

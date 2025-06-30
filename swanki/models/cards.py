@@ -309,19 +309,37 @@ class PlainCard(BaseModel):
     audio_front_transcript: Optional[str] = Field(None, description="Generated transcript for front audio")
     audio_back_transcript: Optional[str] = Field(None, description="Generated transcript for back audio")
     
-    @field_validator('tags')
+    @field_validator('tags', mode='before')
     def validate_tags(cls, v):
         """Ensure at least one tag is present and tags are valid."""
-        # Clean up tags - remove empty strings and whitespace
-        cleaned_tags = [tag.strip() for tag in v if tag and tag.strip()]
+        # Clean up tags - remove empty strings, whitespace, and # prefix
+        cleaned_tags = []
+        for tag in v:
+            if tag and tag.strip():
+                # Remove # prefix if present
+                cleaned_tag = tag.strip().lstrip('#')
+                # Replace underscores with hyphens (more standard for tags)
+                cleaned_tag = cleaned_tag.replace('_', '-')
+                if cleaned_tag:
+                    cleaned_tags.append(cleaned_tag)
         
         if not cleaned_tags:
             raise ValueError("Every card must have at least one meaningful tag. No tags were provided.")
         
-        # Validate tag format (optional - ensure they don't contain invalid characters)
-        for tag in cleaned_tags:
+        # Validate tag format (ensure they don't contain invalid characters)
+        for i, tag in enumerate(cleaned_tags):
             if not tag.replace('-', '').replace('.', '').replace('_', '').isalnum():
-                raise ValueError(f"Invalid tag format: '{tag}'. Tags should only contain letters, numbers, hyphens, dots, and underscores.")
+                # Try to fix common issues
+                # Remove any remaining invalid characters
+                fixed_tag = ''.join(c if c.isalnum() or c in '-.' else '-' for c in tag)
+                # Remove multiple consecutive hyphens
+                fixed_tag = re.sub(r'-+', '-', fixed_tag)
+                # Remove leading/trailing hyphens
+                fixed_tag = fixed_tag.strip('-')
+                if fixed_tag:
+                    cleaned_tags[i] = fixed_tag
+                else:
+                    raise ValueError(f"Invalid tag format: '{tag}'. Tags should only contain letters, numbers, hyphens, and dots.")
         
         return cleaned_tags
     
@@ -352,6 +370,78 @@ class PlainCard(BaseModel):
         """Ensure card has a unique ID for robust audio pairing."""
         if not self.card_id:
             self.card_id = str(uuid.uuid4())
+        return self
+    
+    @model_validator(mode='after')
+    def fix_cloze_card_format(self):
+        """Fix common cloze card formatting issues.
+        
+        Ensures cloze deletions are in the front text, not the back.
+        For cloze cards, the back should only contain supplementary info or be empty.
+        """
+        import re
+        
+        # Check if this is a cloze card
+        has_cloze_in_front = "{{c" in self.front.text
+        has_cloze_in_back = "{{c" in self.back.text
+        
+        if has_cloze_in_back and not has_cloze_in_front:
+            # This is a misformatted cloze card - cloze is in the back instead of front
+            logger.warning(f"Fixing misformatted cloze card: moving cloze from back to front")
+            
+            # Extract the cloze content from the back
+            cloze_pattern = r'\{\{c\d+::(.+?)\}\}'
+            cloze_matches = re.findall(cloze_pattern, self.back.text, re.DOTALL)
+            
+            if cloze_matches:
+                # Get the cloze content
+                cloze_content = cloze_matches[0]
+                
+                # Check if the front looks like a question
+                if self.front.text.endswith('?'):
+                    # Transform Q&A format to statement format
+                    # Remove question mark and transform to statement
+                    base_text = self.front.text.rstrip('?')
+                    
+                    # Common question patterns to statement transformations
+                    transformations = [
+                        (r'^What is the (.+)$', r'The \1 is {{c1::' + cloze_content + '}}'),
+                        (r'^What are the (.+)$', r'The \1 are {{c1::' + cloze_content + '}}'),
+                        (r'^Which (.+)$', r'{{c1::' + cloze_content + '}} \1'),
+                        (r'^How does (.+)$', r'\1 {{c1::' + cloze_content + '}}'),
+                        (r'^In (.+), what (.+)$', r'In \1, {{c1::' + cloze_content + '}} \2'),
+                    ]
+                    
+                    transformed = False
+                    for pattern, replacement in transformations:
+                        if re.match(pattern, base_text, re.IGNORECASE):
+                            self.front.text = re.sub(pattern, replacement, base_text, flags=re.IGNORECASE)
+                            transformed = True
+                            break
+                    
+                    if not transformed:
+                        # Generic transformation
+                        self.front.text = f"{base_text} is {{{{c1::{cloze_content}}}}}"
+                else:
+                    # Just append the cloze to the front
+                    self.front.text = f"{self.front.text} {{{{c1::{cloze_content}}}}}"
+                
+                # Clear the back text (it should only have audio for cloze cards)
+                self.back.text = ""
+                logger.info(f"Fixed cloze card format: '{self.front.text[:80]}...'")
+        
+        elif has_cloze_in_back and has_cloze_in_front:
+            # Both front and back have cloze - this is wrong
+            logger.warning("Cloze card has cloze markers in both front and back - removing from back")
+            # Remove cloze from back
+            self.back.text = re.sub(r'\{\{c\d+::[^}]+\}\}', '', self.back.text).strip()
+            if not self.back.text:
+                self.back.text = ""
+        
+        # Validate cloze cards don't have substantial content in back
+        if has_cloze_in_front and len(self.back.text) > 50:
+            logger.warning(f"Cloze card has substantial back content ({len(self.back.text)} chars) - this should be minimal")
+        
         return self
     
     
