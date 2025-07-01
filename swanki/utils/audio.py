@@ -625,7 +625,7 @@ def text_to_speech(
             f.write(data)
 
 
-def combine_audio(files: List[Path], output: Path, crossfade_ms: int = 200) -> None:
+def combine_audio(files: List[Path], output: Path, crossfade_ms: int = 200, first_crossfade_ms: Optional[int] = None) -> None:
     """Combine multiple MP3 files into one with smooth transitions.
     
     Merges audio files with crossfade to avoid abrupt transitions.
@@ -638,6 +638,8 @@ def combine_audio(files: List[Path], output: Path, crossfade_ms: int = 200) -> N
         Path for combined output file
     crossfade_ms : int, optional
         Crossfade duration in milliseconds (default 200)
+    first_crossfade_ms : int, optional
+        Crossfade duration for first transition only (default None uses crossfade_ms)
     
     Notes
     -----
@@ -648,8 +650,10 @@ def combine_audio(files: List[Path], output: Path, crossfade_ms: int = 200) -> N
     segments = [AudioSegment.from_mp3(str(f)) for f in files]
     combined = segments[0]
     
-    for seg in segments[1:]:
-        combined = combined.append(seg, crossfade=crossfade_ms)
+    for i, seg in enumerate(segments[1:]):
+        # Use special crossfade for first transition if specified
+        fade_duration = first_crossfade_ms if i == 0 and first_crossfade_ms is not None else crossfade_ms
+        combined = combined.append(seg, crossfade=fade_duration)
     
     combined.export(str(output), format="mp3", bitrate="192k")
 
@@ -658,12 +662,14 @@ def generate_citation_audio(
     citation_key: str,
     output_path: Path,
     elevenlabs_api_key: str,
+    openai_client: Optional[OpenAI] = None,
     voice_id: Optional[str] = None,
     speed: float = 1.0,
     use_cache: bool = True,
     max_retries: int = 3,
     min_file_size: int = 1024,  # 1KB minimum
-    force_regenerate: bool = False
+    force_regenerate: bool = False,
+    citation_speed_override: Optional[float] = None
 ) -> Path:
     """Generate audio for a citation key that can be reused across cards.
     
@@ -679,6 +685,8 @@ def generate_citation_audio(
         Path for the output MP3 file
     elevenlabs_api_key : str
         ElevenLabs API key
+    openai_client : OpenAI, optional
+        OpenAI client for LLM-based humanization (if None, uses basic humanization)
     voice_id : str, optional
         Voice ID (defaults to DEFAULT_VOICE_ID)
     speed : float, optional
@@ -691,6 +699,8 @@ def generate_citation_audio(
         Minimum valid file size in bytes (default 1024)
     force_regenerate : bool, optional
         Force regeneration even if cached file exists (default False)
+    citation_speed_override : float, optional
+        Override speed specifically for citation audio (default None uses speed param)
     
     Returns
     -------
@@ -712,22 +722,33 @@ def generate_citation_audio(
     """
     voice_id = voice_id or DEFAULT_VOICE_ID
     
-    # Humanize the citation with error handling
-    try:
-        from ..utils.formatting import humanize_citation_key
-        humanized = humanize_citation_key(citation_key)
-        
-        # Validate humanized output
-        if not humanized or len(humanized) < 3:
-            logger.warning(f"Citation key '{citation_key}' produced invalid humanized form: '{humanized}'")
-            # Fallback to a simple format
-            humanized = citation_key.replace('_', ' ').replace('-', ' ').title()
-            logger.info(f"Using fallback humanization: '{humanized}'")
-    except Exception as e:
-        logger.error(f"Error humanizing citation key '{citation_key}': {e}")
-        # Use a safe fallback
-        humanized = citation_key.replace('_', ' ').replace('-', ' ').title()
-        logger.info(f"Using fallback humanization after error: '{humanized}'")
+    # Humanize the citation using LLM
+    if not openai_client:
+        raise ValueError("OpenAI client is required for citation audio generation")
+    
+    # Use LLM to create natural speech-friendly version
+    response = openai_client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "system",
+                "content": "Convert citation keys to natural speech for text-to-speech. "
+                           "Make it flow naturally as if speaking. Add appropriate pauses with commas. "
+                           "Keep it concise but clear. Do not add extra words like 'from' or 'by'."
+            },
+            {
+                "role": "user",
+                "content": f"Convert this citation key to natural speech: {citation_key}\n\n"
+                           "Examples:\n"
+                           "smithMachineLearning2023 -> Smith, Machine Learning, 2023\n"
+                           "bishopDeepLearningFoundations2024_deep-learning-revolution -> Bishop, Deep Learning Foundations, 2024, deep learning revolution\n"
+                           "johnsonEtAl2022 -> Johnson et al, 2022"
+            }
+        ],
+        temperature=0.3,
+        max_tokens=100
+    )
+    humanized = response.choices[0].message.content.strip()
     
     # Log the humanized citation for debugging
     logger.debug(f"Citation audio generation: '{citation_key}' -> '{humanized}'")
@@ -742,7 +763,9 @@ def generate_citation_audio(
             logger.warning(f"Cached citation audio failed validation, regenerating: {output_path}")
             output_path.unlink()  # Remove invalid cached file
     
-    # Add colon and slight pause for natural speech
+    # Format as a natural sentence for better TTS processing
+    # The humanized text now has commas for natural pauses
+    # e.g., "Bishop, Deep Learning Foundations, 2024, deep learning revolution"
     citation_text = f"{humanized}:"
     
     # Try to generate audio with retries
@@ -752,12 +775,14 @@ def generate_citation_audio(
             logger.debug(f"Generating citation audio (attempt {attempt + 1}/{max_retries})")
             
             # Generate audio
+            # Use citation speed override if provided, otherwise use regular speed
+            citation_speed = citation_speed_override if citation_speed_override is not None else speed
             text_to_speech(
                 text=citation_text,
                 voice_id=voice_id,
                 output_path=output_path,
                 api_key=elevenlabs_api_key,
-                speed=speed
+                speed=citation_speed
             )
             
             # Validate the generated file
@@ -1458,6 +1483,7 @@ def generate_card_audio(
                 citation_key=citation_key,
                 output_path=citation_audio_path,
                 elevenlabs_api_key=elevenlabs_api_key,
+                openai_client=openai_client,
                 voice_id=voice_id,
                 speed=speed,
                 use_cache=True,

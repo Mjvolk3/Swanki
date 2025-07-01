@@ -183,8 +183,8 @@ def detect_tags_from_text(text: str) -> List[str]:
 def humanize_citation_key(citation_key: str) -> str:
     """Convert a citation key to human-readable format for audio.
     
-    Simply converts the citation key to a readable format by adding spaces
-    and handling basic formatting.
+    Converts the citation key to a readable format optimized for TTS,
+    with proper pauses and structure.
     
     Parameters
     ----------
@@ -199,16 +199,16 @@ def humanize_citation_key(citation_key: str) -> str:
     Examples
     --------
     >>> humanize_citation_key("bishopDeepLearningFoundations2024")
-    'Bishop Deep Learning Foundations 2024'
+    'Bishop, Deep Learning Foundations, 2024'
     
     >>> humanize_citation_key("bishopDeepLearningFoundations2024_deep-learning-revolution")
-    'Bishop Deep Learning Foundations 2024 deep learning revolution'
+    'Bishop, Deep Learning Foundations, 2024, deep learning revolution'
     
     >>> humanize_citation_key("smith2023")
-    'Smith 2023'
+    'Smith, 2023'
     
     >>> humanize_citation_key("johnsonEtAl2022")
-    'Johnson Et Al 2022'
+    'Johnson et al, 2022'
     """
     if not citation_key:
         return ""
@@ -242,15 +242,40 @@ def humanize_citation_key(citation_key: str) -> str:
     # Simple capitalization - just capitalize first letter of each word
     words = result.split()
     capitalized_words = []
-    for word in words:
-        if word.lower() == "et" and len(words) > 1:
-            # Keep "et" lowercase in "et al"
-            capitalized_words.append(word.lower())
-        elif word.lower() == "al" and len(capitalized_words) > 0 and capitalized_words[-1] == "et":
-            # Keep "al" lowercase after "et"
-            capitalized_words.append(word.lower())
+    
+    # Track if we've seen a year to add proper punctuation
+    year_pattern = re.compile(r'^\d{4}$')
+    author_found = False
+    
+    for i, word in enumerate(words):
+        if word.lower() == "et" and i + 1 < len(words) and words[i + 1].lower() == "al":
+            # Keep "et al" lowercase and together
+            capitalized_words.append("et al")
+            continue
+        elif word.lower() == "al" and i > 0 and words[i - 1].lower() == "et":
+            # Skip "al" as it's already handled above
+            continue
+        elif year_pattern.match(word):
+            # This is a year
+            if author_found and len(capitalized_words) > 0:
+                # Add comma before year
+                capitalized_words[-1] = capitalized_words[-1] + ","
+            capitalized_words.append(word)
+            # If there's more content after the year, add comma
+            if i + 1 < len(words):
+                capitalized_words[-1] = word + ","
         else:
-            # Capitalize first letter only
-            capitalized_words.append(word[0].upper() + word[1:].lower() if len(word) > 1 else word.upper())
+            # Regular word
+            if not author_found:
+                # First word is author
+                author_found = True
+                capitalized = word[0].upper() + word[1:].lower() if len(word) > 1 else word.upper()
+                # Add comma after author if there's more content
+                if len(words) > 1:
+                    capitalized += ","
+                capitalized_words.append(capitalized)
+            else:
+                # Other words
+                capitalized_words.append(word[0].upper() + word[1:].lower() if len(word) > 1 else word.upper())
     
     return " ".join(capitalized_words)
