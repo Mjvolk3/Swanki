@@ -198,16 +198,26 @@ class ImageProcessor:
         processed_images = []
         for idx, image_info in enumerate(images):
             # Generate summary if OpenAI client is available
-            if self.openai_client and image_info['url'].startswith('http'):
-                summary = self._generate_image_summary(image_info)
-                if summary:
-                    image_info['summary'] = summary
-                    
-                    # Save summary to file
-                    summary_filename = f"{md_path.stem}_{idx+1}.md"
-                    summary_path = self.image_summaries_dir / summary_filename
-                    summary_path.write_text(summary, encoding='utf-8')
-                    image_info['summary_path'] = summary_path
+            # Process both remote (http) and local images
+            if self.openai_client:
+                try:
+                    summary = self._generate_image_summary(image_info)
+                    if summary:
+                        image_info['summary'] = summary
+                        
+                        # Save summary to file
+                        summary_filename = f"{md_path.stem}_{idx+1}.md"
+                        summary_path = self.image_summaries_dir / summary_filename
+                        summary_path.write_text(summary, encoding='utf-8')
+                        image_info['summary_path'] = summary_path
+                    else:
+                        error_msg = f"No summary generated for image: {image_info['url']}"
+                        logger.error(error_msg)
+                        raise RuntimeError(error_msg)
+                except Exception as e:
+                    error_msg = f"Failed to generate summary for image {image_info['url']}: {e}"
+                    logger.error(error_msg)
+                    raise RuntimeError(error_msg)
             
             # Update content with summary if available
             if 'summary' in image_info:
@@ -325,28 +335,75 @@ Describe:
 
 Keep the summary concise but informative (2-4 sentences)."""
 
-            response = self.openai_client.chat.completions.create(
-                model="gpt-4o",  # or "gpt-4-vision-preview" if using older API
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": {"url": image_info['url']}}
-                        ]
-                    }
-                ],
-                max_tokens=300,
-                temperature=0.3
-            )
+            # For local images, we need to read the file and encode it
+            image_url = image_info['url']
             
-            summary = response.choices[0].message.content.strip()
-            logger.debug(f"Generated summary for image: {summary[:50]}...")
-            return summary
+            # Check if it's a local image
+            if not image_url.startswith('http'):
+                # Try to find the image file
+                # First, check if it's a relative path from the markdown file location
+                source_dir = self.clean_md_singles_dir
+                possible_paths = [
+                    source_dir / image_url,  # Direct path
+                    source_dir.parent / image_url,  # Parent directory
+                    self.output_base / image_url,  # From output base
+                    Path(image_url)  # Absolute path
+                ]
+                
+                image_path = None
+                for path in possible_paths:
+                    if path.exists() and path.is_file():
+                        image_path = path
+                        break
+                
+                if not image_path:
+                    logger.error(f"Local image not found: {image_url}")
+                    return None
+                
+                # Read and encode the image
+                import base64
+                with open(image_path, 'rb') as img_file:
+                    image_data = base64.b64encode(img_file.read()).decode('utf-8')
+                
+                # Use data URL for local images
+                mime_type = "image/png" if image_path.suffix.lower() == '.png' else "image/jpeg"
+                image_url = f"data:{mime_type};base64,{image_data}"
+
+            # Add retry logic for image summary generation
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = self.openai_client.chat.completions.create(
+                        model="gpt-4o",  # or "gpt-4-vision-preview" if using older API
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": prompt},
+                                    {"type": "image_url", "image_url": {"url": image_url}}
+                                ]
+                            }
+                        ],
+                        max_tokens=300,
+                        temperature=0.3
+                    )
+                    
+                    summary = response.choices[0].message.content.strip()
+                    logger.debug(f"Generated summary for image: {summary[:50]}...")
+                    return summary
+                    
+                except Exception as e:
+                    logger.warning(f"Attempt {attempt + 1}/{max_retries} failed for image summary: {e}")
+                    if attempt == max_retries - 1:
+                        logger.error(f"Failed to generate image summary after {max_retries} attempts: {e}")
+                        raise  # Re-raise the exception on final attempt
+                    # Wait a bit before retrying
+                    import time
+                    time.sleep(2 ** attempt)  # Exponential backoff
             
         except Exception as e:
-            logger.error(f"Error generating image summary: {e}")
-            return None
+            logger.error(f"Critical error generating image summary: {e}")
+            raise  # Re-raise to fail the pipeline
     
     def _insert_image_summary(self, content: str, image_info: Dict[str, any]) -> str:
         """Insert image summary into markdown content.

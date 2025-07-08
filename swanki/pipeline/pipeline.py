@@ -491,10 +491,16 @@ class Pipeline:
         processor = ImageProcessor(self.output_base, self.instructor)
 
         # Process all images
-        image_infos = processor.process_all_images()
+        try:
+            image_infos = processor.process_all_images()
+        except RuntimeError as e:
+            logger.error(f"Failed to process images: {e}")
+            raise  # Re-raise to fail the pipeline
 
         # Convert to ImageSummary objects
         image_summaries = []
+        images_without_summaries = []
+        
         for idx, info in enumerate(image_infos):
             if "summary" in info:
                 try:
@@ -524,7 +530,15 @@ class Pipeline:
                         logger.info(f"Successfully added truncated summary for image {idx}")
                     except Exception as e2:
                         logger.error(f"Failed to add image {idx} even with truncation: {e2}")
-                        # Skip this image rather than crash the entire pipeline
+                        images_without_summaries.append(info["url"])
+            else:
+                images_without_summaries.append(info["url"])
+
+        # Fail if any images don't have summaries
+        if images_without_summaries:
+            error_msg = f"The following {len(images_without_summaries)} images do not have summaries: {', '.join(images_without_summaries)}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
         return image_summaries
 
@@ -609,6 +623,44 @@ Image summaries:
         )
 
         return response
+
+    def _detect_math_density(self, content: str) -> float:
+        """Detect the density of mathematical content in text.
+        
+        Returns a score from 0.0 to 1.0 indicating math density.
+        """
+        import re
+        
+        # Count various math indicators
+        math_patterns = [
+            r'\$[^$]+\$',  # Inline math
+            r'\$\$[^$]+\$\$',  # Display math
+            r'\\[a-zA-Z]+\{',  # LaTeX commands
+            r'\\frac\{',  # Fractions
+            r'\\sum',  # Summations
+            r'\\int',  # Integrals
+            r'\\mathbf',  # Bold math
+            r'[=<>≤≥≠]',  # Math operators
+            r'\^{',  # Superscripts
+            r'_{',  # Subscripts
+            r'\\theta|\\alpha|\\beta|\\gamma',  # Greek letters
+            r'theorem|proof|lemma|corollary',  # Math terminology
+            r'equation|formula|function',  # More math terms
+        ]
+        
+        total_matches = 0
+        for pattern in math_patterns:
+            matches = re.findall(pattern, content, re.IGNORECASE)
+            total_matches += len(matches)
+        
+        # Calculate density (normalized by content length)
+        words = len(content.split())
+        if words == 0:
+            return 0.0
+        
+        # Normalize to 0-1 range (assume 1 math element per 20 words is high density)
+        density = min(1.0, total_matches / (words / 20))
+        return density
 
     def generate_cards_with_context(
         self,
@@ -702,12 +754,26 @@ Image summaries:
             ).replace('{technical_terms}', str(doc_summary.technical_terms)
             ).replace('{content}', combined_content)
             
+            # Detect math density and adjust card count
+            math_density = self._detect_math_density(focal_content)
+            adjusted_num_cards = num_cards
+            adjusted_cloze_cards = processing_config.get('cloze_cards_per_page', 2)
+            
+            if math_density > 0.5:  # High math density
+                adjusted_num_cards = int(num_cards * 1.5)  # 50% more cards
+                adjusted_cloze_cards = int(adjusted_cloze_cards * 1.5)
+                logger.info(f"High math density ({math_density:.2f}) detected on page {focal_idx + 1}, increasing cards from {num_cards} to {adjusted_num_cards}")
+            elif math_density > 0.3:  # Medium math density
+                adjusted_num_cards = int(num_cards * 1.25)  # 25% more cards
+                logger.info(f"Medium math density ({math_density:.2f}) detected on page {focal_idx + 1}, increasing cards from {num_cards} to {adjusted_num_cards}")
+            
             # Debug logging
             logger.debug(f"Processing page {focal_idx + 1}/{len(markdown_files)} with context radius {context_radius}")
-            logger.debug(f"Requesting {num_cards} regular cards and {processing_config.get('cloze_cards_per_page', 2)} cloze cards from focal page")
+            logger.debug(f"Math density: {math_density:.2f}")
+            logger.debug(f"Requesting {adjusted_num_cards} regular cards and {adjusted_cloze_cards} cloze cards from focal page")
             
             # Generate regular cards first
-            regular_prompt = f"""Generate EXACTLY {num_cards} regular Q&A flashcards from the FOCAL PAGE CONTENT ONLY.
+            regular_prompt = f"""Generate EXACTLY {adjusted_num_cards} regular Q&A flashcards from the main content.
 
 Context from document summary:
 Title: {doc_summary.title}
@@ -717,9 +783,12 @@ Technical terms: {doc_summary.technical_terms}
 Content provided:
 {combined_content}
 
-IMPORTANT: The content above may include context from surrounding pages marked as [CONTEXT FROM SURROUNDING PAGES].
-Use this context to better understand concepts and references, but ONLY generate cards from content in the [FOCAL PAGE CONTENT] section.
-If there are no such markers, the entire content is the focal page.
+IMPORTANT STRUCTURAL NOTES (FOR YOUR REFERENCE ONLY):
+- The content may include markers like [CONTEXT FROM SURROUNDING PAGES] and [FOCAL PAGE CONTENT]
+- These are ONLY organizational markers to help you understand the content structure
+- Generate cards from the main content section (after [FOCAL PAGE CONTENT] if present)
+- NEVER mention these markers, "focal page", "surrounding pages", or "context" in your cards
+- Cards should be about the actual subject matter, not about document structure
 
 FORMAT RULES:
 1. Use ## for the question (front of card)
@@ -732,23 +801,31 @@ CRITICAL REQUIREMENTS:
 1. Cards MUST be self-contained - students won't have access to the paper, figures, or other references
 2. NEVER reference external content: "According to [12]", "As shown in Figure 3", "The paper states"
 3. NEVER say "in the context of the document" or "as described in the document"
-4. NEVER ask about specific authors: "What is Lachapelle et al.'s method?" - ask about the METHOD itself
-5. NEVER ask "What does X stand for?" - ask what X IS or HOW it works instead
-6. Each card tests ONE concept and includes all context needed to understand it
-7. PRIORITIZE creating cards for EVERY mathematical equation, formula, or algorithm in the content
-8. Use LaTeX with $ for inline math, $$ for display math
-9. NEVER use LaTeX tables (\\\\begin{{tabular}})
-10. For EVERY math symbol (h, F, g_j, etc.), define what it represents IN THE CARD
+4. NEVER mention "focal page", "surrounding pages", "context", or any structural markers in cards
+5. NEVER ask about specific authors: "What is Lachapelle et al.'s method?" - ask about the METHOD itself
+6. NEVER ask "What does X stand for?" - ask what X IS or HOW it works instead
+7. Each card tests ONE concept and includes all context needed to understand it
+8. PRIORITIZE creating cards for EVERY mathematical equation, formula, or algorithm in the content
+9. Use LaTeX with $ for inline math, $$ for display math
+10. NEVER use LaTeX tables (\\\\begin{{tabular}})
+11. For EVERY math symbol (h, F, g_j, etc.), define what it represents IN THE CARD
 
-EQUATION PRIORITY:
-- Create AT LEAST one card for EVERY equation in the content
-- For key equations (like $X = (I - W^T)$, $E[X_j | X_{{pa(j)}}] = g_j(f_j(X))$), create multiple cards:
-  * One asking what the equation represents
-  * One asking about specific components/terms
-  * One about its significance or application
-- Even simple equations deserve cards (e.g., "What does $h(W) = 0$ represent in DAG optimization?")
+MATHEMATICAL CONTENT PRIORITY (CRITICAL):
+- SCAN the content for ALL mathematical elements: equations, formulas, definitions, proofs, theorems
+- Create AT LEAST 2-3 cards for EVERY equation in the content
+- Mathematical card types to include:
+  * DEFINITION: "What does equation X represent/mean?"
+  * COMPONENTS: "In equation X, what does symbol Y represent?"
+  * PROPERTIES: "What property does equation X satisfy?"
+  * PROOF STEPS: "What is the key insight in step N of the proof?"
+  * APPLICATIONS: "How is equation X used in practice?"
+  * RELATIONSHIPS: "How does equation X relate to equation Y?"
+- For key equations (like $E(\\mathbf{{w}})=\\frac{{1}}{{2}} \\sum_{{n=1}}^N\\{{y(x_n, \\mathbf{{w}})-t_n\\}}^2$), create 4-5 cards
+- Even simple equations deserve multiple cards (e.g., for $h(W) = 0$: meaning, purpose, constraints)
+- PROOFS: Break down each proof into step-by-step cards
+- THEOREMS: Create cards for statement, conditions, implications
 
-Generate {num_cards} regular Q&A cards now from the FOCAL PAGE CONTENT ONLY."""
+Generate {adjusted_num_cards} regular Q&A cards now. Focus on the actual subject matter, not document structure."""
 
             # Configure retries for validation errors
             regular_response = self.instructor.chat.completions.create(
@@ -772,44 +849,56 @@ Generate {num_cards} regular Q&A cards now from the FOCAL PAGE CONTENT ONLY."""
             )
             
             # Generate cloze cards separately
-            cloze_count = processing_config.get("cloze_cards_per_page", 2)
-            cloze_prompt = f"""Generate EXACTLY {cloze_count} cloze deletion flashcards from the FOCAL PAGE CONTENT ONLY.
+            cloze_prompt = f"""Generate EXACTLY {adjusted_cloze_cards} cloze deletion flashcards from the main content.
 
 Content provided:
 {combined_content}
 
-IMPORTANT: Use context from surrounding pages to understand concepts, but ONLY generate cards from the [FOCAL PAGE CONTENT] section.
+IMPORTANT STRUCTURAL NOTES (FOR YOUR REFERENCE ONLY):
+- Markers like [CONTEXT FROM SURROUNDING PAGES] and [FOCAL PAGE CONTENT] are only for organization
+- Generate cards from the main content (after [FOCAL PAGE CONTENT] if present)
+- NEVER mention these markers or "focal page" in your cards
 
 FORMAT: Each card MUST use {{{{c1::hidden text}}}} syntax for cloze deletions.
 
 CRITICAL RULES:
 1. Cards MUST be self-contained - no references to "the paper", figures, or external content
-2. For equations: Hide PARTS of equations, not entire equations
-3. Hide meaningful concepts, not arbitrary numbers or references
-4. EVERY card MUST have AT LEAST 2 meaningful tags on the "- #tag1, #tag2" line
-5. PRIORITIZE equations - create cloze cards for key mathematical expressions
-6. MATH IN CLOZE: When hiding parts of math expressions, the ENTIRE math notation must stay together
+2. CLOZE LENGTH: Hide 1-5 words maximum per cloze deletion (focus on key terms/concepts)
+3. For equations: Hide PARTS of equations (variables, operators), not entire equations
+4. Hide meaningful concepts, not arbitrary numbers or references
+5. EVERY card MUST have AT LEAST 2 meaningful tags on the "- #tag1, #tag2" line
+6. PRIORITIZE equations - create cloze cards for key mathematical expressions
+7. MATH IN CLOZE: When hiding parts of math expressions, the ENTIRE math notation must stay together
    - WRONG: "In {{{{c1::$E[X_j$}}}} | {{{{c2::$X_{{pa(j)}}]$}}}}" (splits the equation)
    - WRONG: "The model {{{{c1::$E[X_j | X_{{}}}} {{{{c2::pa}}}} {{{{c3::(j)}}}}$" (splits subscript)
    - RIGHT: "In the model $E[X_j | {{{{c1::X_{{pa(j)}}}}}}] = {{{{c2::g_j(f_j(X))}}}}$"
    - RIGHT: "The equation {{{{c1::$E[X_j | X_{{pa(j)}}] = g_j(f_j(X))$}}}} represents conditional expectation"
 
-EQUATION FOCUS:
-- For EVERY major equation, create at least one cloze card
-- Hide key variables, operators, or results in equations
+MATHEMATICAL CONTENT FOCUS (CRITICAL):
+- PRIORITIZE mathematical content: equations, formulas, theorems, proofs
+- For EVERY equation/formula, create at least one cloze card
+- Mathematical cloze patterns:
+  * Hide key variables: "In $E(\\mathbf{{w}}) = \\frac{{1}}{{2}} \\sum_{{n=1}}^N ...$, {{{{c1::E}}}} represents {{{{c2::error function}}}}"
+  * Hide operators/functions: "The gradient descent rule uses $\\theta = \\theta {{{{c1::- α∇L(θ)}}}}$"
+  * Hide mathematical properties: "The constraint $h(W) = 0$ ensures {{{{c1::acyclicity}}}} of the {{{{c2::DAG}}}}"
+  * Hide proof steps: "To prove convergence, we show that {{{{c1::||∇E|| < ε}}}}"
 - Keep mathematical notation intact - don't split subscripts, superscripts, or operators
 - Examples: 
-  * "The transformation uses {{c1::$h(W) = 0$}} to ensure {{c2::acyclicity}}"
-  * "The model $E[X_j | X_{{pa(j)}}] = {{{{c1::g_j(f_j(X))}}}}$ represents {{{{c2::conditional expectation}}}}"
+  * "The error function {{{{c1::$E(\\mathbf{{w}})$}}}} equals {{{{c2::$\\frac{{1}}{{2}} \\sum_{{n=1}}^N \\{{y(x_n, \\mathbf{{w}})-t_n\\}}^2$}}}}"
+  * "In optimization, {{{{c1::gradient descent}}}} uses the update rule {{{{c2::$\\theta = \\theta - α∇L(θ)$}}}}"
 
 GOOD Examples:
 ## The {{{{c1::Pythagorean theorem}}}} states that {{{{c2::$a^2 + b^2 = c^2$}}}} for right triangles.
 
 - #mathematics.geometry, #theorems.pythagorean
 
-## In gradient descent, the update rule is $\\theta = \\theta - {{{{c1::α}}}} {{{{c2::∇L(θ)}}}}$ where {{{{c3::α is the learning rate}}}}.
+## In gradient descent, the update rule is $\\theta = \\theta - {{{{c1::α}}}} {{{{c2::∇L(θ)}}}}$ where α is the {{{{c3::learning rate}}}}.
 
 - #optimization.gradient-descent, #machine-learning.algorithms
+
+## The error function $E(\\mathbf{{w}}) = \\frac{{1}}{{2}} \\sum_{{n=1}}^N \\{{y(x_n, \\mathbf{{w}}) - t_n\\}}^2$ uses {{{{c1::squared error}}}} to measure {{{{c2::prediction accuracy}}}}.
+
+- #machine-learning.loss-functions, #optimization.least-squares
 
 BAD Examples (AVOID):
 - "The original method uses {{{{c1::algorithm X}}}}" (What original method? AND missing tags!)
@@ -819,7 +908,7 @@ BAD Examples (AVOID):
 - Tags: #equation, #definition (Generic tags - use conceptual ones!)
 
 REMEMBER: EVERY cloze card MUST have tags just like regular cards!
-Generate {cloze_count} cloze cards now FROM THE FOCAL PAGE CONTENT ONLY. Focus on key definitions, formulas, and facts."""
+Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formulas, and facts from the actual content."""
 
             # Configure retries for validation errors
             cloze_response = self.instructor.chat.completions.create(
@@ -1083,12 +1172,16 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                             card.front.image_path = image_info["original_path"]
                             if image_summary_text:
                                 card.front.image_summary = image_summary_text
+                            else:
+                                logger.error(f"No image summary found for {image_info['path']} - skipping this image card")
+                                continue  # Skip this card entirely
                         elif image_on_back and not image_on_front:
                             card.back.image_path = image_info["original_path"]
                             if image_summary_text:
                                 card.back.image_summary = image_summary_text
                             else:
-                                logger.error(f"No image summary found for {image_info['path']}")
+                                logger.error(f"No image summary found for {image_info['path']} - skipping this image card")
+                                continue  # Skip this card entirely
                         elif image_on_front and image_on_back:
                             # Both allowed, but NEVER put the same image on both sides
                             place_on_front = False
@@ -1125,16 +1218,18 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                                 card.front.image_path = image_info["original_path"]
                                 if image_summary_text:
                                     card.front.image_summary = image_summary_text
-                                # Explicitly ensure IMAGE is not on the back (but keep summary for audio)
+                                else:
+                                    logger.error(f"No image summary found for {image_info['path']} - skipping this image card")
+                                    continue  # Skip this card entirely
+                                # Explicitly ensure IMAGE is not on the back
                                 card.back.image_path = None
-                                # Don't clear back.image_summary - we might need it for audio
                             else:
                                 card.back.image_path = image_info["original_path"]
                                 if image_summary_text:
                                     card.back.image_summary = image_summary_text
                                 else:
-                                    # If no summary was found, log error
-                                    logger.error(f"No image summary found for {image_info['path']}")
+                                    logger.error(f"No image summary found for {image_info['path']} - skipping this image card")
+                                    continue  # Skip this card entirely
                                 # Explicitly ensure IMAGE is not on the front
                                 card.front.image_path = None
 
@@ -1884,19 +1979,35 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         models_config = self.config.get("models", {}).get("models", {})
         llm_config = models_config.get("llm", {})
         
-        system_prompt = f"""You are an expert flashcard quality evaluator.
+        system_prompt = f"""You are an expert teacher evaluating flashcards for educational value.
+Your goal is to ensure cards help students learn KEY CONCEPTS from the document.
+
 Check for these issues in {card_type} cards:
 1. External references ([1], "According to X", "Figure 3")
-2. Insufficient context ("this", "the model")
+2. Insufficient context ("this", "the model") 
 3. Generic tags (#equation vs #calculus.derivatives)
 4. Rote memorization ("What does X stand for?")
 5. Math formatting issues
-6. Cloze problems (multiple deletions, split equations)
+6. Cloze problems (extra questions after cloze, split equations)
 7. Undefined acronyms
 8. Author-centric questions
+9. EDUCATIONAL VALUE - does this help students learn fundamental concepts?
+   - BAD: "In sin(2πx), what does π represent?" (trivial notation)
+   - GOOD: "How does Fourier analysis decompose signals?" (key concept)
+10. Answer revealed in question (for regular cards)
+11. Focus on trivial details instead of important principles
+12. META-CONTENT LEAKAGE - cards must NEVER mention:
+    - "focal page", "surrounding pages", "context pages"
+    - "CONTEXT FROM SURROUNDING PAGES", "FOCAL PAGE CONTENT"
+    - References to document structure or organization markers
+    - Any meta-instructions or processing hints
+    - Examples of bad cards:
+      * "What is discussed in the focal page content?"
+      * "According to the context from surrounding pages..."
+      * "The focal page presents..."
 
-If ALL cards are high quality, set done=True.
-Otherwise provide specific, actionable feedback."""
+If ALL cards are high quality AND educationally valuable, set done=True.
+Otherwise provide specific, actionable feedback focused on what matters for learning."""
         
         return self.instructor.chat.completions.create(
             model=llm_config.get("model", "gpt-4"),
@@ -1911,11 +2022,15 @@ Otherwise provide specific, actionable feedback."""
                     "content": f"""
 Document context:
 Title: {doc_summary.title}
+Summary: {doc_summary.summary[:500]}... 
+Key concepts: {doc_summary.technical_terms}
 Acronyms: {doc_summary.acronyms}
-Technical terms: {doc_summary.technical_terms}
 
 Cards to evaluate:
 {cards_text}
+
+Use the document summary to understand what KEY CONCEPTS students should learn.
+Cards should focus on these fundamental ideas, not trivial notation or random details.
 
 {feedback_prompt}
 """
@@ -1973,6 +2088,25 @@ IMPORTANT for cloze cards with math:
 - Example with full equation: "The equation {{c1::\\(E = mc^2\\)}} relates energy to mass"
 """
         
+        # Add specific guidance for meta-content issues
+        if any("focal page" in f.lower() or "surrounding pages" in f.lower() or "meta-content" in f.lower() for f in feedback.feedback):
+            refinement_prompt += """
+
+CRITICAL META-CONTENT FIX REQUIRED:
+The feedback indicates cards are referencing document structure instead of content.
+You MUST rewrite these cards to:
+1. Remove ALL mentions of "focal page content", "surrounding pages", "context"
+2. Focus on the actual technical content and concepts
+3. Ask about the subject matter directly, not about how it's presented
+
+Example fixes:
+- BAD: "What is discussed in the focal page content?"
+- GOOD: "What is the key principle of backpropagation?"
+
+- BAD: "According to the focal page, what is the error function?"
+- GOOD: "What is the error function E(w) in terms of network output and target values?"
+"""
+        
         # Get LLM config
         models_config = self.config.get("models", {}).get("models", {})
         llm_config = models_config.get("llm", {})
@@ -1986,7 +2120,13 @@ IMPORTANT for cloze cards with math:
                         "role": "system",
                         "content": f"""You are an expert flashcard creator.
 Refine the {card_type} cards to address ALL feedback issues.
-Maintain the same number and types of cards."""
+Maintain the same number and types of cards.
+
+CRITICAL: If feedback mentions meta-content leakage, you MUST:
+1. Remove ALL mentions of "focal page", "surrounding pages", "context pages"
+2. Remove ALL structural markers like "FOCAL PAGE CONTENT" or "CONTEXT FROM"
+3. Rewrite questions to focus on the actual content, not document structure
+4. Never reference how the content is organized or presented"""
                     },
                     {
                         "role": "user",

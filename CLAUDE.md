@@ -18,4 +18,8 @@ Example
 
 ## Files
 
-- Don't Ever 
+- Tests should go in `tests/`
+
+## Code Execution
+
+- ~/opt/miniconda3/envs/swanki/bin/Swanki python script.py

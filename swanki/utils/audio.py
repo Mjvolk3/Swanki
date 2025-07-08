@@ -240,7 +240,7 @@ def generate_card_transcript(
     # Check if we have an image summary to include
     # For cards with images, we ALWAYS want to include the summary in the audio
     # regardless of where the image is visually placed
-    image_summary = ""
+    image_summary_for_audio = ""
     image_summary_included = False
     
     # Check if this card has an image at all
@@ -255,68 +255,38 @@ def generate_card_transcript(
     logger.debug(f"  Front image summary: {card.front.image_summary}")
     logger.debug(f"  Back image summary: {card.back.image_summary}")
     
-    if is_front and has_image:
-        # For front audio, ONLY include image summary if image is on the FRONT
+    if is_front:
+        # For front audio, only include image summary if image is on the FRONT
         if card.front.image_path and card.front.image_summary:
-            image_summary = f"Image description: {card.front.image_summary}. "
+            image_summary_for_audio = card.front.image_summary
             logger.debug(f"  Using front image summary for front audio")
-        else:
-            # If no summary but has image, note that
-            logger.debug(f"Card {card.card_id} has image but no summary for audio")
-            # Log more details for debugging
-            logger.debug(f"  Front image path: {card.front.image_path}")
-            logger.debug(f"  Back image path: {card.back.image_path}")
-            logger.debug(f"  Front summary: {card.front.image_summary}")
-            logger.debug(f"  Back summary: {card.back.image_summary}")
-        
-        # Prepend image summary to content for natural flow
-        if image_summary:
-            content = image_summary + content
-            image_summary_included = True
-            logger.debug(f"Card {card.card_id}: Including image summary in front audio")
-            logger.debug(f"  Final content preview: {content[:100]}...")
-        else:
-            logger.debug(f"  No image summary included in front audio")
-    elif not is_front:
-        # For back audio, only include if image is specifically on back
+        elif card.front.image_path and not card.front.image_summary:
+            # Image exists but no summary - this is a problem
+            logger.error(f"Card {card.card_id} has front image but no image summary for audio")
+    else:  # Back audio
+        # For back audio, only include image summary if image is on the BACK
         if card.back.image_path and card.back.image_summary:
-            image_summary = f"\\n\\nImage description: {card.back.image_summary}"
-            content = content + image_summary
-            image_summary_included = True
-            logger.debug(f"  Including back image summary in back audio")
+            image_summary_for_audio = card.back.image_summary
+            logger.debug(f"  Using back image summary for back audio")
+        elif card.back.image_path and not card.back.image_summary:
+            # Image exists but no summary - this is a problem
+            logger.error(f"Card {card.card_id} has back image but no image summary for audio")
     
-    # NOW add citation prefix after image summary has been included
+    # NOW add citation prefix before processing
     if (is_front or (not is_front and is_cloze)) and (citation_key or humanized_citation):
         # Use pre-humanized citation if provided, otherwise use raw citation key
         citation_prefix = humanized_citation if humanized_citation else f"@{citation_key}"
         content = f"{citation_prefix}: {content.strip()}"
     
-    # Check if content has LaTeX/math or images that need LLM processing
-    has_math = bool(re.search(r'[\$\\]|\\\\[a-zA-Z]+|[\^_{}]|\(I\s*-\s*W', content))
-    # Check for embedded image markdown OR if we added an image summary
-    has_images = bool(re.search(r'!\[.*?\]\(.*?\)', content)) or image_summary_included
+    # Always process through LLM for consistent humanization
+    # This ensures math, citations, and image descriptions are all properly formatted
     
-    # Log what's happening for debugging
-    logger.debug(f"Card {card.card_id} - Processing decision:")
-    logger.debug(f"  Has math: {has_math}")
-    logger.debug(f"  Has images: {has_images}")
-    logger.debug(f"  Image summary included: {image_summary_included}")
-    logger.debug(f"  Content preview: {content[:200]}...")
-    
-    # If no special content (math or images), use text directly with minimal processing
-    # But ONLY if we don't have an image summary that needs proper formatting
-    if not has_math and not has_images:
-        logger.debug(f"Card {card.card_id}: Taking simple path - image summary may be lost!")
-        # Just clean up the text for TTS
-        transcript = content
-        # Convert some basic markdown to spoken form
-        transcript = re.sub(r'\*\*(.*?)\*\*', r'\1', transcript)  # Remove bold
-        transcript = re.sub(r'\*(.*?)\*', r'\1', transcript)      # Remove italic
-        transcript = re.sub(r'`(.*?)`', r'\1', transcript)        # Remove code
-        # Clean up extra whitespace
-        transcript = " ".join(transcript.split())
-        
-        return transcript
+    # Add image summary to content AFTER the main content if we have one
+    if image_summary_for_audio:
+        # Place image description after the main content for better flow
+        content = content.strip() + ". Image description: " + image_summary_for_audio
+        image_summary_included = True
+        logger.debug(f"Card {card.card_id}: Added image summary for audio")
     
     if is_front:
         if is_cloze:
@@ -325,24 +295,35 @@ def generate_card_transcript(
                 "CRITICAL INSTRUCTIONS:\n"
                 "1. Say 'blank' exactly where it appears in the text\n"
                 "2. Do NOT try to figure out what the blank should be\n"
-                "3. If the text starts with 'Image description:', you MUST include it\n"
-                "4. Read the ENTIRE content provided, including any image descriptions\n"
-                "5. The image description is crucial for audio-only learners\n"
+                "3. If the content includes 'Image description:', you MUST read and humanize it\n"
+                "   - Convert technical descriptions to natural language\n"
+                "   - Describe visual elements in a way that helps audio-only learners\n"
+                "   - Make the description conversational and clear\n"
+                "4. Read ALL content in order: image description (if present), then the cloze text\n"
+                "5. The image description is crucial for audio-only learners - never skip it\n"
                 "\n"
                 "For mathematical expressions:\n"
                 "- Read them naturally as a mathematician would\n"
+                "- Fractions: \\frac{a}{b} as 'a over b', \\frac{1}{2} as 'one half'\n"
+                "- Summations: \\sum_{i=1}^n as 'sum from i equals 1 to n'\n"
+                "- Products: \\prod_{i=1}^n as 'product from i equals 1 to n'\n"
+                "- Integrals: \\int_a^b as 'integral from a to b'\n"
+                "- Bold symbols: \\mathbf{w} as 'vector w' or 'bold w'\n"
+                "- Functions: f(x, y) as 'f of x and y'\n"
+                "- Curly braces: \\{...\\} as 'the quantity...'\n"
+                "- Square brackets: [a, b] as 'the interval from a to b'\n"
                 "- Subscripts: X_j as 'X sub j', X_{parent} as 'X sub parent', X_i as 'X sub i'\n"
-                "- Superscripts: X^2 as 'X squared', X^n as 'X to the n'\n"
+                "- Superscripts: X^2 as 'X squared', X^n as 'X to the n', X^{-1} as 'X inverse'\n"
                 "- E[X | Y] as 'expected value of X given Y'\n"
-                "- X^{-1} as 'X inverse'\n"
+                "- E(w) as 'E of w' (error function notation)\n"
                 "- X^T as 'X transpose'\n"
                 "- (I - W^T) as 'I minus W transpose'\n"
                 "- g_j(f_j(X)) as 'g sub j of f sub j of X'\n"
                 "- \\mid or | as 'given' in conditional expressions\n"
                 "- \\text{} contents should be read normally\n"
                 "- Matrix notation: X_1 to X_6 as 'X one to X six'\n"
-                "- \\sum as 'sum', \\prod as 'product', \\int as 'integral'\n"
-                "- Greek letters: \\alpha as 'alpha', \\beta as 'beta', etc.\n"
+                "- Greek letters: \\alpha as 'alpha', \\beta as 'beta', \\mathbf{w} as 'bold omega', etc.\n"
+                "- Complex expressions: Break down step by step, e.g., E(\\mathbf{w})=\\frac{1}{2}\\sum_{n=1}^N\\{y(x_n,\\mathbf{w})-t_n\\}^2 as 'E of vector w equals one half times the sum from n equals 1 to N of the quantity y of x sub n and vector w minus t sub n, all squared'\n"
                 "\n"
                 "Remember: Include ALL content, especially image descriptions"
             )
@@ -350,11 +331,16 @@ def generate_card_transcript(
             system_content = (
                 "Convert this flashcard QUESTION to natural speech for audio. "
                 "CRITICAL INSTRUCTIONS:\n"
-                "1. This is the FRONT of a flashcard - ONLY read what's provided, DO NOT answer the question\n"
-                "2. If the text starts with 'Image description:', read it EXACTLY as written\n"
-                "3. After any image description, read the question EXACTLY as written\n"
-                "4. DO NOT provide any answers, explanations, or additional information\n"
-                "5. Your ONLY job is to read the image description (if present) and the question\n"
+                "1. This is the FRONT of a flashcard - read ALL content IN THE EXACT ORDER PROVIDED\n"
+                "2. DO NOT rearrange the content - read it exactly as given\n"
+                "3. If 'Image description:' appears at the end, read it there and humanize it:\n"
+                "   - Convert technical descriptions to natural language\n"
+                "   - Describe visual elements in a way that helps audio-only learners\n"
+                "   - Make the description conversational and clear\n"
+                "4. DO NOT answer the question or provide explanations\n"
+                "5. DO NOT skip the image description - it's crucial for audio-only learners\n"
+                "\n"
+                "Example structure: [Question as written]. [Humanized image description if present]\n"
                 "\n"
                 "FORBIDDEN: Do not answer, explain, or elaborate on the question\n"
                 "\n"
@@ -403,22 +389,37 @@ def generate_card_transcript(
         else:
             system_content = (
                 "Convert this answer to natural speech for audio. "
+                "CRITICAL INSTRUCTIONS:\n"
+                "1. Read ALL content IN THE EXACT ORDER PROVIDED\n"
+                "2. DO NOT rearrange the content - read it exactly as given\n"
+                "3. If 'Image description:' appears at the end, read it there and humanize it:\n"
+                "   - Convert technical descriptions to natural language\n"
+                "   - Describe visual elements in a way that helps audio-only learners\n"
+                "   - Humanize any mathematical notation in the description\n"
+                "\n"
                 "For mathematical expressions:\n"
                 "- Read them naturally as a mathematician would\n"
+                "- Fractions: \\frac{a}{b} as 'a over b', \\frac{1}{2} as 'one half'\n"
+                "- Summations: \\sum_{i=1}^n as 'sum from i equals 1 to n'\n"
+                "- Products: \\prod_{i=1}^n as 'product from i equals 1 to n'\n"
+                "- Integrals: \\int_a^b as 'integral from a to b'\n"
+                "- Bold symbols: \\mathbf{w} as 'vector w' or 'bold w'\n"
+                "- Functions: f(x, y) as 'f of x and y'\n"
+                "- Curly braces: \\{...\\} as 'the quantity...'\n"
+                "- Square brackets: [a, b] as 'the interval from a to b'\n"
                 "- Subscripts: X_j as 'X sub j', X_{parent} as 'X sub parent', X_i as 'X sub i'\n"
-                "- Superscripts: X^2 as 'X squared', X^n as 'X to the n'\n"
+                "- Superscripts: X^2 as 'X squared', X^n as 'X to the n', X^{-1} as 'X inverse'\n"
                 "- E[X | Y] as 'expected value of X given Y'\n"
-                "- X^{-1} as 'X inverse'\n"
+                "- E(w) as 'E of w' (error function notation)\n"
                 "- X^T as 'X transpose'\n"
                 "- (I - W^T) as 'I minus W transpose'\n"
                 "- g_j(f_j(X)) as 'g sub j of f sub j of X'\n"
                 "- \\mid or | as 'given' in conditional expressions\n"
                 "- \\text{} contents should be read normally\n"
                 "- Matrix notation: X_1 to X_6 as 'X one to X six'\n"
-                "- \\sum as 'sum', \\prod as 'product', \\int as 'integral'\n"
-                "- Greek letters: \\alpha as 'alpha', \\beta as 'beta', etc.\n"
-                "- Use context to determine proper reading\n"
-                "- If an image description is provided, incorporate it naturally into the speech"
+                "- Greek letters: \\alpha as 'alpha', \\beta as 'beta', \\mathbf{w} as 'bold omega', etc.\n"
+                "- Complex expressions: Break down step by step, e.g., E(\\mathbf{w})=\\frac{1}{2}\\sum_{n=1}^N\\{y(x_n,\\mathbf{w})-t_n\\}^2 as 'E of vector w equals one half times the sum from n equals 1 to N of the quantity y of x sub n and vector w minus t sub n, all squared'\n"
+                "- Use context to determine proper reading"
             )
     
     # Handle chunks for long content
