@@ -106,6 +106,19 @@ class CardContent(BaseModel):
         if cloze_count > 2:
             logger.warning(f"Card has {cloze_count} cloze deletions (recommended max: 2). This may affect review experience.")
         
+        # Check cloze deletion length
+        if '{{c1::' in v:
+            cloze_pattern = r'\{\{c\d+::([^}]+)\}\}'
+            clozes = re.findall(cloze_pattern, v)
+            for cloze_content in clozes:
+                # Skip if it's a math expression (contains $, \, or other math indicators)
+                if any(indicator in cloze_content for indicator in ['$', '\\', '^', '_', '{', '}']):
+                    continue
+                # Check word count for non-math clozes
+                word_count = len(cloze_content.split())
+                if word_count > 5:
+                    logger.warning(f"Cloze deletion '{cloze_content[:30]}...' has {word_count} words (recommended max: 5)")
+        
         # Fix LaTeX/math conflicts within cloze deletions
         if '{{c1::' in v:
             # Find all cloze deletions and fix LaTeX conflicts within them
@@ -236,6 +249,27 @@ class CardContent(BaseModel):
                 "Text contains reference numbers like [1] or [12]. "
                 "Cards must be self-contained without external references."
             )
+        
+        # Check for meta-content leakage
+        meta_content_terms = [
+            'focal page',
+            'surrounding page',
+            'context page',
+            'FOCAL PAGE CONTENT',
+            'CONTEXT FROM SURROUNDING',
+            'focal content',
+            'page content'
+        ]
+        
+        text_lower = v.lower()
+        for term in meta_content_terms:
+            if term.lower() in text_lower:
+                raise ValueError(
+                    f"Text contains meta-content reference '{term}'. "
+                    "Cards must ask about the actual content, not document structure. "
+                    "Example fix: Instead of 'What does the focal page discuss?', "
+                    "ask 'What is the purpose of backpropagation?'"
+                )
         
         return v
 
@@ -811,7 +845,10 @@ class CardIssue(BaseModel):
     issue_type: Literal[
         "external_reference", "insufficient_context", "generic_tags",
         "rote_memorization", "math_formatting", "cloze_problem",
-        "undefined_acronym", "author_centric", "image_issue", "audio_issue"
+        "undefined_acronym", "author_centric", "image_issue", "audio_issue",
+        "trivial_content", "missing_educational_value", "random_equation_detail",
+        "answer_in_question", "cloze_with_question", "missing_context",
+        "meta_content_leakage", "instruction_leakage", "structural_reference"
     ]
     description: str
     example: str = Field(description="Example from the card showing the issue")

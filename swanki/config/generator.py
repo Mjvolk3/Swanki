@@ -218,8 +218,8 @@ class ConfigGenerator:
             {
                 "processing": {
                     "context_radius": 1,  # Number of pages before/after focal page for context (0 = no context)
-                    "num_cards_per_page": 3,
-                    "cloze_cards_per_page": 2,  # Number of cloze deletion cards per page
+                    "num_cards_per_page": 4,  # Updated default from 3
+                    "cloze_cards_per_page": 1,  # Updated default from 2
                     "chunk_size": 1000,
                     "overlap": 200,
                     "blocking_audio": True,  # Based on learnings
@@ -243,12 +243,27 @@ class ConfigGenerator:
         )
 
         cls._write_yaml(
-            pipeline_dir / "comprehensive.yaml",
+            pipeline_dir / "standard.yaml",
             {
                 "processing": {
-                    "context_radius": 2,  # Larger context for comprehensive mode
+                    "context_radius": 1,  # Standard context window
+                    "num_cards_per_page": 4,
+                    "cloze_cards_per_page": 1,  # Standard cloze count
+                    "chunk_size": 1000,
+                    "overlap": 200,
+                    "blocking_audio": True,
+                    "confirm_before_generation": True,
+                }
+            },
+        )
+
+        cls._write_yaml(
+            pipeline_dir / "larger.yaml",
+            {
+                "processing": {
+                    "context_radius": 2,  # Larger context for more cards
                     "num_cards_per_page": 5,
-                    "cloze_cards_per_page": 3,  # More cloze cards for comprehensive mode
+                    "cloze_cards_per_page": 3,  # More cloze cards
                     "chunk_size": 1500,
                     "overlap": 300,
                     "blocking_audio": True,
@@ -258,16 +273,16 @@ class ConfigGenerator:
         )
 
         cls._write_yaml(
-            pipeline_dir / "fast.yaml",
+            pipeline_dir / "smaller.yaml",
             {
                 "processing": {
-                    "context_radius": 0,  # No context for fast mode
+                    "context_radius": 0,  # No context for fewer cards
                     "num_cards_per_page": 2,
-                    "cloze_cards_per_page": 1,  # Fewer cloze cards for fast mode
+                    "cloze_cards_per_page": 1,  # Minimal cloze cards
                     "chunk_size": 800,
                     "overlap": 100,
                     "blocking_audio": False,
-                    "confirm_before_generation": False,  # Skip confirmation for fast mode
+                    "confirm_before_generation": False,  # Skip confirmation
                 }
             },
         )
@@ -390,6 +405,14 @@ Students will NOT have access to:
 - Previous or subsequent cards
 - Any external context
 
+EDUCATIONAL VALUE REQUIREMENTS:
+- Focus on KEY CONCEPTS that matter for understanding the subject
+- Avoid trivial questions about notation or random equation parameters
+- Prioritize fundamental principles and important equations
+- Cards should help students build deep understanding, not memorize trivia
+- Example of BAD: "What does π represent in sin(2πx)?"
+- Example of GOOD: "How does Fourier analysis decompose signals into frequency components?"
+
 CONTEXT REQUIREMENTS:
 - For equations: Explain what variables represent and their typical values/ranges
 - For comparisons: State what is being compared to (e.g., "30 bins compared to typical 10-20 bins")
@@ -463,6 +486,8 @@ IMPORTANT CLOZE RULES:
 - CRITICAL: When mentioning an equation, the ENTIRE equation must be inside cloze markers
 - Make cards educational - test understanding of concepts, not memorization
 - Each card must stand alone without external context
+- Focus on FUNDAMENTAL CONCEPTS from the document summary, not trivial details
+- Avoid cards about minor notation or parameters that don't aid understanding
 
 CLOZE CARD PRIORITIES (in order of importance):
 1. Definitions of technical terms and jargon
@@ -614,23 +639,24 @@ CRITICAL REQUIREMENTS:
 5. Tags should be hierarchical when appropriate (e.g., #algorithms.sorting, #optimization.gradient-based)
    IMPORTANT: Use hyphens (-) instead of underscores (_) in tags: #machine-learning NOT #machine_learning
 6. Never start the question with the citation - it will be added automatically
-7. PRIORITIZE creating cards about:
-   - Mathematical equations, formulas, and their meanings
-   - Algorithm steps, complexity, and implementation details  
-   - Proofs, derivations, and mathematical relationships
+7. EDUCATIONAL VALUE - PRIORITIZE creating cards about:
+   - KEY CONCEPTS AND FUNDAMENTAL PRINCIPLES from the document
+   - Mathematical equations that are IMPORTANT for understanding the subject
+   - Core algorithms and their purpose (not minor implementation details)
+   - Major theoretical results and their significance
    - Statistical methods and their applications
-   - Computational techniques and optimizations
-   - ANY mathematical notation present in the content (e.g., \\(F(W)\\), \\(I - W^T\\), etc.)
-8. Use MathJax format: \\(...\\) for inline math, \\[...\\] for display math
-9. NEVER use $ or $$ delimiters - Anki uses \\( \\) and \\[ \\]
-10. NEVER use LaTeX tables (\\\\begin{{tabular}})
-11. For cloze cards with math: If }} appears in your LaTeX, add a space before it
+   - Avoid trivial notation questions (e.g., "what is π?") - focus on concepts
+8. Use the document summary to identify WHAT'S IMPORTANT to teach
+9. Use MathJax format: \\(...\\) for inline math, \\[...\\] for display math
+10. NEVER use $ or $$ delimiters - Anki uses \\( \\) and \\[ \\]
+11. NEVER use LaTeX tables (\\\\begin{{tabular}})
+12. For cloze cards with math: If }} appears in your LaTeX, add a space before it
     Example: {{c1::The formula \\(\\frac{a}{\\frac{b}{c} }\\) shows...}} (note the space before })
-12. For cloze cards with :: in content: Use HTML comment
+13. For cloze cards with :: in content: Use HTML comment
     Example: {{c1::std:<!-- -->:variant is a C++ feature}}
-13. For equation cloze cards: When referencing "the equation", include the ENTIRE equation in cloze
+14. For equation cloze cards: When referencing "the equation", include the ENTIRE equation in cloze
     Example: "The equation {{c1::\\(E = mc^2\\)}} demonstrates..." NOT "The equation {{c1::E=mc²}} \\(E = mc^2\\)..."
-14. CRITICAL LaTeX/MathJax rules for cloze cards:
+15. CRITICAL LaTeX/MathJax rules for cloze cards:
     - AVOID complex LaTeX inside cloze deletions - prefer simple expressions or conceptual answers
     - NEVER use display math \\[...\\] inside cloze - use inline \\(...\\) only
     - For complex equations, put the cloze around the CONCEPT, not the formula
@@ -640,16 +666,16 @@ CRITICAL REQUIREMENTS:
     - Maximum 1 cloze deletion per card (use {{c1::}})
     - Keep entire mathematical expressions together in one cloze
     - NEVER split cloze deletions across multiple lines
-15. Each card must teach a concept, not test memorization of references
-16. IMPORTANT: When you find ANY mathematical notation, CREATE CARDS about it!
-17. NEVER use generic tags like #equation, #formula, #definition, #concept, #method
+16. Each card must teach a concept, not test memorization of references
+17. IMPORTANT: Focus on mathematical notation that MATTERS for understanding key concepts
+18. NEVER use generic tags like #equation, #formula, #definition, #concept, #method
     Use specific conceptual tags: #optimization.gradient-descent, #causal-inference.dag, #machine-learning.regularization
     TAG FORMAT RULES: Use hyphens (-) not underscores (_) or spaces. #deep-learning NOT #deep_learning or #deep learning
-18. ALWAYS define mathematical symbols within the card: "where h is a smooth function" not just "h(W) = 0"
-19. ALWAYS expand acronyms when first used: "NAS (Neural Architecture Search)" not just "NAS"
-20. For EVERY mathematical symbol or function (h, F, g_j, etc.), ensure the card defines what it represents
-21. Focus on WHAT methods do and HOW they work, not WHO proposed them
-22. Transform author-centric questions into concept-centric ones:
+19. ALWAYS define mathematical symbols within the card: "where h is a smooth function" not just "h(W) = 0"
+20. ALWAYS expand acronyms when first used: "NAS (Neural Architecture Search)" not just "NAS"
+21. For EVERY mathematical symbol or function (h, F, g_j, etc.), ensure the card defines what it represents
+22. Focus on WHAT methods do and HOW they work, not WHO proposed them
+23. Transform author-centric questions into concept-centric ones:
     ❌ "What is Zheng et al.'s approach?" 
     ✓ "How does the nonparametric DAG learning method work?"
 
@@ -924,38 +950,49 @@ Content to present:
 4. Author-centric questions ("What is Smith's method?")
 5. Undefined mathematical symbols
 6. Rote memorization questions
+7. Educational relevance - does this help students learn KEY CONCEPTS?
+   - BAD: "In the equation sin(2πx), what does π represent?"
+   - GOOD: "How does the Fourier transform decompose signals into frequency components?"
+8. Focus on fundamentals, not trivial notation details
+9. Answer revealed in question
 
-If ALL cards meet quality standards, set done=True.
+If ALL cards meet quality standards AND are educationally valuable, set done=True.
 Otherwise list specific issues with card numbers.""",
                         "cloze_cards": """Check these cloze cards for issues:
 1. NOT focusing on definitions and difficult concepts
    - GOOD: Hiding what a term means or how a concept works
    - BAD: Hiding random facts or simple values
-2. More than 1 cloze deletion per card (warning only)
-3. Math equations split across cloze markers
-4. Entire equations not inside cloze when referenced
-5. Testing memorization instead of understanding
-6. Missing or generic tags
-7. Malformed LaTeX/MathJax within cloze deletions:
+2. Educational relevance - does this help students learn KEY CONCEPTS?
+   - Focus on fundamental principles, not trivial details
+   - Test understanding of important concepts from the document
+3. Cloze cards with additional questions after the cloze deletion
+   - BAD: "The algorithm is {{c1::O(n log n)}}. Why is this important?"
+   - GOOD: "The algorithm has time complexity {{c1::O(n log n)}}"
+4. More than 1 cloze deletion per card (warning only)
+5. Math equations split across cloze markers
+6. Entire equations not inside cloze when referenced
+7. Testing memorization instead of understanding
+8. Missing or generic tags
+9. Malformed LaTeX/MathJax within cloze deletions:
    - Missing parentheses around expressions (e.g., "1 - \\cos" should be "(1 - \\cos")
    - Extra closing braces in summations/fractions
    - Unbalanced braces or parentheses
    - Incorrect MathJax delimiters
-7. CRITICAL: Display math \\[...\\] inside cloze deletions
-   - BAD: "\\[{{c1::equation}}\\]" or "{{c1::\\[equation\\]}}"
-   - GOOD: "{{c1::\\(equation\\)}}" for inline math
-8. CRITICAL: Multiline cloze deletions (cloze split across lines)
-   - Check if {{c1:: starts on one line but }} ends on another
-9. Complex LaTeX inside cloze - prefer conceptual answers
-   - BAD: {{c1::complex multi-line equation}}
-   - GOOD: {{c1::a Gaussian distribution}} or {{c1::the normalization factor}}
+10. CRITICAL: Display math \\[...\\] inside cloze deletions
+    - BAD: "\\[{{c1::equation}}\\]" or "{{c1::\\[equation\\]}}"
+    - GOOD: "{{c1::\\(equation\\)}}" for inline math
+11. CRITICAL: Multiline cloze deletions (cloze split across lines)
+    - Check if {{c1:: starts on one line but }} ends on another
+12. Complex LaTeX inside cloze - prefer conceptual answers
+    - BAD: {{c1::complex multi-line equation}}
+    - GOOD: {{c1::a Gaussian distribution}} or {{c1::the normalization factor}}
 
 Example of correct math cloze:
 "The equation {{c1::\\(E = mc^2\\)}} shows..." (simple inline math)
 "The Gaussian has normalization factor {{c1::1/\\sqrt{2\\pi\\sigma^2}}}" (simple part)
 "This represents {{c1::a conditional probability distribution}}" (conceptual)
 
-If ALL cards are correct, set done=True.""",
+If ALL cards are correct AND educationally valuable, set done=True.""",
                         "image_cards": """Check these image-based cards:
 1. Questions that just ask to describe the image
 2. Image summaries that give away the answer
