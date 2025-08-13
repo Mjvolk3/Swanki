@@ -78,7 +78,7 @@ def generate_card_transcript(
     card: PlainCard,
     is_front: bool,
     client: OpenAI,
-    model: str = "gpt-4o",
+    model: str = "gpt-5-mini",
     citation_key: Optional[str] = None,
     humanized_citation: Optional[str] = None,
 ) -> str:
@@ -97,7 +97,7 @@ def generate_card_transcript(
     client : OpenAI
         OpenAI client for transcript generation
     model : str, optional
-        Model to use for generation (default is "gpt-4o")
+        Model to use for generation (default is "gpt-5-mini")
     citation_key : str, optional
         Citation key to include in front transcript
     humanized_citation : str, optional
@@ -438,17 +438,42 @@ def generate_card_transcript(
         chunk = enc.decode(tokens[start : start + max_chunk])
         logger.info(f"  Processing chunk {start//max_chunk + 1}, length: {len(chunk)}")
         
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_content},
-                {"role": "user", "content": chunk},
-            ],
-            temperature=0.3,  # Lower temperature for more consistent output
-            max_tokens=2000,  # Increased to prevent cutoff
-        )
+        # Add retry logic for empty responses
+        max_retries = 3
+        response_content = None
         
-        response_content = resp.choices[0].message.content.strip()
+        for attempt in range(max_retries):
+            try:
+                resp = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_content},
+                        {"role": "user", "content": chunk},
+                    ],
+                    max_completion_tokens=2000,  # Increased to prevent cutoff
+                )
+                
+                if resp.choices and len(resp.choices) > 0 and resp.choices[0].message.content:
+                    response_content = resp.choices[0].message.content.strip()
+                    if response_content:  # Only accept non-empty responses
+                        break
+                    else:
+                        logger.warning(f"  Attempt {attempt + 1}: GPT-5 returned empty response")
+                else:
+                    logger.warning(f"  Attempt {attempt + 1}: GPT-5 returned malformed response")
+                    
+            except Exception as e:
+                logger.warning(f"  Attempt {attempt + 1}: Error calling GPT-5: {e}")
+            
+            if attempt < max_retries - 1:
+                import time
+                time.sleep(2 ** attempt)  # Exponential backoff
+        
+        if not response_content:
+            # Fallback: return a simple version of the content
+            logger.error(f"  Failed to get response from GPT-5 after {max_retries} attempts")
+            response_content = chunk  # Use original content as fallback
+            
         out_chunks.append(response_content)
         
         logger.info(f"  LLM response length: {len(response_content)} chars")
@@ -648,7 +673,15 @@ def combine_audio(files: List[Path], output: Path, crossfade_ms: int = 200, firs
     - Exports at 192k bitrate
     - Requires pydub and ffmpeg
     """
+    if not files:
+        logger.error("No audio files provided to combine_audio")
+        return
+    
     segments = [AudioSegment.from_mp3(str(f)) for f in files]
+    if not segments:
+        logger.error("No audio segments could be loaded")
+        return
+        
     combined = segments[0]
     
     for i, seg in enumerate(segments[1:]):
@@ -727,29 +760,56 @@ def generate_citation_audio(
     if not openai_client:
         raise ValueError("OpenAI client is required for citation audio generation")
     
-    # Use LLM to create natural speech-friendly version
-    response = openai_client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {
-                "role": "system",
-                "content": "Convert citation keys to natural speech for text-to-speech. "
-                           "Make it flow naturally as if speaking. Add appropriate pauses with commas. "
-                           "Keep it concise but clear. Do not add extra words like 'from' or 'by'."
-            },
-            {
-                "role": "user",
-                "content": f"Convert this citation key to natural speech: {citation_key}\n\n"
-                           "Examples:\n"
-                           "smithMachineLearning2023 -> Smith, Machine Learning, 2023\n"
-                           "bishopDeepLearningFoundations2024_deep-learning-revolution -> Bishop, Deep Learning Foundations, 2024, deep learning revolution\n"
-                           "johnsonEtAl2022 -> Johnson et al, 2022"
-            }
-        ],
-        temperature=0.3,
-        max_tokens=100
-    )
-    humanized = response.choices[0].message.content.strip()
+    # Use LLM to create natural speech-friendly version with retry logic
+    humanized = None
+    max_retries = 3
+    
+    for attempt in range(max_retries):
+        try:
+            response = openai_client.chat.completions.create(
+                model="gpt-5-nano",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Convert citation keys to natural speech for text-to-speech. "
+                                   "Make it flow naturally as if speaking. Add appropriate pauses with commas. "
+                                   "Keep it concise but clear. Do not add extra words like 'from' or 'by'."
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Convert this citation key to natural speech: {citation_key}\n\n"
+                                   "Examples:\n"
+                                   "smithMachineLearning2023 -> Smith, Machine Learning, 2023\n"
+                                   "bishopDeepLearningFoundations2024_deep-learning-revolution -> Bishop, Deep Learning Foundations, 2024, deep learning revolution\n"
+                                   "johnsonEtAl2022 -> Johnson et al, 2022"
+                    }
+                ],
+                max_completion_tokens=100
+            )
+            
+            if response.choices and len(response.choices) > 0 and response.choices[0].message.content:
+                humanized = response.choices[0].message.content.strip()
+                if humanized:
+                    break
+                else:
+                    logger.warning(f"Attempt {attempt + 1}: GPT-5 returned empty citation")
+            else:
+                logger.warning(f"Attempt {attempt + 1}: GPT-5 returned malformed response for citation")
+                
+        except Exception as e:
+            logger.warning(f"Attempt {attempt + 1}: Error generating citation: {e}")
+        
+        if attempt < max_retries - 1:
+            import time
+            time.sleep(2 ** attempt)
+    
+    if not humanized:
+        # Fallback: simple conversion of citation key
+        logger.error(f"Failed to humanize citation after {max_retries} attempts, using fallback")
+        # Simple fallback: replace underscores and camelCase
+        import re
+        humanized = re.sub(r'([a-z])([A-Z])', r'\1 \2', citation_key)
+        humanized = humanized.replace('_', ', ').replace('-', ' ')
     
     # Log the humanized citation for debugging
     logger.debug(f"Citation audio generation: '{citation_key}' -> '{humanized}'")
@@ -878,7 +938,7 @@ def generate_summary_audio(
     openai_client: OpenAI,
     elevenlabs_api_key: str,
     voice_id: Optional[str] = None,
-    model: str = "gpt-4o",
+    model: str = "gpt-5-mini",
     citation_key: Optional[str] = None,
     speed: float = 1.0,
 ) -> str:
@@ -900,7 +960,7 @@ def generate_summary_audio(
     voice_id : str, optional
         Voice ID (defaults to DEFAULT_VOICE_ID)
     model : str, optional
-        OpenAI model to use (default is "gpt-4o")
+        OpenAI model to use (default is "gpt-5-mini")
     citation_key : str, optional
         Citation key to announce at beginning
     speed : float, optional
@@ -943,18 +1003,41 @@ def generate_summary_audio(
         humanized_key = humanize_citation_key(citation_key)
         user_content = f"Citation: {humanized_key}\n\n{summary_text}"
     
-    # Generate transcript
-    response = openai_client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
-        ],
-        temperature=0.3,
-        max_tokens=1500,
-    )
+    # Generate transcript with retry logic
+    transcript = None
+    max_retries = 3
     
-    transcript = response.choices[0].message.content.strip()
+    for attempt in range(max_retries):
+        try:
+            response = openai_client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+                max_completion_tokens=1500,
+            )
+            
+            if response.choices and len(response.choices) > 0 and response.choices[0].message.content:
+                transcript = response.choices[0].message.content.strip()
+                if transcript:
+                    break
+                else:
+                    logger.warning(f"Attempt {attempt + 1}: GPT-5 returned empty summary transcript")
+            else:
+                logger.warning(f"Attempt {attempt + 1}: GPT-5 returned malformed response for summary")
+                
+        except Exception as e:
+            logger.warning(f"Attempt {attempt + 1}: Error generating summary transcript: {e}")
+        
+        if attempt < max_retries - 1:
+            import time
+            time.sleep(2 ** attempt)
+    
+    if not transcript:
+        # Fallback: use the original summary text
+        logger.error(f"Failed to generate transcript after {max_retries} attempts, using original text")
+        transcript = user_content
     
     # Save transcript for debugging/editing
     transcripts_dir = output_path.parent / "summary_transcript"
@@ -968,6 +1051,12 @@ def generate_summary_audio(
     
     # Generate audio
     chunks = chunk_text(transcript)
+    
+    if not chunks:
+        logger.error(f"No chunks generated from transcript. Transcript length: {len(transcript)}")
+        logger.debug(f"Transcript content: {transcript[:200]}...")
+        return output_path.name
+    
     if len(chunks) == 1:
         text_to_speech(chunks[0], voice_id, output_path, elevenlabs_api_key, speed)
     else:
@@ -995,7 +1084,7 @@ def generate_reading_audio(
     openai_client: OpenAI,
     elevenlabs_api_key: str,
     voice_id: Optional[str] = None,
-    model: str = "gpt-4o",
+    model: str = "gpt-5-mini",
     citation_key: Optional[str] = None,
     speed: float = 1.0,
 ) -> str:
@@ -1018,7 +1107,7 @@ def generate_reading_audio(
     voice_id : str, optional
         Voice ID (defaults to DEFAULT_VOICE_ID)
     model : str, optional
-        OpenAI model to use (default is "gpt-4o")
+        OpenAI model to use (default is "gpt-5-mini")
     citation_key : str, optional
         Citation key to announce at beginning
     speed : float, optional
@@ -1074,16 +1163,44 @@ def generate_reading_audio(
     
     for start in range(0, len(tokens), max_chunk):
         chunk = enc.decode(tokens[start : start + max_chunk])
-        response = openai_client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": chunk},
-            ],
-            temperature=0.3,
-            max_tokens=1000,
-        )
-        transcript_chunks.append(response.choices[0].message.content.strip())
+        
+        # Add retry logic for each chunk
+        chunk_transcript = None
+        max_retries = 3
+        
+        for attempt in range(max_retries):
+            try:
+                response = openai_client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": chunk},
+                    ],
+                    max_completion_tokens=1000,
+                )
+                
+                if response.choices and len(response.choices) > 0 and response.choices[0].message.content:
+                    chunk_transcript = response.choices[0].message.content.strip()
+                    if chunk_transcript:
+                        break
+                    else:
+                        logger.warning(f"Attempt {attempt + 1}: GPT-5 returned empty reading transcript for chunk")
+                else:
+                    logger.warning(f"Attempt {attempt + 1}: GPT-5 returned malformed response for reading")
+                    
+            except Exception as e:
+                logger.warning(f"Attempt {attempt + 1}: Error generating reading transcript: {e}")
+            
+            if attempt < max_retries - 1:
+                import time
+                time.sleep(2 ** attempt)
+        
+        if not chunk_transcript:
+            # Fallback: use the original chunk
+            logger.error(f"Failed to generate reading transcript after {max_retries} attempts, using original")
+            chunk_transcript = chunk
+            
+        transcript_chunks.append(chunk_transcript)
     
     full_transcript = "\n\n".join(transcript_chunks)
     
@@ -1126,7 +1243,7 @@ def generate_lecture_audio(
     openai_client: OpenAI,
     elevenlabs_api_key: str,
     voice_id: Optional[str] = None,
-    model: str = "gpt-4o",
+    model: str = "gpt-5-mini",
     citation_key: Optional[str] = None,
     lecture_prompt_config: Optional[dict] = None,
     speed: float = 1.0,
@@ -1152,7 +1269,7 @@ def generate_lecture_audio(
     voice_id : str, optional
         Voice ID (defaults to DEFAULT_VOICE_ID)
     model : str, optional
-        OpenAI model to use (default is "gpt-4o")
+        OpenAI model to use (default is "gpt-5-mini")
     citation_key : str, optional
         Citation key to include in lecture
     speed : float, optional
@@ -1262,16 +1379,43 @@ Content to present:
         else:
             chunk_content = chunk
             
-        response = openai_client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": chunk_content},
-            ],
-            temperature=0.7,  # From legacy
-            max_tokens=max_output_tokens,
-        )
-        transcript_chunks.append(response.choices[0].message.content.strip())
+        # Add retry logic for lecture transcript generation
+        lecture_transcript = None
+        max_retries = 3
+        
+        for attempt in range(max_retries):
+            try:
+                response = openai_client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": chunk_content},
+                    ],
+                    max_completion_tokens=max_output_tokens,
+                )
+                
+                if response.choices and len(response.choices) > 0 and response.choices[0].message.content:
+                    lecture_transcript = response.choices[0].message.content.strip()
+                    if lecture_transcript:
+                        break
+                    else:
+                        logger.warning(f"Attempt {attempt + 1}: GPT-5 returned empty lecture transcript")
+                else:
+                    logger.warning(f"Attempt {attempt + 1}: GPT-5 returned malformed response for lecture")
+                    
+            except Exception as e:
+                logger.warning(f"Attempt {attempt + 1}: Error generating lecture transcript: {e}")
+            
+            if attempt < max_retries - 1:
+                import time
+                time.sleep(2 ** attempt)
+        
+        if not lecture_transcript:
+            # Fallback: use the original chunk content
+            logger.error(f"Failed to generate lecture transcript after {max_retries} attempts, using original")
+            lecture_transcript = chunk_content
+            
+        transcript_chunks.append(lecture_transcript)
     
     # Combine transcript chunks
     full_transcript = "\n\n".join(transcript_chunks)
@@ -1319,7 +1463,7 @@ def generate_card_audio(
     openai_client: OpenAI,
     elevenlabs_api_key: str,
     voice_id: Optional[str] = None,
-    model: str = "gpt-4o",
+    model: str = "gpt-5-mini",
     citation_key: Optional[str] = None,
     speed: float = 1.0,
     force_regenerate_citation: bool = False,
@@ -1348,7 +1492,7 @@ def generate_card_audio(
     voice_id : str, optional
         Voice ID (defaults to DEFAULT_VOICE_ID)
     model : str, optional
-        OpenAI model to use (default is "gpt-4o")
+        OpenAI model to use (default is "gpt-5-mini")
     citation_key : str, optional
         Citation key for file naming and content
     speed : float, optional

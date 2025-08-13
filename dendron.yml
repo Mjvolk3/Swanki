@@ -28,6 +28,10 @@ workspace:
             fsPath: .
             name: Swanki
             selfContained: true
+        -
+            fsPath: ../projects/Kbase
+            name: Kbase
+            selfContained: true
     journal:
         dailyDomain: daily
         name: journal

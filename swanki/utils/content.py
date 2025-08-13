@@ -101,6 +101,7 @@ def extract_images_from_markdown(markdown_content: str, base_path: Optional[Path
     return images
 
 
+
 def detect_math_content(text: str) -> bool:
     """Detect if text contains mathematical content.
     

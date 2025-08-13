@@ -615,6 +615,9 @@ class AnkiProcessor:
         # Fix problematic cloze deletions
         text = self._fix_cloze_issues(text)
         
+        # Convert markdown tables to HTML (before code blocks to avoid converting tables in code)
+        text = self._convert_markdown_tables_to_html(text)
+        
         # Convert markdown code blocks to HTML for better Anki rendering
         # This preserves syntax highlighting in Anki
         code_block_pattern = r'```(\w+)?\n(.*?)```'
@@ -704,6 +707,21 @@ class AnkiProcessor:
             # Both have cloze - remove from back
             logger.warning("Cloze card has markers in both front and back - removing from back")
             card['back'] = re.sub(r'\{\{c\d+::[^}]+\}\}', '', card['back']).strip()
+        
+        # Check for tables inside cloze deletions
+        if has_cloze_in_front:
+            # Extract cloze content to check for tables
+            cloze_pattern = r'{{c\d+::([^}]+)}}'
+            for match in re.finditer(cloze_pattern, card['front']):
+                cloze_content = match.group(1)
+                # Check if there's a table structure (multiple pipes on same line)
+                if '|' in cloze_content:
+                    lines = cloze_content.split('\n')
+                    for line in lines:
+                        if line.count('|') >= 2:
+                            logger.warning(f"Table detected inside cloze deletion - this is not supported and may cause rendering issues")
+                            logger.warning(f"Problematic cloze content: {match.group(0)[:100]}...")
+                            break
     
     def _fix_cloze_issues(self, text: str) -> str:
         """Fix common cloze deletion issues that cause Anki import failures.
@@ -783,6 +801,125 @@ class AnkiProcessor:
         text = re.sub(r'\s+\\mathrm{d}', r'\\,\\mathrm{d}', text)  # Add thin space before differentials
         
         return text
+    
+    def _convert_markdown_tables_to_html(self, text: str) -> str:
+        """Convert markdown tables to HTML for Anki rendering.
+        
+        Note: Tables inside cloze deletions are not supported and will be skipped.
+        
+        Parameters
+        ----------
+        text : str
+            Text containing markdown tables
+            
+        Returns
+        -------
+        str
+            Text with HTML tables for Anki
+        """
+        import markdown
+        
+        # Split text into lines to process tables separately
+        lines = text.split('\n')
+        result_lines = []
+        in_table = False
+        table_lines = []
+        in_cloze = False
+        
+        for i, line in enumerate(lines):
+            # Track if we're inside a cloze deletion
+            if '{{c' in line:
+                in_cloze = True
+            if '}}' in line and in_cloze:
+                in_cloze = False
+            
+            # Detect table start/continuation (not in code blocks or cloze)
+            if '|' in line and not line.strip().startswith('```') and not in_cloze:
+                # Check if this looks like a table row (at least 2 pipes)
+                if line.count('|') >= 2:
+                    in_table = True
+                    table_lines.append(line)
+                else:
+                    # Not a table, just a line with a pipe
+                    if in_table and table_lines:
+                        # Process accumulated table
+                        table_html = self._process_table_lines(table_lines)
+                        result_lines.append(table_html)
+                        table_lines = []
+                        in_table = False
+                    result_lines.append(line)
+            elif in_table and (line.strip() == '' or i == len(lines) - 1):
+                # End of table - convert and add
+                if i == len(lines) - 1 and line.strip() != '':
+                    table_lines.append(line)  # Add last line if not empty
+                
+                if table_lines:
+                    table_html = self._process_table_lines(table_lines)
+                    result_lines.append(table_html)
+                    table_lines = []
+                    in_table = False
+                
+                if line.strip() == '':
+                    result_lines.append(line)  # Add the empty line
+            else:
+                if in_table:
+                    # No longer in table
+                    if table_lines:
+                        table_html = self._process_table_lines(table_lines)
+                        result_lines.append(table_html)
+                        table_lines = []
+                        in_table = False
+                result_lines.append(line)
+        
+        # Handle table at end of text if still accumulating
+        if table_lines:
+            table_html = self._process_table_lines(table_lines)
+            result_lines.append(table_html)
+        
+        return '\n'.join(result_lines)
+    
+    def _process_table_lines(self, table_lines: List[str]) -> str:
+        """Process accumulated table lines into HTML.
+        
+        Parameters
+        ----------
+        table_lines : List[str]
+            Lines that form a markdown table
+            
+        Returns
+        -------
+        str
+            HTML table with Anki-friendly styling
+        """
+        import markdown
+        
+        # Join lines to form complete table
+        table_md = '\n'.join(table_lines)
+        
+        # Convert to HTML using python-markdown
+        try:
+            table_html = markdown.markdown(table_md, extensions=['tables'])
+            
+            # Add Anki-friendly styling
+            table_html = table_html.replace('<table>', 
+                '<table style="border-collapse: collapse; margin: 10px auto; width: auto;">')
+            table_html = table_html.replace('<thead>', 
+                '<thead style="background-color: #f2f2f2;">')
+            table_html = table_html.replace('<th>', 
+                '<th style="border: 1px solid #ddd; padding: 8px; text-align: left;">')
+            table_html = table_html.replace('<td>', 
+                '<td style="border: 1px solid #ddd; padding: 8px;">')
+            
+            # Remove surrounding <p> tags that markdown might add
+            table_html = table_html.strip()
+            if table_html.startswith('<p>') and table_html.endswith('</p>'):
+                table_html = table_html[3:-4]
+            
+            return table_html
+        except Exception as e:
+            logger.warning(f"Failed to convert table to HTML: {e}")
+            # Return original markdown if conversion fails
+            return table_md
     
     def _fields_differ(self, existing: Dict[str, Any], new: Dict[str, str]) -> bool:
         """Check if fields differ between existing and new note."""
