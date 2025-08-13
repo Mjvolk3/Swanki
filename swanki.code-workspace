@@ -5,6 +5,10 @@
             "path": "."
         },
         {
+            "name": "Kbase",
+            "path": "../Kbase"
+        },
+        {
             "name": "Swanki_Data",
             "path": "../Swanki_Data",
         },
@@ -15,6 +19,10 @@
         {
             "name": "instructor",
             "path": "../instructor"
+        },
+        {
+            "name": "openai-python",
+            "path": "../openai-python"
         },
         
     ],

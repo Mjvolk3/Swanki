@@ -88,6 +88,7 @@ class MarkdownCleaner:
         'latex_textbf': (r'\\textbf{(.*?)}', r'**\1**'),
         'latex_textit': (r'\\textit{(.*?)}', r'*\1*'),
         'latex_emph': (r'\\emph{(.*?)}', r'*\1*'),
+        'includegraphics': (r'\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}', r'![Image](\1)'),  # Convert LaTeX images to markdown
     }
     
     def __init__(self, output_base: Path):

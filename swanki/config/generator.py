@@ -479,6 +479,9 @@ CRITICAL CLOZE FORMAT RULES:
 4. Every cloze card MUST have tags on the "- #tag1, #tag2" line
 
 IMPORTANT CLOZE RULES:
+- CRITICAL: Cloze cards must be STATEMENTS, never questions (no "?" at the end)
+  * ❌ WRONG: "How does X affect {{c1::Y}} in context Z?"
+  * ✓ CORRECT: "X affects Y in context Z by {{c1::causing specific change}}"
 - PRIORITIZE hiding definitions, technical terms, and difficult concepts
 - Focus on terminology that students need to understand deeply
 - Hide the MEANING or DEFINITION of complex terms, not just the term itself
@@ -529,6 +532,8 @@ Example GOOD cloze cards focusing on definitions and concepts:
 - #deep-learning.attention, #transformer-architecture
 
 Example BAD cloze cards to AVOID:
+- "How can the choice of axis impact {{c1::perception}} in public health contexts?" (Cloze card is a question!)
+- "What does the term '30 excess deaths' mean based on {{c1::average risk comparisons}}?" (Questions are for Q&A cards, not cloze!)
 - "According to [12], the algorithm is {{c1::efficient}}" (References external paper)
 - "The original constraints are replaced by {{c1::continuous equality}}" (What original constraints?)
 - "As shown in Figure 3, performance {{c1::improves}}" (No access to Figure 3)
@@ -740,14 +745,14 @@ Content to present:
                 "models": {
                     "llm": {
                         "provider": "openai",
-                        "model": "gpt-4o",
+                        "model": "gpt-5",
                         "temperature": 0.7,
                         "max_retries": 3,
                     },
                     "tts": {
                         "provider": "elevenlabs",
                         "voice_id": "21m00Tcm4TlvDq8ikWAM",  # Rachel
-                        "model": "eleven_monolingual_v1",
+                        "model": "eleven_monolingual_v2",
                         "stability": 0.5,
                         "similarity_boost": 0.5,
                     },
@@ -959,13 +964,18 @@ Content to present:
 If ALL cards meet quality standards AND are educationally valuable, set done=True.
 Otherwise list specific issues with card numbers.""",
                         "cloze_cards": """Check these cloze cards for issues:
-1. NOT focusing on definitions and difficult concepts
+1. CRITICAL: Cloze cards that ARE questions (end with "?")
+   - BAD: "How does X affect {{c1::Y}} in context Z?"
+   - BAD: "What is the impact of {{c1::30 excess deaths}}?"
+   - GOOD: "X affects Y in context Z by {{c1::specific mechanism}}"
+   - GOOD: "The term '30 excess deaths' means {{c1::30 more deaths than expected}}"
+2. NOT focusing on definitions and difficult concepts
    - GOOD: Hiding what a term means or how a concept works
    - BAD: Hiding random facts or simple values
-2. Educational relevance - does this help students learn KEY CONCEPTS?
+3. Educational relevance - does this help students learn KEY CONCEPTS?
    - Focus on fundamental principles, not trivial details
    - Test understanding of important concepts from the document
-3. Cloze cards with additional questions after the cloze deletion
+4. Cloze cards with additional questions after the cloze deletion
    - BAD: "The algorithm is {{c1::O(n log n)}}. Why is this important?"
    - GOOD: "The algorithm has time complexity {{c1::O(n log n)}}"
 4. More than 1 cloze deletion per card (warning only)
@@ -1064,6 +1074,11 @@ Maintain the same number of cards.
 Ensure every card is self-contained.
 Use specific conceptual tags.""",
                         "cloze_cards": """Fix ALL cloze card issues:
+- CRITICAL: Convert questions to statements:
+  * If card ends with '?', rewrite as a statement
+  * "How does X affect {{c1::Y}}?" → "X affects Y by {{c1::mechanism}}"
+  * "What is the impact of {{c1::concept}}?" → "The impact of concept is {{c1::specific effect}}"
+  * "Why does {{c1::phenomenon}} occur?" → "Phenomenon occurs because {{c1::reason}}"
 - Reduce to max 1 cloze deletion (split cards if needed)
 - Keep math equations together inside cloze markers
 - Fix LaTeX/MathJax formatting:

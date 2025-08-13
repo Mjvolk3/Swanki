@@ -292,31 +292,40 @@ class Pipeline:
         else:
             logger.info(f"Proceeding with card generation (estimated: {estimated_cards} cards)")
 
-        # 6. Generate cards with sliding window
+        # 6. Generate cards with sliding window - now interleaved with image cards
         self.state.current_stage = "card_generation"
-        all_cards = self.generate_cards_with_context(
-            cleaned_files,
-            doc_summary,
-            context_radius=processing_config.get("context_radius", 1),
-            num_cards=processing_config.get("num_cards_per_page", 3),
-        )
-
-        # 6.5. Generate image cards if enabled
+        all_cards = []
+        
+        # Get image card config
         image_config = processing_config.get("image_cards", {})
-        if image_config.get("enabled", True):
-            self.state.current_stage = "image_card_generation"
-            image_cards = self.generate_image_cards(
+        image_cards_enabled = image_config.get("enabled", True)
+        
+        # Process each page to generate cards in document order
+        for page_idx, markdown_file in enumerate(cleaned_files):
+            # Generate text cards for this page with context
+            page_cards = self._generate_cards_for_page_with_context(
+                page_idx,
                 cleaned_files,
                 doc_summary,
-                cards_per_image=image_config.get("cards_per_image", 3),
-                image_on_front=image_config.get("image_on_front", True),
-                image_on_back=image_config.get("image_on_back", True),
-                require_math=image_config.get("require_math_content", False),
-                placement_strategy=image_config.get("placement_strategy", "smart"),
-                front_back_ratio=image_config.get("front_back_ratio", 0.5),
-                image_summaries=image_summaries,
+                context_radius=processing_config.get("context_radius", 1),
+                num_cards=processing_config.get("num_cards_per_page", 3),
             )
-            all_cards.extend(image_cards)
+            all_cards.extend(page_cards)
+            
+            # Generate image cards for this page if enabled
+            if image_cards_enabled:
+                page_image_cards = self._generate_image_cards_for_page(
+                    markdown_file,
+                    doc_summary,
+                    image_summaries,
+                    cards_per_image=image_config.get("cards_per_image", 3),
+                    image_on_front=image_config.get("image_on_front", True),
+                    image_on_back=image_config.get("image_on_back", True),
+                    require_math=image_config.get("require_math_content", False),
+                    placement_strategy=image_config.get("placement_strategy", "smart"),
+                    front_back_ratio=image_config.get("front_back_ratio", 0.5),
+                )
+                all_cards.extend(page_image_cards)
 
         # 7. Store citation key for later use
         self.citation_key = citation_key
@@ -662,6 +671,548 @@ Image summaries:
         density = min(1.0, total_matches / (words / 20))
         return density
 
+    def _generate_cards_for_page_with_context(
+        self,
+        page_idx: int,
+        markdown_files: List[Path],
+        doc_summary: DocumentSummary,
+        context_radius: int,
+        num_cards: int,
+    ) -> List[PlainCard]:
+        """Generate cards for a single page with context from surrounding pages.
+        
+        This is a helper method that processes one page at a time, used by
+        the main pipeline to interleave text and image cards in document order.
+        
+        Parameters
+        ----------
+        page_idx : int
+            Index of the focal page in markdown_files
+        markdown_files : List[Path]
+            All markdown files
+        doc_summary : DocumentSummary
+            Document summary for context
+        context_radius : int
+            Number of pages before/after focal page for context
+        num_cards : int
+            Number of cards to generate for this page
+            
+        Returns
+        -------
+        List[PlainCard]
+            Generated cards for this page
+        """
+        # Determine context window
+        start_idx = max(0, page_idx - context_radius)
+        end_idx = min(len(markdown_files), page_idx + context_radius + 1)
+        
+        # Get focal page
+        focal_page = markdown_files[page_idx]
+        focal_content = focal_page.read_text()
+        
+        # Get context pages
+        context_pages = []
+        for idx in range(start_idx, end_idx):
+            if idx != page_idx:  # Skip the focal page itself
+                context_pages.append(markdown_files[idx])
+        
+        # Build content with clear separation
+        if context_pages:
+            # Add context before focal content
+            context_content = "\n\n".join([f.read_text() for f in context_pages])
+            combined_content = f"[CONTEXT FROM SURROUNDING PAGES]\n{context_content}\n\n[FOCAL PAGE CONTENT]\n{focal_content}"
+        else:
+            combined_content = focal_content
+
+        # Get config values
+        prompts_config = self.config.get("prompts", {}).get("prompts", {})
+        cards_prompts = prompts_config.get("cards", {})
+        models_config = self.config.get("models", {}).get("models", {})
+        llm_config = models_config.get("llm", {})
+        processing_config = self.config.get("pipeline", {}).get("processing", {})
+
+        # Detect math density and adjust card count
+        math_density = self._detect_math_density(focal_content)
+        adjusted_num_cards = num_cards
+        adjusted_cloze_cards = processing_config.get('cloze_cards_per_page', 2)
+        
+        if math_density > 0.5:  # High math density
+            adjusted_num_cards = int(num_cards * 1.5)  # 50% more cards
+            adjusted_cloze_cards = int(adjusted_cloze_cards * 1.5)
+            logger.info(f"High math density ({math_density:.2f}) detected on page {page_idx + 1}, increasing cards from {num_cards} to {adjusted_num_cards}")
+        elif math_density > 0.3:  # Medium math density
+            adjusted_num_cards = int(num_cards * 1.25)  # 25% more cards
+            logger.info(f"Medium math density ({math_density:.2f}) detected on page {page_idx + 1}, increasing cards from {num_cards} to {adjusted_num_cards}")
+        
+        # Debug logging
+        logger.debug(f"Processing page {page_idx + 1}/{len(markdown_files)} with context radius {context_radius}")
+        logger.debug(f"Math density: {math_density:.2f}")
+        logger.debug(f"Requesting {adjusted_num_cards} regular cards and {adjusted_cloze_cards} cloze cards from focal page")
+        
+        # Generate regular cards first
+        regular_prompt = f"""Generate EXACTLY {adjusted_num_cards} regular Q&A flashcards from the main content.
+
+Context from document summary:
+Title: {doc_summary.title}
+Acronyms: {doc_summary.acronyms}
+Technical terms: {doc_summary.technical_terms}
+
+Content provided:
+{combined_content}
+
+IMPORTANT STRUCTURAL NOTES (FOR YOUR REFERENCE ONLY):
+- The content may include markers like [CONTEXT FROM SURROUNDING PAGES] and [FOCAL PAGE CONTENT]
+- These are ONLY organizational markers to help you understand the content structure
+- Generate cards from the main content section (after [FOCAL PAGE CONTENT] if present)
+- NEVER mention these markers, "focal page", "surrounding pages", or "context" in your cards
+- Cards should be about the actual subject matter, not about document structure
+
+FORMAT RULES:
+1. Use ## for the question (front of card)
+2. Answer goes on the next line (back of card)
+3. Tags go as a single bullet: - #tag1, #tag2, #tag3
+4. NO CLOZE CARDS - only regular Q&A format
+5. NEVER use generic tags like #equation, #definition - use conceptual tags like #causal-inference.dag
+
+CRITICAL REQUIREMENTS:
+1. Cards MUST be self-contained - students won't have access to the paper, figures, or other references
+2. NEVER reference external content: "According to [12]", "As shown in Figure 3", "The paper states"
+3. NEVER say "in the context of the document" or "as described in the document"
+4. NEVER mention "focal page", "surrounding pages", "context", or any structural markers in cards
+5. NEVER ask about specific authors: "What is Lachapelle et al.'s method?" - ask about the METHOD itself
+6. NEVER ask "What does X stand for?" - ask what X IS or HOW it works instead
+7. Each card tests ONE concept and includes all context needed to understand it
+8. PRIORITIZE creating cards for EVERY mathematical equation, formula, or algorithm in the content
+9. CRITICAL LaTeX FORMATTING:
+   - ALL mathematical variables, symbols, and expressions MUST be wrapped in LaTeX delimiters
+   - Use $ for inline math (e.g., $W$, $X_j$, $h(W) = 0$)
+   - Use $$ for display math equations
+   - NEVER write bare mathematical symbols without LaTeX (WRONG: W, X_j, h(W)=0)
+   - Common mistakes to AVOID:
+     * Writing "W" instead of "$W$" when referring to a matrix
+     * Writing "X_j" instead of "$X_j$" for subscripted variables
+     * Writing "h(W) = 0" instead of "$h(W) = 0$" for equations
+     * Writing "α" instead of "$\\alpha$" for Greek letters
+     * Writing "W_{{ji}} ≠ 0" instead of "$W_{{ji}} \\neq 0$"
+10. NEVER use LaTeX tables (\\\\begin{{tabular}})
+11. For EVERY math symbol ($h$, $F$, $g_j$, etc.), define what it represents IN THE CARD
+
+MATHEMATICAL CONTENT PRIORITY (CRITICAL):
+- SCAN the content for ALL mathematical elements: equations, formulas, definitions, proofs, theorems
+- Create AT LEAST 2-3 cards for EVERY equation in the content
+- Mathematical card types to include:
+  * DEFINITION: "What does equation X represent/mean?"
+  * COMPONENTS: "In equation X, what does symbol Y represent?"
+  * PROPERTIES: "What property does equation X satisfy?"
+  * PROOF STEPS: "What is the key insight in step N of the proof?"
+  * APPLICATIONS: "How is equation X used in practice?"
+  * RELATIONSHIPS: "How does equation X relate to equation Y?"
+- For key equations (like $E(\\mathbf{{w}})=\\frac{{1}}{{2}} \\sum_{{n=1}}^N\\{{y(x_n, \\mathbf{{w}})-t_n\\}}^2$), create 4-5 cards
+- Even simple equations deserve multiple cards (e.g., for $h(W) = 0$: meaning, purpose, constraints)
+- PROOFS: Break down each proof into step-by-step cards
+- THEOREMS: Create cards for statement, conditions, implications
+
+Generate {adjusted_num_cards} regular Q&A cards now. Focus on the actual subject matter, not document structure."""
+
+        # Configure retries for validation errors
+        regular_response = self.instructor.chat.completions.create(
+            model=llm_config.get("model", "gpt-4"),
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Generate ONLY regular Q&A flashcards. Do NOT create any cloze deletion cards.\n\nCRITICAL: ALL mathematical variables, symbols, and expressions MUST be wrapped in LaTeX delimiters using $ for inline math. For example: $W$, $X_j$, $h(W) = 0$, $W_{ji} \\neq 0$. NEVER write bare mathematical symbols without LaTeX."
+                },
+                {
+                    "role": "user",
+                    "content": regular_prompt
+                }
+            ],
+            response_model=CardGenerationResponse,
+            max_retries=Retrying(
+                stop=stop_after_attempt(3),
+                wait=wait_exponential(multiplier=1, min=4, max=10),
+                reraise=True
+            ),
+        )
+        
+        # Generate cloze cards separately
+        cloze_prompt = f"""Generate EXACTLY {adjusted_cloze_cards} cloze deletion flashcards from the main content.
+
+Content provided:
+{combined_content}
+
+IMPORTANT STRUCTURAL NOTES (FOR YOUR REFERENCE ONLY):
+- Markers like [CONTEXT FROM SURROUNDING PAGES] and [FOCAL PAGE CONTENT] are only for organization
+- Generate cards from the main content (after [FOCAL PAGE CONTENT] if present)
+- NEVER mention these markers or "focal page" in your cards
+
+FORMAT: Each card MUST use {{{{c1::hidden text}}}} syntax for cloze deletions.
+
+CRITICAL RULES:
+1. Cards MUST be self-contained - no references to "the paper", figures, or external content
+2. CLOZE LENGTH: Hide 1-5 words maximum per cloze deletion (focus on key terms/concepts)
+3. For equations: Hide PARTS of equations (variables, operators), not entire equations
+4. Hide meaningful concepts, not arbitrary numbers or references
+5. EVERY card MUST have AT LEAST 2 meaningful tags on the "- #tag1, #tag2" line
+6. PRIORITIZE equations - create cloze cards for key mathematical expressions
+7. MATH IN CLOZE: When hiding parts of math expressions, the ENTIRE math notation must stay together
+   - WRONG: "In {{{{c1::$E[X_j$}}}} | {{{{c2::$X_{{pa(j)}}]$}}}}" (splits the equation)
+   - WRONG: "The model {{{{c1::$E[X_j | X_{{}}}} {{{{c2::pa}}}} {{{{c3::(j)}}}}$" (splits subscript)
+   - RIGHT: "In the model $E[X_j | {{{{c1::X_{{pa(j)}}}}}}] = {{{{c2::g_j(f_j(X))}}}}$"
+   - RIGHT: "The equation {{{{c1::$E[X_j | X_{{pa(j)}}] = g_j(f_j(X))$}}}} represents conditional expectation"
+
+MATHEMATICAL CONTENT FOCUS (CRITICAL):
+- PRIORITIZE mathematical content: equations, formulas, theorems, proofs
+- For EVERY equation/formula, create at least one cloze card
+- CRITICAL CLOZE RULE: Use ONLY {{{{c1::}}}} - NEVER use c2, c3, etc.
+- If you need to hide multiple concepts, create SEPARATE cards instead
+- Mathematical cloze patterns (ONE cloze per card):
+  * Hide key variables: "In $E(\\mathbf{{w}}) = \\frac{{1}}{{2}} \\sum_{{n=1}}^N ...$, {{{{c1::E}}}} represents error function"
+  * Hide operators/functions: "The gradient descent rule uses $\\theta = \\theta {{{{c1::- α∇L(θ)}}}}$"
+  * Hide mathematical properties: "The constraint $h(W) = 0$ ensures {{{{c1::acyclicity}}}} of the DAG"
+  * Hide proof steps: "To prove convergence, we show that {{{{c1::||∇E|| < ε}}}}"
+- Keep mathematical notation intact - don't split subscripts, superscripts, or operators
+- Examples (SINGLE c1 only): 
+  * "The error function {{{{c1::$E(\\mathbf{{w}})$}}}} equals $\\frac{{1}}{{2}} \\sum_{{n=1}}^N \\{{y(x_n, \\mathbf{{w}})-t_n\\}}^2$"
+  * "In optimization, {{{{c1::gradient descent}}}} uses the update rule $\\theta = \\theta - α∇L(θ)$"
+
+GOOD Examples:
+## The {{{{c1::Pythagorean theorem}}}} states that $a^2 + b^2 = c^2$ for right triangles.
+
+- #mathematics.geometry, #theorems.pythagorean
+
+## In gradient descent, the update rule is $\\theta = \\theta - {{{{c1::α∇L(θ)}}}}$ where α is the learning rate.
+
+- #optimization.gradient-descent, #machine-learning.algorithms
+
+## The error function $E(\\mathbf{{w}}) = \\frac{{1}}{{2}} \\sum_{{n=1}}^N \\{{y(x_n, \\mathbf{{w}}) - t_n\\}}^2$ uses {{{{c1::squared error}}}} to measure {{{{c2::prediction accuracy}}}}.
+
+- #machine-learning.loss-functions, #optimization.least-squares
+
+BAD Examples (AVOID):
+- "The original method uses {{{{c1::algorithm X}}}}" (What original method? AND missing tags!)
+- "{{{{c1::$E[X|Y] = g(f(X))$}}}}" (Don't hide entire equations AND missing tags!)
+- "In the context of the document, {{{{c1::h(W) = 0}}}} ensures acyclicity" (Remove "in the context"!)
+- "{{{{c1::NAS}}}} is used for model optimization" (Undefined acronym!)
+- Tags: #equation, #definition (Generic tags - use conceptual ones!)
+
+REMEMBER: EVERY cloze card MUST have tags just like regular cards!
+Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formulas, and facts from the actual content."""
+
+        # Configure retries for validation errors
+        cloze_response = self.instructor.chat.completions.create(
+            model=llm_config.get("model", "gpt-4"),
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Generate ONLY cloze deletion flashcards using {{c1::text}} syntax.\n\nCRITICAL LaTeX RULES:\n1. ALL mathematical variables and expressions MUST use LaTeX with $ delimiters\n2. When math is NOT inside cloze markers, wrap it properly: $W$, $X_j$, $h(W) = 0$\n3. When math IS inside cloze markers, still use LaTeX: {{c1::$E = mc^2$}}\n4. NEVER write bare math symbols without LaTeX (WRONG: W, X_j, W_{ji})"
+                },
+                {
+                    "role": "user",
+                    "content": cloze_prompt
+                }
+            ],
+            response_model=CardGenerationResponse,
+            max_retries=Retrying(
+                stop=stop_after_attempt(3),
+                wait=wait_exponential(multiplier=1, min=4, max=10),
+                reraise=True
+            ),
+        )
+        
+        # Apply self-refine if enabled
+        refinement_config = self.config.get("refinement", {}).get("refinement", {})
+        if refinement_config.get("enabled", False):
+            logger.info("Applying self-refine to improve card quality...")
+            
+            # Refine regular cards
+            if regular_response.cards and "regular" in refinement_config.get("content_types", ["regular", "cloze"]):
+                regular_response = self._self_refine_cards(
+                    regular_response,
+                    doc_summary,
+                    "regular"
+                )
+            
+            # Refine cloze cards
+            if cloze_response.cards and "cloze" in refinement_config.get("content_types", ["regular", "cloze"]):
+                cloze_response = self._self_refine_cards(
+                    cloze_response,
+                    doc_summary,
+                    "cloze"
+                )
+        
+        # Combine responses
+        all_cards = regular_response.cards + cloze_response.cards
+
+        # Debug: Check what cards were generated
+        regular_cards = [c for c in all_cards if "{{c" not in c.front.text]
+        cloze_cards = [c for c in all_cards if "{{c" in c.front.text]
+        logger.debug(f"Generated: {len(regular_cards)} regular cards, {len(cloze_cards)} cloze cards")
+        
+        # Check for math content
+        math_cards = [c for c in all_cards if "$" in c.front.text or "$" in c.back.text]
+        logger.debug(f"Math cards: {len(math_cards)}")
+        
+        # Check for references
+        ref_cards = [c for c in all_cards if any(ref in c.front.text.lower() or ref in c.back.text.lower() 
+                                                      for ref in ["ref.", "reference", "according to", "["])]
+        if ref_cards:
+            logger.debug(f"{len(ref_cards)} cards contain references that should have been removed")
+        
+        return all_cards
+
+    def _generate_image_cards_for_page(
+        self,
+        markdown_file: Path,
+        doc_summary: DocumentSummary,
+        all_image_summaries: List[ImageSummary],
+        cards_per_image: int = 3,
+        image_on_front: bool = True,
+        image_on_back: bool = True,
+        require_math: bool = False,
+        placement_strategy: str = "smart",
+        front_back_ratio: float = 0.5,
+    ) -> List[PlainCard]:
+        """Generate image cards for a single page.
+        
+        This is a helper method that processes images from one page at a time,
+        used by the main pipeline to interleave text and image cards.
+        
+        Parameters
+        ----------
+        markdown_file : Path
+            The markdown file to process
+        doc_summary : DocumentSummary
+            Document summary for context
+        all_image_summaries : List[ImageSummary]
+            All image summaries from the document
+        cards_per_image : int, optional
+            Number of cards per image (default 3)
+        image_on_front : bool, optional
+            Allow images on card fronts (default True)
+        image_on_back : bool, optional
+            Allow images on card backs (default True)
+        require_math : bool, optional
+            Only process images with math content (default False)
+        placement_strategy : str, optional
+            Strategy for image placement (default "smart")
+        front_back_ratio : float, optional
+            Ratio for random placement (default 0.5)
+            
+        Returns
+        -------
+        List[PlainCard]
+            Generated image cards for this page
+        """
+        image_cards = []
+        
+        content = markdown_file.read_text()
+        
+        # Extract images from this file
+        images = extract_images_from_markdown(content, markdown_file.parent)
+        
+        for image_info in images:
+            # Check if math content is required and present
+            if require_math and not detect_math_content(image_info["context"]):
+                continue
+
+            logger.debug(f"Generating {cards_per_image} cards for image: {image_info['path']}")
+
+            # Get surrounding content (more context around the image)
+            file_content = content
+
+            # Generate prompts for image cards
+            prompts_config = self.config.get("prompts", {}).get("prompts", {})
+            cards_prompts = prompts_config.get("cards", {})
+            models_config = self.config.get("models", {}).get("models", {})
+            llm_config = models_config.get("llm", {})
+
+            # Find matching image summary if available
+            image_summary_text = None
+            if all_image_summaries:
+                # Try to match by URL/path
+                for img_summary in all_image_summaries:
+                    # Check if paths match (handle different path formats)
+                    if (image_info['path'] in img_summary.image_url or 
+                        img_summary.image_url in image_info['path'] or
+                        Path(image_info['path']).name == Path(img_summary.image_url).name):
+                        image_summary_text = img_summary.summary
+                        logger.debug(f"Found image summary for {image_info['path']}: {image_summary_text[:50]}...")
+                        break
+                
+                if not image_summary_text:
+                    logger.debug(f"No matching image summary found for {image_info['path']}")
+                    logger.debug(f"  Available summaries: {[img.image_url for img in all_image_summaries]}")
+            
+            # Create a specialized prompt for image cards
+            image_prompt = f"""Create {cards_per_image} educational flashcards based on this image and its context.
+
+Image Information:
+- Path: {image_info['path']}
+- Alt text: {image_info['alt']}
+- Context: {image_info['context']}
+{f'- Image Description: {image_summary_text}' if image_summary_text else ''}
+
+Document Summary Context:
+- Title: {doc_summary.title}
+- Acronyms: {doc_summary.acronyms}
+- Technical terms: {doc_summary.technical_terms}
+
+Full content from this page:
+{file_content}
+
+CRITICAL RULES:
+- DO NOT include ![Image](...) markdown in your response - the image will be added automatically
+- DO NOT put image links in the question or answer text
+- Just write the question and answer text referring to "the image" or "this figure"
+
+Requirements:
+- Each card should test UNDERSTANDING of concepts, not just ask to describe the image
+- Questions should focus on WHY, HOW, or WHAT implications the image shows
+- BAD: "How are X and Y represented in this image?" (just asks for description)
+- GOOD: "What relationship does the image show between X and Y?" (tests understanding)
+- GOOD: "Why does the pathway split into two branches in the diagram?" (tests conceptual understanding)
+- Cards can reference specific parts of the image (e.g., "What does the upper pathway represent?")
+- Include mathematical notation if present in the image
+- Make questions test conceptual understanding, not just visual identification
+- {'Image can appear on front or back of card as appropriate' if image_on_front and image_on_back else 'Image should appear on front of card' if image_on_front else 'Image should appear on back of card' if image_on_back else 'No image placement preference'}
+
+FORMAT RULES:
+1. Use ## for the question (front of card) - NO IMAGE MARKDOWN
+2. Answer goes on the next line (back of card) - NO IMAGE MARKDOWN
+3. Tags go as a single bullet: - #tag1, #tag2, #tag3
+4. Use period-delimited tags from broad to narrow (e.g., #biology.cell-biology, #machine-learning.neural-networks)
+5. DO NOT include figure/image tags like #figures, #diagrams, #graphs - the card already has an image
+6. NEVER include ![Image](...) in your text - images are handled separately
+
+Example card for an image:
+## What relationship between learning rate and convergence is shown in this graph?
+
+The graph demonstrates that smaller learning rates lead to slower but more stable convergence, while larger learning rates can cause oscillations or divergence. The optimal learning rate (shown in green) balances speed and stability.
+
+- #optimization.learning-rate, #machine-learning.training, #convergence-analysis"""
+
+            # Generate cards using instructor
+            try:
+                response = self.instructor.chat.completions.create(
+                    model=llm_config.get("model", "gpt-4"),
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": cards_prompts.get(
+                                "system",
+                                "You are an expert at creating educational flashcards that test understanding of visual content.",
+                            ),
+                        },
+                        {"role": "user", "content": image_prompt},
+                    ],
+                    response_model=CardGenerationResponse,
+                    max_retries=llm_config.get("max_retries", 3),
+                )
+
+                # Apply self-refine if enabled for image cards
+                refinement_config = self.config.get("refinement", {}).get("refinement", {})
+                if refinement_config.get("enabled", False) and "image" in refinement_config.get("content_types", ["regular", "cloze", "image"]):
+                    logger.info(f"Applying self-refine to image cards for {image_info['path']}...")
+                    response = self._self_refine_cards(
+                        response,
+                        doc_summary,
+                        "image"
+                    )
+
+                # Add image paths to the generated cards
+                for idx, card in enumerate(response.cards):
+                    # Clean up any image markdown that might have slipped through
+                    # Remove ![Image](...) patterns from both front and back text
+                    import re
+                    image_pattern = r'!\[.*?\]\([^)]+\)'
+                    card.front.text = re.sub(image_pattern, '', card.front.text).strip()
+                    card.back.text = re.sub(image_pattern, '', card.back.text).strip()
+                    
+                    # Decide where to place the image based on config
+                    if image_on_front and not image_on_back:
+                        card.front.image_path = image_info["original_path"]
+                        if image_summary_text:
+                            card.front.image_summary = image_summary_text
+                        else:
+                            logger.error(f"No image summary found for {image_info['path']} - skipping this image card")
+                            continue  # Skip this card entirely
+                    elif image_on_back and not image_on_front:
+                        card.back.image_path = image_info["original_path"]
+                        if image_summary_text:
+                            card.back.image_summary = image_summary_text
+                        else:
+                            logger.error(f"No image summary found for {image_info['path']} - skipping this image card")
+                            continue  # Skip this card entirely
+                    elif image_on_front and image_on_back:
+                        # Both allowed, but NEVER put the same image on both sides
+                        place_on_front = False
+
+                        if placement_strategy == "smart":
+                            # Place on front if question references the image
+                            place_on_front = any(
+                                word in card.front.text.lower()
+                                for word in [
+                                    "figure",
+                                    "image",
+                                    "graph",
+                                    "chart",
+                                    "diagram",
+                                    "show",
+                                    "illustrate",
+                                    "depict",
+                                    "visual",
+                                ]
+                            )
+                        elif placement_strategy == "alternate":
+                            # Alternate between front and back
+                            place_on_front = idx % 2 == 0
+                        elif placement_strategy == "random":
+                            # Random with specified ratio
+                            place_on_front = random.random() < front_back_ratio
+                        elif placement_strategy == "prefer_front":
+                            place_on_front = True
+                        elif placement_strategy == "prefer_back":
+                            place_on_front = False
+
+                        # Place image on ONLY ONE side
+                        if place_on_front:
+                            card.front.image_path = image_info["original_path"]
+                            if image_summary_text:
+                                card.front.image_summary = image_summary_text
+                            else:
+                                logger.error(f"No image summary found for {image_info['path']} - skipping this image card")
+                                continue  # Skip this card entirely
+                            # Explicitly ensure IMAGE is not on the back
+                            card.back.image_path = None
+                        else:
+                            card.back.image_path = image_info["original_path"]
+                            if image_summary_text:
+                                card.back.image_summary = image_summary_text
+                            else:
+                                logger.error(f"No image summary found for {image_info['path']} - skipping this image card")
+                                continue  # Skip this card entirely
+                            # Explicitly ensure IMAGE is not on the front
+                            card.front.image_path = None
+
+                image_cards.extend(response.cards)
+
+                # Debug output for image placement
+                front_count = sum(
+                    1 for card in response.cards if card.front.image_path
+                )
+                back_count = sum(
+                    1 for card in response.cards if card.back.image_path
+                )
+                logger.debug(f"Generated {len(response.cards)} cards for image {image_info['path']}")
+                logger.debug(f"  Image placement - Front: {front_count}, Back: {back_count} (strategy: {placement_strategy})")
+
+            except Exception as e:
+                logger.error(f"Error generating cards for image {image_info['path']}: {e}")
+                continue
+
+        return image_cards
+
     def generate_cards_with_context(
         self,
         markdown_files: List[Path],
@@ -806,9 +1357,19 @@ CRITICAL REQUIREMENTS:
 6. NEVER ask "What does X stand for?" - ask what X IS or HOW it works instead
 7. Each card tests ONE concept and includes all context needed to understand it
 8. PRIORITIZE creating cards for EVERY mathematical equation, formula, or algorithm in the content
-9. Use LaTeX with $ for inline math, $$ for display math
+9. CRITICAL LaTeX FORMATTING:
+   - ALL mathematical variables, symbols, and expressions MUST be wrapped in LaTeX delimiters
+   - Use $ for inline math (e.g., $W$, $X_j$, $h(W) = 0$)
+   - Use $$ for display math equations
+   - NEVER write bare mathematical symbols without LaTeX (WRONG: W, X_j, h(W)=0)
+   - Common mistakes to AVOID:
+     * Writing "W" instead of "$W$" when referring to a matrix
+     * Writing "X_j" instead of "$X_j$" for subscripted variables
+     * Writing "h(W) = 0" instead of "$h(W) = 0$" for equations
+     * Writing "α" instead of "$\\alpha$" for Greek letters
+     * Writing "W_{{ji}} ≠ 0" instead of "$W_{{ji}} \\neq 0$"
 10. NEVER use LaTeX tables (\\\\begin{{tabular}})
-11. For EVERY math symbol (h, F, g_j, etc.), define what it represents IN THE CARD
+11. For EVERY math symbol ($h$, $F$, $g_j$, etc.), define what it represents IN THE CARD
 
 MATHEMATICAL CONTENT PRIORITY (CRITICAL):
 - SCAN the content for ALL mathematical elements: equations, formulas, definitions, proofs, theorems
@@ -833,7 +1394,7 @@ Generate {adjusted_num_cards} regular Q&A cards now. Focus on the actual subject
                 messages=[
                     {
                         "role": "system",
-                        "content": "Generate ONLY regular Q&A flashcards. Do NOT create any cloze deletion cards."
+                        "content": "Generate ONLY regular Q&A flashcards. Do NOT create any cloze deletion cards.\n\nCRITICAL: ALL mathematical variables, symbols, and expressions MUST be wrapped in LaTeX delimiters using $ for inline math. For example: $W$, $X_j$, $h(W) = 0$, $W_{ji} \\neq 0$. NEVER write bare mathematical symbols without LaTeX."
                     },
                     {
                         "role": "user",
@@ -877,22 +1438,24 @@ CRITICAL RULES:
 MATHEMATICAL CONTENT FOCUS (CRITICAL):
 - PRIORITIZE mathematical content: equations, formulas, theorems, proofs
 - For EVERY equation/formula, create at least one cloze card
-- Mathematical cloze patterns:
-  * Hide key variables: "In $E(\\mathbf{{w}}) = \\frac{{1}}{{2}} \\sum_{{n=1}}^N ...$, {{{{c1::E}}}} represents {{{{c2::error function}}}}"
+- CRITICAL CLOZE RULE: Use ONLY {{{{c1::}}}} - NEVER use c2, c3, etc.
+- If you need to hide multiple concepts, create SEPARATE cards instead
+- Mathematical cloze patterns (ONE cloze per card):
+  * Hide key variables: "In $E(\\mathbf{{w}}) = \\frac{{1}}{{2}} \\sum_{{n=1}}^N ...$, {{{{c1::E}}}} represents error function"
   * Hide operators/functions: "The gradient descent rule uses $\\theta = \\theta {{{{c1::- α∇L(θ)}}}}$"
-  * Hide mathematical properties: "The constraint $h(W) = 0$ ensures {{{{c1::acyclicity}}}} of the {{{{c2::DAG}}}}"
+  * Hide mathematical properties: "The constraint $h(W) = 0$ ensures {{{{c1::acyclicity}}}} of the DAG"
   * Hide proof steps: "To prove convergence, we show that {{{{c1::||∇E|| < ε}}}}"
 - Keep mathematical notation intact - don't split subscripts, superscripts, or operators
-- Examples: 
-  * "The error function {{{{c1::$E(\\mathbf{{w}})$}}}} equals {{{{c2::$\\frac{{1}}{{2}} \\sum_{{n=1}}^N \\{{y(x_n, \\mathbf{{w}})-t_n\\}}^2$}}}}"
-  * "In optimization, {{{{c1::gradient descent}}}} uses the update rule {{{{c2::$\\theta = \\theta - α∇L(θ)$}}}}"
+- Examples (SINGLE c1 only): 
+  * "The error function {{{{c1::$E(\\mathbf{{w}})$}}}} equals $\\frac{{1}}{{2}} \\sum_{{n=1}}^N \\{{y(x_n, \\mathbf{{w}})-t_n\\}}^2$"
+  * "In optimization, {{{{c1::gradient descent}}}} uses the update rule $\\theta = \\theta - α∇L(θ)$"
 
 GOOD Examples:
-## The {{{{c1::Pythagorean theorem}}}} states that {{{{c2::$a^2 + b^2 = c^2$}}}} for right triangles.
+## The {{{{c1::Pythagorean theorem}}}} states that $a^2 + b^2 = c^2$ for right triangles.
 
 - #mathematics.geometry, #theorems.pythagorean
 
-## In gradient descent, the update rule is $\\theta = \\theta - {{{{c1::α}}}} {{{{c2::∇L(θ)}}}}$ where α is the {{{{c3::learning rate}}}}.
+## In gradient descent, the update rule is $\\theta = \\theta - {{{{c1::α∇L(θ)}}}}$ where α is the learning rate.
 
 - #optimization.gradient-descent, #machine-learning.algorithms
 
@@ -916,7 +1479,7 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
                 messages=[
                     {
                         "role": "system",
-                        "content": "Generate ONLY cloze deletion flashcards using {{c1::text}} syntax. Ensure that when including math equations in cloze cards, the ENTIRE equation must be inside the cloze markers. Example: {{c1:\\(E = mc^2\\)}} not just {{c1:E}}."
+                        "content": "Generate ONLY cloze deletion flashcards using {{c1::text}} syntax.\n\nCRITICAL LaTeX RULES:\n1. ALL mathematical variables and expressions MUST use LaTeX with $ delimiters\n2. When math is NOT inside cloze markers, wrap it properly: $W$, $X_j$, $h(W) = 0$\n3. When math IS inside cloze markers, still use LaTeX: {{c1::$E = mc^2$}}\n4. NEVER write bare math symbols without LaTeX (WRONG: W, X_j, W_{ji})"
                     },
                     {
                         "role": "user",
@@ -1489,8 +2052,11 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         # Get model config
         models_config = self.config.get("models", {}).get("models", {})
         llm_config = models_config.get("llm", {})
-        model = llm_config.get("model", "gpt-4o")
-        voice_id = audio_config.get("voice_id")
+        model = llm_config.get("model", "gpt-5")
+        
+        # Get voice_id from TTS config in models, not from audio config
+        tts_config = models_config.get("tts", {})
+        voice_id = tts_config.get("voice_id")
 
         # Generate complementary audio (card audio)
         if audio_config.get("generate_complementary", False):
@@ -1988,7 +2554,10 @@ Check for these issues in {card_type} cards:
 3. Generic tags (#equation vs #calculus.derivatives)
 4. Rote memorization ("What does X stand for?")
 5. Math formatting issues
-6. Cloze problems (extra questions after cloze, split equations)
+6. Cloze problems:
+   - CRITICAL: Cloze cards that ARE questions (end with "?")
+   - Extra questions after cloze deletion
+   - Split equations across cloze markers
 7. Undefined acronyms
 8. Author-centric questions
 9. EDUCATIONAL VALUE - does this help students learn fundamental concepts?

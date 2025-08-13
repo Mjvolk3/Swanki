@@ -1,0 +1,14 @@
+models:
+  llm:
+    provider: openai
+    model: gpt-5
+    temperature: 0.7
+    max_retries: 3
+  tts:
+    provider: elevenlabs
+    voice_id: JBFqnCBsd6RMkjVDRZzb # George
+    model: eleven_monolingual_v2
+    stability: 0.5
+    similarity_boost: 0.5
+
+

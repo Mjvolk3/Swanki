@@ -33,6 +33,7 @@ dependencies = [
     "elevenlabs",
     "pydub",
     "requests",
+    "markdown",
 ]
 
 [project.optional-dependencies]

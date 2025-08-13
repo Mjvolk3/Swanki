@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Optional, Literal, Union, Dict
 import uuid
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -98,13 +99,28 @@ class CardContent(BaseModel):
             v = re.sub(r'\{c(\d+)::', r'{{c1::', v)
             v = re.sub(r'([^}])\}([^}]|$)', r'\1}}\2', v)
         
-        # Convert all cloze numbers (c2, c3, etc.) to c1 for simplicity
-        v = re.sub(r'\{\{c\d+::', '{{c1::', v)
+        # Check for multiple cloze numbers (c1, c2, c3) which should be avoided
+        cloze_pattern = r'\{\{c(\d+)::'
+        cloze_numbers = re.findall(cloze_pattern, v)
+        unique_numbers = set(cloze_numbers)
         
-        # Count cloze deletions and warn if more than 2
-        cloze_count = v.count('{{c1::')
-        if cloze_count > 2:
-            logger.warning(f"Card has {cloze_count} cloze deletions (recommended max: 2). This may affect review experience.")
+        if len(unique_numbers) > 1:
+            # Multiple different cloze numbers - this should be split into separate cards
+            raise ValueError(
+                f"Card uses multiple cloze numbers ({', '.join(sorted(unique_numbers))}). "
+                "Cards should use only {{c1::}} and be split into separate cards. "
+                "Example: Instead of '{{c1::A}} equals {{c2::B}}', create two cards: "
+                "'{{c1::A}} equals B' and 'A equals {{c1::B}}'"
+            )
+        
+        # Count cloze deletions
+        cloze_count = len(cloze_numbers)
+        if cloze_count > 1:
+            # Multiple c1s - only allowed for same concept or connected ideas
+            logger.warning(
+                f"Card has {cloze_count} cloze deletions. Multiple {{c1::}} should only be used "
+                "when masking the same concept appearing multiple times or tightly connected ideas."
+            )
         
         # Check cloze deletion length
         if '{{c1::' in v:
@@ -270,6 +286,130 @@ class CardContent(BaseModel):
                     "Example fix: Instead of 'What does the focal page discuss?', "
                     "ask 'What is the purpose of backpropagation?'"
                 )
+        
+        # Check for unformatted mathematical content
+        # This checks for common patterns that indicate math but aren't wrapped in LaTeX
+        
+        # First, remove already properly formatted LaTeX to avoid false positives
+        # Also remove any LaTeX commands that might remain
+        
+        # Match LaTeX with \( \) delimiters
+        text_without_latex = re.sub(r'\\\(.*?\\\)', 'LATEX_PLACEHOLDER', v, flags=re.DOTALL)
+        # Match LaTeX with \[ \] delimiters  
+        text_without_latex = re.sub(r'\\\[.*?\\\]', 'LATEX_PLACEHOLDER', text_without_latex, flags=re.DOTALL)
+        # Match single $ delimiters - use non-greedy matching to get the shortest match
+        text_without_latex = re.sub(r'\$[^$]+\$', 'LATEX_PLACEHOLDER', text_without_latex)
+        # Match double $$ delimiters
+        text_without_latex = re.sub(r'\$\$[^$]+\$\$', 'LATEX_PLACEHOLDER', text_without_latex)
+        
+        # Remove any remaining LaTeX commands (like \alpha, \beta, etc.)
+        # This catches cases where LaTeX might be partially formatted or escaped
+        text_without_latex = re.sub(r'\\(alpha|beta|gamma|delta|epsilon|theta|lambda|mu|sigma|omega|Alpha|Beta|Gamma|Delta|Theta|Lambda|Sigma|Omega)\b', 'LATEX_CMD', text_without_latex)
+        
+        # Also remove content inside cloze markers as it might have special formatting
+        text_without_latex = re.sub(r'\{\{c\d+::[^}]+\}\}', 'CLOZE_PLACEHOLDER', text_without_latex)
+        
+        # Common mathematical patterns that should be in LaTeX
+        math_issues = []
+        
+        # Pattern 1: Subscripted variables (e.g., X_j, W_{ij}, X_{pa(j)})
+        # Be more selective to avoid false positives
+        subscript_pattern = r'\b([A-Z])_\{?([a-z0-9]+)\}?\b'
+        for match in re.finditer(subscript_pattern, text_without_latex):
+            var = match.group(0)
+            # Check context to avoid false positives
+            context = match.string[max(0, match.start()-10):match.end()+10]
+            # Skip if it looks like a URL, filename, or is near a LATEX_PLACEHOLDER
+            if not any(x in context for x in ['.com', '.org', '.edu', '.io', '.pdf', '.png', '.jpg', 'LATEX_PLACEHOLDER', 'CLOZE_PLACEHOLDER']):
+                # Also skip if the subscript ends with an open parenthesis (likely part of a function)
+                if not var.endswith('('):
+                    math_issues.append(f"Subscripted variable '{var}' should be ${var}$")
+        
+        # Pattern 2: Function notation (e.g., h(W), f(X), g_j(X))
+        function_pattern = r'\b([a-z](?:_[a-z0-9]+)?)\(([A-Z][^)]*?)\)'
+        for match in re.finditer(function_pattern, text_without_latex):
+            func = match.group(0)
+            # Avoid common English phrases
+            if match.group(1) not in ['a', 'an', 'the', 'of', 'in', 'on', 'at', 'to', 'by', 'as', 'is', 'or', 'and']:
+                math_issues.append(f"Function '{func}' should be ${func}$")
+        
+        # Pattern 3: Equations and inequalities with single letters
+        equation_pattern = r'\b([A-Z])\s*(=|≠|≤|≥|!=|<=|>=|<|>)\s*([0-9A-Z]+)'
+        for match in re.finditer(equation_pattern, text_without_latex):
+            eq = match.group(0)
+            math_issues.append(f"Equation '{eq}' should be wrapped in $ delimiters")
+        
+        # Pattern 4: Matrix operations like (I - W)
+        matrix_pattern = r'\(([A-Z])\s*([-+×])\s*([A-Z])\)'
+        for match in re.finditer(matrix_pattern, text_without_latex):
+            expr = match.group(0)
+            if match.group(1) not in ['I'] or match.group(1) == 'I' and match.group(3) in ['W', 'X', 'Y', 'A', 'B']:
+                math_issues.append(f"Matrix expression '{expr}' should be ${expr}$")
+        
+        # Pattern 5: Greek letters written out
+        # We've already removed LaTeX commands above, so any remaining Greek letter names are problematic
+        greek_pattern = r'\b(alpha|beta|gamma|delta|epsilon|theta|lambda|mu|sigma|omega|Alpha|Beta|Gamma|Delta|Theta|Lambda|Sigma|Omega)\b'
+        for match in re.finditer(greek_pattern, text_without_latex):
+            greek = match.group(0)
+            math_issues.append(f"Greek letter '{greek}' should be $\\{greek}$")
+        
+        # Pattern 6: Unicode Greek symbols
+        unicode_greek = re.findall(r'[α-ωΑ-Ω≠≤≥]', text_without_latex)
+        if unicode_greek:
+            unique_symbols = list(set(unicode_greek))[:3]
+            math_issues.append(f"Unicode math symbols found: {', '.join(unique_symbols)}. Use LaTeX commands instead")
+        
+        # Pattern 7: Isolated capital letters that are likely variables (context-dependent)
+        # This is tricky - we need to be smart about it
+        isolated_letter_pattern = r'(?:^|[^a-zA-Z])([WXYZFGHPQR])(?:[^a-zA-Z]|$)'
+        for match in re.finditer(isolated_letter_pattern, text_without_latex):
+            letter = match.group(1)
+            # Check surrounding context
+            context = text_without_latex[max(0, match.start()-20):match.end()+20]
+            # Look for mathematical context clues
+            if any(word in context.lower() for word in ['matrix', 'variable', 'function', 'equation', 'represents', 'denotes', 'where', 'let']):
+                math_issues.append(f"Variable '{letter}' should be ${letter}$")
+        
+        if math_issues:
+            # Only raise error if there are many issues or they look serious
+            # For a few issues, let Instructor's retry mechanism handle it
+            if len(math_issues) > 5:
+                # Too many issues - this is likely a real problem
+                issues_to_show = math_issues[:3]
+                issues_to_show.append(f"...and {len(math_issues)-3} more issues")
+                
+                raise ValueError(
+                    f"Mathematical content must use LaTeX formatting.\n"
+                    f"Issues found:\n" + "\n".join(f"  - {issue}" for issue in issues_to_show) + "\n"
+                    f"Remember: ALL mathematical variables and expressions need $ delimiters for proper rendering in Anki.\n"
+                    f"IMPORTANT: Wrap all math in $ or $$ delimiters. For example: $P_k$, $\\alpha$, $\\beta$"
+                )
+            else:
+                # Few issues - provide helpful feedback for the retry
+                logger.info(f"Minor LaTeX formatting issues detected ({len(math_issues)} issues), allowing retry to fix")
+                # Provide specific guidance in the error message
+                specific_fixes = []
+                for issue in math_issues:
+                    if 'Greek letter' in issue:
+                        specific_fixes.append("Replace Greek letter names with LaTeX commands inside $ delimiters")
+                    elif 'Subscripted' in issue:
+                        specific_fixes.append("Ensure all subscripted variables are wrapped in $ delimiters")
+                
+                if specific_fixes:
+                    fix_msg = " Specific fixes needed: " + "; ".join(set(specific_fixes))
+                else:
+                    fix_msg = ""
+                
+                raise ValueError(
+                    f"Please ensure ALL mathematical content uses proper LaTeX formatting with $ delimiters.{fix_msg}"
+                )
+        
+        # Check if cloze card ends with a question mark
+        if '{{c1::' in v and v.strip().endswith('?'):
+            logger.warning(
+                "Cloze card ends with a question mark. Cloze cards should be statements, not questions. "
+                "Example: Instead of 'How does X affect {{c1::Y}}?', use 'X affects Y by {{c1::causing specific change}}'"
+            )
         
         return v
 
