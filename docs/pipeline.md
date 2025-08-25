@@ -4,7 +4,7 @@ The Swanki pipeline orchestrates the complete process of converting academic PDF
 
 ## Main Pipeline Flow
 
-```{mermaid}
+```mermaid
 graph TD
     %% Input Stage
     A[PDF Input] --> B{Initialize Pipeline}
@@ -77,7 +77,7 @@ graph TD
 
 The pipeline begins by splitting the input PDF into individual pages using PyMuPDF. Each page is then converted to markdown using the Mathpix API, which preserves mathematical notation and formatting.
 
-```{mermaid}
+```mermaid
 graph LR
     A[PDF Input] --> B[PDFProcessor]
     B --> C[Split PDF]
@@ -94,7 +94,7 @@ graph LR
 
 Raw markdown files are cleaned to remove artifacts and standardize formatting. Images are extracted and summarized using AI to provide context for card generation.
 
-```{mermaid}
+```mermaid
 graph TD
     A[Raw Markdown Files] --> B[MarkdownCleaner]
     B --> C[Clean Markdown Files]
@@ -114,7 +114,14 @@ graph TD
 
 Cards are generated using a sliding window approach for better context. Both text-based and image-based cards are supported with various placement strategies. See the [Sliding Window Processing](configuration.md#sliding-window-processing) section in the configuration guide for detailed information on how to configure window sizes and skip parameters.
 
-```{mermaid}
+Key validation features:
+
+- **Cloze deletions** are limited to 1-5 words for optimal learning
+- **Nested math delimiters** in cloze cards are automatically fixed
+- **Image cards** are automatically converted from cloze to Q&A format
+- **LaTeX spacing** issues are detected and corrected
+
+```mermaid
 graph TD
     A[Document Summary<br/>+ Clean Markdown] --> B{Card Generation}
     B --> C[Text Card Generation]
@@ -144,7 +151,7 @@ graph TD
 
 Multiple audio types can be generated with configurable speed settings. Audio is created using ElevenLabs TTS with pitch-preserved speed adjustment.
 
-```{mermaid}
+```mermaid
 graph TD
     A[Audio Configuration] --> B{Audio Types}
     
@@ -181,10 +188,10 @@ graph TD
 
 Cards can be automatically sent to Anki using AnkiConnect. The system handles deck creation, card updates, and media file uploads.
 
-```{mermaid}
+```mermaid
 graph TD
     A[Generated Cards] --> B{Anki Config}
-    B --> C[Format Deck Name<br/>Template: {citation_key}]
+    B --> C["Format Deck Name<br/>Template: citation_key"]
     C --> D[Choose Card Format]
     D -->|Plain| E[Use cards-plain.md]
     D -->|With Audio| F[Use cards-with-audio.md]
@@ -213,7 +220,7 @@ graph TD
 
 The pipeline is highly configurable using Hydra. Configuration files are automatically generated with sensible defaults.
 
-```{mermaid}
+```mermaid
 graph TD
     A[User Command] --> B[Hydra Config System]
     B --> C[ConfigGenerator]
@@ -249,16 +256,19 @@ graph TD
 ## Usage Examples
 
 ### Basic Pipeline
+
 ```bash
 swanki --pdf_path=paper.pdf --citation_key=Smith2023
 ```
 
 ### With Custom Output Directory
+
 ```bash
 swanki --pdf_path=paper.pdf --citation_key=Smith2023 +output_dir=chapter1
 ```
 
 ### Full Audio Generation
+
 ```bash
 swanki --pdf_path=paper.pdf --citation_key=Smith2023 \
        audio.audio.generate_complementary=true \
@@ -268,6 +278,7 @@ swanki --pdf_path=paper.pdf --citation_key=Smith2023 \
 ```
 
 ### Custom Processing Options
+
 ```bash
 swanki --pdf_path=paper.pdf --citation_key=Smith2023 \
        pipeline.processing.window_size=3 \
