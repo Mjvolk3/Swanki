@@ -4,7 +4,7 @@ Swanki uses Hydra for configuration management. When you first run Swanki, it cr
 
 ## Configuration Structure
 
-```
+```yaml
 .swanki_config/
 ├── config.yaml           # Main configuration
 ├── pipeline/            # Processing pipeline settings
@@ -61,6 +61,20 @@ models:
   tts:
     provider: elevenlabs
     voice_id: 21m00Tcm4TlvDq8ikWAM
+```
+
+### Cloze Card Settings
+
+Swanki enforces strict validation for cloze deletions:
+
+- **Word Limit**: 1-5 words maximum per cloze deletion
+- **Math Support**: Automatically handles LaTeX within cloze deletions
+- **Image Cards**: Automatically converts image cards from cloze to Q&A format
+
+```yaml
+# Cloze validation is automatic and enforced
+# Bad: {{c1::techniques that add constraints or penalties to prevent overfitting}}
+# Good: {{c1::regularization techniques}}
 ```
 
 ### Audio Settings
