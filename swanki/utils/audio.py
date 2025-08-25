@@ -189,6 +189,20 @@ def generate_card_transcript(
             # This reveals what was hidden
             content = card.front.text
             
+            # Remove any tags that might be in cloze card backs (though they should be minimal)
+            # Tags should never be read in audio
+            if card.back.text:
+                # Check if back has tags and filter them out for audio only
+                back_lines = card.back.text.split('\n')
+                filtered_back = []
+                for line in back_lines:
+                    if not (line.strip().startswith('#') or line.strip().startswith('- #')):
+                        filtered_back.append(line)
+                # If there's any non-tag content in back, log a warning (cloze backs should be empty)
+                non_tag_back = '\n'.join(filtered_back).strip()
+                if non_tag_back:
+                    logger.warning(f"Cloze card {card.card_id} has non-tag content in back: {non_tag_back[:50]}...")
+            
             # Remove the cloze markers to reveal the hidden text
             # Need to handle nested braces in LaTeX properly
             def remove_cloze_markers(match):
@@ -234,8 +248,17 @@ def generate_card_transcript(
             elif humanized_citation and content.startswith(f"{humanized_citation}: "):
                 content = content[len(f"{humanized_citation}: "):]
         else:
-            # Regular card - use the back text
+            # Regular card - use the back text but ensure no tags are included
             content = card.back.text
+            # Remove any tags that might have slipped through (lines starting with # or - #)
+            # Remove lines that are just tags
+            lines = content.split('\n')
+            filtered_lines = []
+            for line in lines:
+                # Skip lines that are purely tags
+                if not (line.strip().startswith('#') or line.strip().startswith('- #')):
+                    filtered_lines.append(line)
+            content = '\n'.join(filtered_lines).strip()
     
     # Check if we have an image summary to include
     # For cards with images, we ALWAYS want to include the summary in the audio
@@ -283,10 +306,11 @@ def generate_card_transcript(
     
     # Add image summary to content AFTER the main content if we have one
     if image_summary_for_audio:
-        # Place image description after the main content for better flow
-        content = content.strip() + ". Image description: " + image_summary_for_audio
+        # ALWAYS place image description AFTER the main content for consistency
+        # Format: "[Main content]. Image description: [description]"
+        content = f"{content.strip()}. Image description: {image_summary_for_audio}"
         image_summary_included = True
-        logger.debug(f"Card {card.card_id}: Added image summary for audio")
+        logger.debug(f"Card {card.card_id}: Added image summary AFTER content for audio")
     
     if is_front:
         if is_cloze:
@@ -295,12 +319,14 @@ def generate_card_transcript(
                 "CRITICAL INSTRUCTIONS:\n"
                 "1. Say 'blank' exactly where it appears in the text\n"
                 "2. Do NOT try to figure out what the blank should be\n"
-                "3. If the content includes 'Image description:', you MUST read and humanize it\n"
+                "3. If the content includes 'Image description:' at the end, you MUST read and humanize it\n"
+                "   - Image description ALWAYS comes AFTER the main content\n"
                 "   - Convert technical descriptions to natural language\n"
                 "   - Describe visual elements in a way that helps audio-only learners\n"
                 "   - Make the description conversational and clear\n"
-                "4. Read ALL content in order: image description (if present), then the cloze text\n"
+                "4. Read ALL content in order: main cloze text first, then image description (if present)\n"
                 "5. The image description is crucial for audio-only learners - never skip it\n"
+                "6. CRITICAL: Image cards should NEVER be cloze cards (this is validated elsewhere)\n"
                 "\n"
                 "For mathematical expressions:\n"
                 "- Read them naturally as a mathematician would\n"
@@ -333,12 +359,13 @@ def generate_card_transcript(
                 "CRITICAL INSTRUCTIONS:\n"
                 "1. This is the FRONT of a flashcard - read ALL content IN THE EXACT ORDER PROVIDED\n"
                 "2. DO NOT rearrange the content - read it exactly as given\n"
-                "3. If 'Image description:' appears at the end, read it there and humanize it:\n"
+                "3. 'Image description:' ALWAYS appears at the end - read it there and humanize it:\n"
                 "   - Convert technical descriptions to natural language\n"
                 "   - Describe visual elements in a way that helps audio-only learners\n"
                 "   - Make the description conversational and clear\n"
                 "4. DO NOT answer the question or provide explanations\n"
                 "5. DO NOT skip the image description - it's crucial for audio-only learners\n"
+                "6. NEVER read tags (lines starting with # or - #)\n"
                 "\n"
                 "Example structure: [Question as written]. [Humanized image description if present]\n"
                 "\n"
@@ -392,10 +419,11 @@ def generate_card_transcript(
                 "CRITICAL INSTRUCTIONS:\n"
                 "1. Read ALL content IN THE EXACT ORDER PROVIDED\n"
                 "2. DO NOT rearrange the content - read it exactly as given\n"
-                "3. If 'Image description:' appears at the end, read it there and humanize it:\n"
+                "3. 'Image description:' ALWAYS appears at the end - read it there and humanize it:\n"
                 "   - Convert technical descriptions to natural language\n"
                 "   - Describe visual elements in a way that helps audio-only learners\n"
                 "   - Humanize any mathematical notation in the description\n"
+                "4. CRITICAL: NEVER read tags (lines starting with # or - #)\n"
                 "\n"
                 "For mathematical expressions:\n"
                 "- Read them naturally as a mathematician would\n"
@@ -466,7 +494,6 @@ def generate_card_transcript(
                 logger.warning(f"  Attempt {attempt + 1}: Error calling GPT-5: {e}")
             
             if attempt < max_retries - 1:
-                import time
                 time.sleep(2 ** attempt)  # Exponential backoff
         
         if not response_content:
@@ -807,7 +834,6 @@ def generate_citation_audio(
         # Fallback: simple conversion of citation key
         logger.error(f"Failed to humanize citation after {max_retries} attempts, using fallback")
         # Simple fallback: replace underscores and camelCase
-        import re
         humanized = re.sub(r'([a-z])([A-Z])', r'\1 \2', citation_key)
         humanized = humanized.replace('_', ', ').replace('-', ' ')
     
@@ -1192,7 +1218,6 @@ def generate_reading_audio(
                 logger.warning(f"Attempt {attempt + 1}: Error generating reading transcript: {e}")
             
             if attempt < max_retries - 1:
-                import time
                 time.sleep(2 ** attempt)
         
         if not chunk_transcript:
@@ -1407,7 +1432,6 @@ Content to present:
                 logger.warning(f"Attempt {attempt + 1}: Error generating lecture transcript: {e}")
             
             if attempt < max_retries - 1:
-                import time
                 time.sleep(2 ** attempt)
         
         if not lecture_transcript:

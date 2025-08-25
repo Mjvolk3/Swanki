@@ -856,6 +856,10 @@ CRITICAL RULES:
 5. EVERY card MUST have AT LEAST 2 meaningful tags on the "- #tag1, #tag2" line
 6. PRIORITIZE equations - create cloze cards for key mathematical expressions
 7. MATH IN CLOZE: When hiding parts of math expressions, the ENTIRE math notation must stay together
+8. PARENTHESES: Minimize parenthetical phrases - use them ONLY when absolutely necessary
+   - BAD: "The method (which is efficient) improves (by 50%) the performance"
+   - GOOD: "The efficient method improves performance by 50%"
+   - ACCEPTABLE: "O(n log n)" or "f(x)" - parentheses are part of notation
    - WRONG: "In {{{{c1::$E[X_j$}}}} | {{{{c2::$X_{{pa(j)}}]$}}}}" (splits the equation)
    - WRONG: "The model {{{{c1::$E[X_j | X_{{}}}} {{{{c2::pa}}}} {{{{c3::(j)}}}}$" (splits subscript)
    - RIGHT: "In the model $E[X_j | {{{{c1::X_{{pa(j)}}}}}}] = {{{{c2::g_j(f_j(X))}}}}$"
@@ -1084,6 +1088,9 @@ FORMAT RULES:
 4. Use period-delimited tags from broad to narrow (e.g., #biology.cell-biology, #machine-learning.neural-networks)
 5. DO NOT include figure/image tags like #figures, #diagrams, #graphs - the card already has an image
 6. NEVER include ![Image](...) in your text - images are handled separately
+7. CRITICAL: Image cards must NEVER be cloze cards - use Q&A format only
+   - WRONG: "The diagram shows {{c1::three stages}} of cell division"
+   - RIGHT: "How many stages of cell division are shown in the diagram?"
 
 Example card for an image:
 ## What relationship between learning rate and convergence is shown in this graph?
@@ -1128,6 +1135,11 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                     image_pattern = r'!\[.*?\]\([^)]+\)'
                     card.front.text = re.sub(image_pattern, '', card.front.text).strip()
                     card.back.text = re.sub(image_pattern, '', card.back.text).strip()
+                    
+                    # CRITICAL: Ensure image cards are not cloze cards
+                    if "{{c" in card.front.text or "{{c" in card.back.text:
+                        logger.error(f"Image card generated as cloze card, skipping: {card.front.text[:50]}")
+                        continue  # Skip this card entirely
                     
                     # Decide where to place the image based on config
                     if image_on_front and not image_on_back:
@@ -1430,6 +1442,10 @@ CRITICAL RULES:
 5. EVERY card MUST have AT LEAST 2 meaningful tags on the "- #tag1, #tag2" line
 6. PRIORITIZE equations - create cloze cards for key mathematical expressions
 7. MATH IN CLOZE: When hiding parts of math expressions, the ENTIRE math notation must stay together
+8. PARENTHESES: Minimize parenthetical phrases - use them ONLY when absolutely necessary
+   - BAD: "The method (which is efficient) improves (by 50%) the performance"
+   - GOOD: "The efficient method improves performance by 50%"
+   - ACCEPTABLE: "O(n log n)" or "f(x)" - parentheses are part of notation
    - WRONG: "In {{{{c1::$E[X_j$}}}} | {{{{c2::$X_{{pa(j)}}]$}}}}" (splits the equation)
    - WRONG: "The model {{{{c1::$E[X_j | X_{{}}}} {{{{c2::pa}}}} {{{{c3::(j)}}}}$" (splits subscript)
    - RIGHT: "In the model $E[X_j | {{{{c1::X_{{pa(j)}}}}}}] = {{{{c2::g_j(f_j(X))}}}}$"
@@ -1685,6 +1701,9 @@ FORMAT RULES:
 4. Use period-delimited tags from broad to narrow (e.g., #biology.cell-biology, #machine-learning.neural-networks)
 5. DO NOT include figure/image tags like #figures, #diagrams, #graphs - the card already has an image
 6. NEVER include ![Image](...) in your text - images are handled separately
+7. CRITICAL: Image cards must NEVER be cloze cards - use Q&A format only
+   - WRONG: "The diagram shows {{c1::three stages}} of cell division"
+   - RIGHT: "How many stages of cell division are shown in the diagram?"
 
 Example card for an image:
 ## What relationship between learning rate and convergence is shown in this graph?
@@ -2556,8 +2575,10 @@ Check for these issues in {card_type} cards:
 5. Math formatting issues
 6. Cloze problems:
    - CRITICAL: Cloze cards that ARE questions (end with "?")
+   - CRITICAL: Cloze deletions longer than 5 words
    - Extra questions after cloze deletion
    - Split equations across cloze markers
+   - {"CRITICAL: Image cards should NEVER be cloze cards" if card_type == "image" else ""}
 7. Undefined acronyms
 8. Author-centric questions
 9. EDUCATIONAL VALUE - does this help students learn fundamental concepts?
@@ -2574,6 +2595,16 @@ Check for these issues in {card_type} cards:
       * "What is discussed in the focal page content?"
       * "According to the context from surrounding pages..."
       * "The focal page presents..."
+13. WRITING STYLE AND FLOW:
+    - Choppy, terse sentences that don't flow well
+    - Excessive parenthetical statements
+    - Poor readability when spoken aloud
+    - BAD: "Neural networks learn. They use backprop. Weights update."
+    - GOOD: "Neural networks learn through backpropagation, which updates weights based on error gradients."
+14. Check that content reads naturally and flows smoothly
+    - Would this sound natural when converted to audio?
+    - Are ideas connected with transitional phrases?
+    - Is the writing engaging rather than robotic?
 
 If ALL cards are high quality AND educationally valuable, set done=True.
 Otherwise provide specific, actionable feedback focused on what matters for learning."""
@@ -2695,7 +2726,15 @@ CRITICAL: If feedback mentions meta-content leakage, you MUST:
 1. Remove ALL mentions of "focal page", "surrounding pages", "context pages"
 2. Remove ALL structural markers like "FOCAL PAGE CONTENT" or "CONTEXT FROM"
 3. Rewrite questions to focus on the actual content, not document structure
-4. Never reference how the content is organized or presented"""
+4. Never reference how the content is organized or presented
+
+WRITING STYLE IMPROVEMENTS:
+1. Write in complete, flowing sentences that read naturally
+2. Connect ideas with smooth transitions
+3. Avoid choppy, terse statements
+4. Minimize parenthetical phrases - integrate information naturally
+5. Ensure content sounds good when read aloud
+6. Use varied sentence structure for better engagement"""
                     },
                     {
                         "role": "user",

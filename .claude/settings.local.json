@@ -7,7 +7,9 @@
       "Write(*.py)",
       "Bash(mkdir:*)",
       "Bash(ls:*)",
-      "Grep(*.py)"
+      "Grep(*.py)",
+      "Grep(*.md)",
+      "Grep(*.__log__)"
     ]
   },
   "enableAllProjectMcpServers": false

@@ -482,11 +482,19 @@ IMPORTANT CLOZE RULES:
 - CRITICAL: Cloze cards must be STATEMENTS, never questions (no "?" at the end)
   * ❌ WRONG: "How does X affect {{c1::Y}} in context Z?"
   * ✓ CORRECT: "X affects Y in context Z by {{c1::causing specific change}}"
-- PRIORITIZE hiding definitions, technical terms, and difficult concepts
+- CRITICAL: CLOZE LENGTH: Hide 1-5 words maximum per cloze deletion
+  * ❌ WRONG: {{c1::techniques that add constraints or penalties to prevent overfitting by limiting model complexity}}
+  * ✓ CORRECT: {{c1::regularization techniques}} or {{c1::L1 and L2 penalties}}
+- CRITICAL: NEVER add $ inside cloze when already in math mode:
+  * ❌ WRONG: $$A = {{c1::$B + C$}}$$ (nested dollar signs)
+  * ✓ CORRECT: $$A = {{c1::B + C}}$$
+  * ❌ WRONG: $f(x) = {{c1::$2x$}}$
+  * ✓ CORRECT: $f(x) = {{c1::2x}}$
+- PRIORITIZE hiding key terms, not full definitions
 - Focus on terminology that students need to understand deeply
-- Hide the MEANING or DEFINITION of complex terms, not just the term itself
-- For equations: Hide what the equation REPRESENTS or key components
-- CRITICAL: When mentioning an equation, the ENTIRE equation must be inside cloze markers
+- Hide KEY TERMS or CRITICAL VALUES, not entire explanations
+- For equations: Hide PARTS of equations (variables, operators), not entire equations
+- CRITICAL: When mentioning an equation, include the equation but hide only key parts
 - Make cards educational - test understanding of concepts, not memorization
 - Each card must stand alone without external context
 - Focus on FUNDAMENTAL CONCEPTS from the document summary, not trivial details
@@ -501,33 +509,34 @@ CLOZE CARD PRIORITIES (in order of importance):
 6. Critical distinctions between similar concepts
 
 CRITICAL MATH CLOZE RULES:
-- If you mention "the equation" followed by math, the ENTIRE equation goes inside {{c1::...}}
-- NEVER write: "The equation {{c1::something}} \\(actual equation\\)"
-- CORRECT: "The equation {{c1::\\(E[X_j | X_{pa(j)}] = g_j(f_j(X))\\)}} expresses..."
-- For simple equations, you can hide parts: "The derivative \\(\\frac{d}{dx}(x^2) = {{c1::2x}}\\)"
+- NEVER put dollar signs $ inside cloze deletions {{c1::...}}
+- If the whole line is in math mode, don't add $ inside the cloze
+- WRONG: "The equation {{c1::$E = mc^2$}} expresses..." (nested $)
+- CORRECT: "The equation $E = {{c1::mc^2}}$ expresses..." (hide part)
+- CORRECT: "The derivative $\\frac{d}{dx}(x^2) = {{c1::2x}}$" (no nested $)
 
-Example GOOD cloze cards focusing on definitions and concepts:
-## Regularization in machine learning refers to {{c1::techniques that add constraints or penalties to prevent overfitting by limiting model complexity}}.
+Example GOOD cloze cards with 1-5 word deletions:
+## Regularization in machine learning refers to {{c1::L1 and L2 penalties}} that prevent overfitting by limiting model complexity.
 
 - #machine-learning.regularization, #overfitting-prevention
 
-## A Directed Acyclic Graph (DAG) is {{c1::a graph with directed edges and no cycles, meaning you cannot start at a node and follow edges to return to the same node}}.
+## A Directed Acyclic Graph (DAG) is a graph with {{c1::directed edges}} and {{c1::no cycles}}, meaning you cannot return to the same node.
 
 - #graph-theory.dags, #data-structures
 
-## The backpropagation algorithm works by {{c1::computing gradients of the loss function with respect to weights by applying the chain rule recursively from output to input layers}}.
+## The backpropagation algorithm computes gradients using the {{c1::chain rule}} recursively from output to input layers.
 
 - #neural-networks.training, #optimization.gradients
 
-## In statistics, a p-value represents {{c1::the probability of obtaining test results at least as extreme as observed, assuming the null hypothesis is true}}.
+## In statistics, a p-value represents the probability of obtaining results at least as extreme as observed, assuming the {{c1::null hypothesis}} is true.
 
 - #statistics.hypothesis-testing, #p-values
 
-## The vanishing gradient problem occurs when {{c1::gradients become exponentially small as they propagate backwards through many layers, preventing effective weight updates in deep networks}}.
+## The {{c1::vanishing gradient}} problem occurs when gradients become exponentially small as they propagate backwards through many layers.
 
 - #deep-learning.challenges, #neural-networks.gradients
 
-## Attention mechanisms in neural networks allow models to {{c1::dynamically focus on different parts of the input by computing weighted combinations based on learned relevance scores}}.
+## Attention mechanisms compute {{c1::weighted combinations}} of input based on learned relevance scores.
 
 - #deep-learning.attention, #transformer-architecture
 
@@ -537,10 +546,11 @@ Example BAD cloze cards to AVOID:
 - "According to [12], the algorithm is {{c1::efficient}}" (References external paper)
 - "The original constraints are replaced by {{c1::continuous equality}}" (What original constraints?)
 - "As shown in Figure 3, performance {{c1::improves}}" (No access to Figure 3)
-- "The equation {{c1::describes relationships}} \\(E[X | Y] = f(Y)\\)" (Equation is outside cloze!)
+- "The equation {{c1::describes relationships}} $E[X | Y] = f(Y)$" (Equation is outside cloze!)
 - "Using equation {{c1::MathJax}} to express dependencies" (Meaningless placeholder)
 - "The probability is \\[{{c1::p(x|\\mu,\\sigma^2) = \\frac{1}{\\sqrt{2\\pi\\sigma^2}}e^{-\\frac{(x-\\mu)^2}{2\\sigma^2}}}}\\]" (Display math inside cloze!)
 - "The equation \\[p(t|x,w,\\sigma^2)={{c1::\\mathcal{N}(t|y(x,w),\\sigma^2)}}\\]" (Display math with cloze inside!)
+- "Regularization refers to {{c1::techniques that add constraints or penalties to prevent overfitting}}" (TOO LONG - more than 5 words!)
 
 CRITICAL FORMAT ERRORS TO AVOID:
 ❌ WRONG - Putting cloze in the back/answer:
@@ -553,7 +563,7 @@ CRITICAL FORMAT ERRORS TO AVOID:
 ❌ WRONG - Q&A format with cloze in answer:
 ## What is the probability of data in Bayesian inference?
 
-The equation {{c1::\\(p(\\mathcal{D})=\\int p(\\mathcal{D} | \\mathbf{w}) p(\\mathbf{w}) \\, \\mathrm{d} \\mathbf{w}\\)}} represents the probability.
+The marginal likelihood is {{c1::the integral over parameters}}.
 
 - #bayesian
 
@@ -563,13 +573,13 @@ The equation {{c1::\\(p(\\mathcal{D})=\\int p(\\mathcal{D} | \\mathbf{w}) p(\\ma
 - #visualization, #sigmoid
 
 ✅ CORRECT - Equation cloze all in front:
-## In Bayesian inference, the probability of data is given by {{c1::\\(p(\\mathcal{D})=\\int p(\\mathcal{D} | \\mathbf{w}) p(\\mathbf{w}) \\, \\mathrm{d} \\mathbf{w}\\)}}.
+## In Bayesian inference, the probability of data $p(\\mathcal{D})$ is computed using {{c1::marginalization}}.
 
 - #bayesian-inference, #probability
 
 GOOD alternatives for complex equations:
 - "The Gaussian distribution has the form \\[p(x|\\mu,\\sigma^2) = \\frac{1}{\\sqrt{2\\pi\\sigma^2}}e^{-\\frac{(x-\\mu)^2}{2\\sigma^2}}\\] where the normalization factor is {{c1::1/\\sqrt{2\\pi\\sigma^2}}}"
-- "In linear regression, we model \\(p(t|x,w,\\sigma^2) = \\mathcal{N}(t|y(x,w),\\sigma^2)\\), which means the target follows {{c1::a Gaussian distribution centered at the prediction y(x,w)}}"
+- "In linear regression, we model $p(t|x,w,\\sigma^2) = \\mathcal{N}(t|y(x,w),\\sigma^2)$, which means the target follows a {{c1::Gaussian distribution}} centered at the prediction y(x,w)"
 
 REGULAR Q&A CARD FORMAT (YOU MUST CREATE {num_cards} OF THESE):
 ## [MUST BE A QUESTION - start with What/How/Why/When/Which/Calculate/Explain/Compare]
@@ -640,10 +650,22 @@ CRITICAL REQUIREMENTS:
 1. YOU MUST generate EXACTLY {num_cloze} cloze deletion cards (with {{c1::...}} syntax)
 2. YOU MUST generate EXACTLY {num_cards} regular Q&A cards
 3. EVERY card MUST be completely self-contained - no external references
-4. EVERY card MUST have AT LEAST 2 meaningful tags on the "- #tag1, #tag2" line
+4. EVERY card MUST have EXACTLY ONE tag line with AT LEAST 2 meaningful tags:
+   - FORMAT: "- #tag1, #tag2" (standard format - with dash before hashtag)
+   - Alternative "#tag1, #tag2" also acceptable but not preferred
+   - Stay consistent within a document
+   - NEVER duplicate tags anywhere in the card
+   - NEVER add a second tag line
+   - If you see yourself writing tags twice, STOP and fix it
 5. Tags should be hierarchical when appropriate (e.g., #algorithms.sorting, #optimization.gradient-based)
    IMPORTANT: Use hyphens (-) instead of underscores (_) in tags: #machine-learning NOT #machine_learning
 6. Never start the question with the citation - it will be added automatically
+7. WRITING STYLE:
+   - Write in complete, flowing sentences that read naturally
+   - Avoid terse, choppy statements that sound robotic
+   - Use transitional phrases to connect ideas
+   - Minimize parenthetical statements - integrate information naturally
+   - Ensure content sounds good when read aloud for audio generation
 7. EDUCATIONAL VALUE - PRIORITIZE creating cards about:
    - KEY CONCEPTS AND FUNDAMENTAL PRINCIPLES from the document
    - Mathematical equations that are IMPORTANT for understanding the subject
@@ -652,18 +674,24 @@ CRITICAL REQUIREMENTS:
    - Statistical methods and their applications
    - Avoid trivial notation questions (e.g., "what is π?") - focus on concepts
 8. Use the document summary to identify WHAT'S IMPORTANT to teach
-9. Use MathJax format: \\(...\\) for inline math, \\[...\\] for display math
-10. NEVER use $ or $$ delimiters - Anki uses \\( \\) and \\[ \\]
+9. Use LaTeX format: $ for inline math, $$ for display math (will be converted to MathJax for Anki)
+10. ALWAYS wrap math in $ or $$ delimiters - never leave raw LaTeX commands unwrapped
 11. NEVER use LaTeX tables (\\\\begin{{tabular}})
-12. For cloze cards with math: If }} appears in your LaTeX, add a space before it
-    Example: {{c1::The formula \\(\\frac{a}{\\frac{b}{c} }\\) shows...}} (note the space before })
+12. CRITICAL for cloze + LaTeX: If ANY LaTeX/math ends with } inside cloze, add space before }}
+    Examples where space is REQUIRED:
+    - {{c1::\\mathbf{B}^{\\mathrm{T}} }} (ends with })
+    - {{c1::\\mathbf{A}^{-1} }} (ends with })
+    - {{c1::\\boldsymbol{\\Lambda} }} (ends with })
+    - {{c1::D + C A^{-1} B }} (ends with })
+    WRONG: {{c1::\\mathbf{B}^{\\mathrm{T}}}} (no space = broken rendering)
+    Example: {{c1::The formula $\\frac{a}{\\frac{b}{c} }$ shows...}} (note the space before })
 13. For cloze cards with :: in content: Use HTML comment
     Example: {{c1::std:<!-- -->:variant is a C++ feature}}
-14. For equation cloze cards: When referencing "the equation", include the ENTIRE equation in cloze
-    Example: "The equation {{c1::\\(E = mc^2\\)}} demonstrates..." NOT "The equation {{c1::E=mc²}} \\(E = mc^2\\)..."
+14. For equation cloze cards: NEVER put $ inside cloze deletions
+    Example: "The equation $E = {{c1::mc^2}}$ demonstrates..." NOT "The equation {{c1::$E = mc^2$}}"
 15. CRITICAL LaTeX/MathJax rules for cloze cards:
     - AVOID complex LaTeX inside cloze deletions - prefer simple expressions or conceptual answers
-    - NEVER use display math \\[...\\] inside cloze - use inline \\(...\\) only
+    - NEVER use display math $$ inside cloze - use inline $ only
     - For complex equations, put the cloze around the CONCEPT, not the formula
     - Add parentheses around expressions: "1 - \\cos" → "(1 - \\cos)"
     - Fix summation indices: NOT "\\sum_{i=1}}^{m}}" but "\\sum_{i=1}^{m}"
@@ -675,7 +703,9 @@ CRITICAL REQUIREMENTS:
 17. IMPORTANT: Focus on mathematical notation that MATTERS for understanding key concepts
 18. NEVER use generic tags like #equation, #formula, #definition, #concept, #method
     Use specific conceptual tags: #optimization.gradient-descent, #causal-inference.dag, #machine-learning.regularization
-    TAG FORMAT RULES: Use hyphens (-) not underscores (_) or spaces. #deep-learning NOT #deep_learning or #deep learning
+    TAG FORMAT RULES: 
+    - Use hyphens (-) not underscores (_) or spaces: #deep-learning NOT #deep_learning
+    - Both "- #tag1, #tag2" and "#tag1, #tag2" formats are valid
 19. ALWAYS define mathematical symbols within the card: "where h is a smooth function" not just "h(W) = 0"
 20. ALWAYS expand acronyms when first used: "NAS (Neural Architecture Search)" not just "NAS"
 21. For EVERY mathematical symbol or function (h, F, g_j, etc.), ensure the card defines what it represents
@@ -703,11 +733,15 @@ Start directly with the content without lengthy introductions.""",
 
 Guidelines:
 1. Begin directly with the main content - no lengthy introductions
-2. Use a professional, informative tone
+2. Use a professional, informative tone with natural flow
 3. Focus on key concepts and findings
 4. Avoid theatrical or overly dramatic language
 5. End concisely without extended conclusions
 6. Mention the citation key naturally at the beginning: {citation_key}
+7. Use smooth transitions between ideas - avoid choppy, terse sentences
+8. Write in a flowing, readable style that sounds natural when spoken
+9. Connect ideas with transitional phrases for better comprehension
+10. Avoid excessive parenthetical statements - integrate information naturally
 
 Content to present:
 {content}""",
@@ -954,12 +988,23 @@ Content to present:
 3. Generic tags (#equation vs #calculus.derivatives)
 4. Author-centric questions ("What is Smith's method?")
 5. Undefined mathematical symbols
-6. Rote memorization questions
-7. Educational relevance - does this help students learn KEY CONCEPTS?
+6. Raw LaTeX commands without $ delimiters (\\mathbf{A} should be $\\mathbf{A}$)
+7. Rote memorization questions
+8. Educational relevance - does this help students learn KEY CONCEPTS?
    - BAD: "In the equation sin(2πx), what does π represent?"
    - GOOD: "How does the Fourier transform decompose signals into frequency components?"
-8. Focus on fundamentals, not trivial notation details
-9. Answer revealed in question
+9. Focus on fundamentals, not trivial notation details
+10. Answer revealed in question
+11. Excessive parenthetical phrases (should be minimal)
+    - BAD: "The algorithm (which runs in O(n) time) processes data (from multiple sources)"
+    - GOOD: "The O(n) algorithm processes data from multiple sources"
+12. Choppy, terse writing that doesn't flow well
+    - BAD: "Neural networks learn patterns. They use backpropagation. This updates weights."
+    - GOOD: "Neural networks learn patterns through backpropagation, which updates the weights based on the error gradient."
+13. Poor readability for audio generation
+    - Check: Would this sound natural when read aloud?
+    - Use connecting words and transitions between concepts
+    - Ensure sentences flow logically from one to the next
 
 If ALL cards meet quality standards AND are educationally valuable, set done=True.
 Otherwise list specific issues with card numbers.""",
@@ -968,37 +1013,60 @@ Otherwise list specific issues with card numbers.""",
    - BAD: "How does X affect {{c1::Y}} in context Z?"
    - BAD: "What is the impact of {{c1::30 excess deaths}}?"
    - GOOD: "X affects Y in context Z by {{c1::specific mechanism}}"
-   - GOOD: "The term '30 excess deaths' means {{c1::30 more deaths than expected}}"
-2. NOT focusing on definitions and difficult concepts
-   - GOOD: Hiding what a term means or how a concept works
-   - BAD: Hiding random facts or simple values
-3. Educational relevance - does this help students learn KEY CONCEPTS?
+   - GOOD: "The term '30 excess deaths' means {{c1::30 more deaths}} than expected"
+2. CRITICAL: Cloze deletions that are TOO LONG (more than 5 words)
+   - BAD: {{c1::techniques that add constraints or penalties to prevent overfitting}}
+   - BAD: {{c1::computing gradients by applying the chain rule recursively}}
+   - GOOD: {{c1::L1 and L2 penalties}}
+   - GOOD: {{c1::chain rule}}
+3. NOT focusing on key terms and critical concepts
+   - GOOD: Hiding key terms or critical values (1-5 words)
+   - BAD: Hiding entire definitions or explanations
+4. Educational relevance - does this help students learn KEY CONCEPTS?
    - Focus on fundamental principles, not trivial details
    - Test understanding of important concepts from the document
-4. Cloze cards with additional questions after the cloze deletion
+5. Cloze cards with additional questions after the cloze deletion
    - BAD: "The algorithm is {{c1::O(n log n)}}. Why is this important?"
    - GOOD: "The algorithm has time complexity {{c1::O(n log n)}}"
-4. More than 1 cloze deletion per card (warning only)
-5. Math equations split across cloze markers
-6. Entire equations not inside cloze when referenced
-7. Testing memorization instead of understanding
-8. Missing or generic tags
-9. Malformed LaTeX/MathJax within cloze deletions:
-   - Missing parentheses around expressions (e.g., "1 - \\cos" should be "(1 - \\cos")
-   - Extra closing braces in summations/fractions
-   - Unbalanced braces or parentheses
-   - Incorrect MathJax delimiters
-10. CRITICAL: Display math \\[...\\] inside cloze deletions
-    - BAD: "\\[{{c1::equation}}\\]" or "{{c1::\\[equation\\]}}"
-    - GOOD: "{{c1::\\(equation\\)}}" for inline math
-11. CRITICAL: Multiline cloze deletions (cloze split across lines)
+6. More than 1 cloze deletion per card (warning only)
+7. Math equations split across cloze markers
+8. Entire equations inside cloze when only parts should be hidden
+9. Testing memorization instead of understanding
+10. Missing or generic tags, or duplicate tag lines:
+    - ACCEPTABLE: Both "- #tag1, #tag2" and "#tag1, #tag2" formats
+    - Check for duplicate tag lines (tags should appear ONCE at the end)
+    - Ensure tags are meaningful and specific, not generic
+11. CRITICAL: Nested dollar signs in cloze deletions:
+    - BAD: {{c1::$equation$}} or {{c1::$2x + 1$}}
+    - GOOD: {{c1::equation}} or $equation = {{c1::2x + 1}}$
+    - If math is already in $...$ context, don't add $ inside cloze
+12. CRITICAL: Missing space before }} when LaTeX ends with }:
+    - BAD: {{c1::\\mathbf{B}^{\\mathrm{T}}}} (causes garbled rendering!)
+    - GOOD: {{c1::\\mathbf{B}^{\\mathrm{T}} }} (space before }})
+    - Check ANY LaTeX expression ending with } inside cloze
+    - ALSO CHECK: No trailing spaces in LaTeX content itself
+    - BAD: {{c1::\\mathbf{b} }} (space after b in LaTeX)
+    - GOOD: {{c1::\\mathbf{b}}} then apply fix → {{c1::\\mathbf{b} }}
+13. Malformed LaTeX/MathJax within cloze deletions:
+    - Missing parentheses around expressions (e.g., "1 - \\cos" should be "(1 - \\cos")
+    - Extra closing braces in summations/fractions
+    - Unbalanced braces or parentheses
+    - CRITICAL: Incorrect spaces in LaTeX commands
+      * BAD: {{c1::\\frac{\\mathrm{d}}{\\mathrm{d} x} }} (space between d and x)
+      * GOOD: {{c1::\\frac{\\mathrm{d}}{\\mathrm{d}x} }} (no space in dx)
+      * BAD: \\mathrm{d} x (incorrect spacing)
+      * GOOD: \\mathrm{d}x (correct for differential)
+14. CRITICAL: Display math \\[...\\] inside cloze deletions
+    - BAD: "\\[{{c1::equation}}\\]" or "{{c1::\\[equation\\]}}" or "{{c1::$equation$}}"
+    - GOOD: "$equation$ with {{c1::key part}}" for inline math
+15. CRITICAL: Multiline cloze deletions (cloze split across lines)
     - Check if {{c1:: starts on one line but }} ends on another
-12. Complex LaTeX inside cloze - prefer conceptual answers
+16. Complex LaTeX inside cloze - prefer simple expressions
     - BAD: {{c1::complex multi-line equation}}
-    - GOOD: {{c1::a Gaussian distribution}} or {{c1::the normalization factor}}
+    - GOOD: {{c1::Gaussian}} or {{c1::1/\\sqrt{2\\pi\\sigma^2}}}
 
 Example of correct math cloze:
-"The equation {{c1::\\(E = mc^2\\)}} shows..." (simple inline math)
+"The equation $E = {{c1::mc^2}}$ shows..." (hide part of equation)
 "The Gaussian has normalization factor {{c1::1/\\sqrt{2\\pi\\sigma^2}}}" (simple part)
 "This represents {{c1::a conditional probability distribution}}" (conceptual)
 
@@ -1008,6 +1076,10 @@ If ALL cards are correct AND educationally valuable, set done=True.""",
 2. Image summaries that give away the answer
 3. Image markdown included in text
 4. Not testing understanding of concepts
+5. CRITICAL: Image cards should NEVER be cloze cards
+   - BAD: "The diagram shows {{c1::three stages}} of development"
+   - GOOD: "How many stages of development are shown in the diagram?"
+   - Image cards must be Q&A format only
 
 Good questions test WHY/HOW, not just WHAT is shown.
 If ALL cards meet standards, set done=True.""",
@@ -1079,25 +1151,39 @@ Use specific conceptual tags.""",
   * "How does X affect {{c1::Y}}?" → "X affects Y by {{c1::mechanism}}"
   * "What is the impact of {{c1::concept}}?" → "The impact of concept is {{c1::specific effect}}"
   * "Why does {{c1::phenomenon}} occur?" → "Phenomenon occurs because {{c1::reason}}"
+- CRITICAL: Shorten cloze deletions to 1-5 words maximum:
+  * If more than 5 words, extract the KEY TERM only
+  * "{{c1::techniques that prevent overfitting}}" → "{{c1::regularization techniques}}"
+  * "{{c1::computing gradients using chain rule}}" → "{{c1::chain rule}}"
+- CRITICAL: Fix nested math delimiters in cloze:
+  * If line is already in math mode ($...$), don't add $ inside cloze
+  * "$$A = {{c1::$B$}}$$" → "$$A = {{c1::B}}$$"
+  * "$f(x) = {{c1::$2x$}}$" → "$f(x) = {{c1::2x}}$"
 - Reduce to max 1 cloze deletion (split cards if needed)
-- Keep math equations together inside cloze markers
+- For equations: Hide PARTS, not the whole equation
 - Fix LaTeX/MathJax formatting:
+  * CRITICAL: Add space before }} if LaTeX ends with }: {{c1::\\mathbf{A}^{-1}}} → {{c1::\\mathbf{A}^{-1} }}
+  * Remove trailing spaces in LaTeX: {{c1::\\mathbf{b} }} → {{c1::\\mathbf{b}}} → {{c1::\\mathbf{b} }}
+  * Fix incorrect spaces in LaTeX: \\mathrm{d} x → \\mathrm{d}x (no space in differential)
   * Add missing parentheses: "1 - \\cos" → "(1 - \\cos)"
   * Fix double closing braces: "\\sum_{i=1}}^{m}}" → "\\sum_{i=1}^{m}"
   * Ensure balanced braces and parentheses
   * NEVER use display math \\[...\\] inside cloze - convert to inline \\(...)\\)
   * Join multiline cloze deletions into single lines
-- For complex equations, prefer conceptual cloze:
-  * BAD: {{c1::complex equation with many terms}}
-  * GOOD: The equation [show equation] represents {{c1::a Gaussian distribution}}
-- Avoid overly complex LaTeX in cloze - use simpler expressions or concepts
+- For complex equations, hide key parts only:
+  * BAD: {{c1::entire complex equation}}
+  * GOOD: The equation $E = mc^2$ shows {{c1::mass-energy equivalence}}
+- Keep cloze content simple - 1-5 words maximum
 - Ensure understanding-based questions
 - Add proper hierarchical tags""",
                         "image_cards": """Improve image cards to:
 - Test conceptual understanding
 - Avoid revealing answers in summaries
 - Remove any image markdown
-- Focus on WHY/HOW questions""",
+- Focus on WHY/HOW questions
+- CRITICAL: Convert any cloze cards to Q&A format
+  * Image cards must NEVER be cloze cards
+  * Use "What/How/Why" questions instead""",
                         # Card audio refinement prompts
                         "regular_card_audio": """Fix audio transcript for regular card:
 - Convert ALL math notation to natural language
@@ -1119,7 +1205,10 @@ BACK: Read COMPLETE text with cloze content revealed
 - Professional tone throughout
 - Natural citation key mention
 - Expand all acronyms
-- Focus on key findings""",
+- Focus on key findings
+- Ensure smooth transitions between sentences
+- Use flowing, natural language that sounds good when spoken
+- Avoid choppy, disconnected statements""",
                         "reading_audio": """Refine reading audio:
 - Complete document narration
 - Describe all figures/tables
@@ -1129,7 +1218,11 @@ BACK: Read COMPLETE text with cloze content revealed
 - Educational, not theatrical
 - Direct start, concise end
 - Clear explanations
-- Natural flow""",
+- Natural flow with smooth transitions
+- Write complete, well-connected sentences
+- Avoid terse, choppy delivery
+- Use transitional phrases to connect ideas
+- Ensure content flows naturally when spoken aloud""",
                     },
                 }
             },

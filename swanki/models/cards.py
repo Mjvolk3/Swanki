@@ -122,18 +122,36 @@ class CardContent(BaseModel):
                 "when masking the same concept appearing multiple times or tightly connected ideas."
             )
         
-        # Check cloze deletion length
+        # Check cloze deletion length and nested math delimiters
         if '{{c1::' in v:
             cloze_pattern = r'\{\{c\d+::([^}]+)\}\}'
             clozes = re.findall(cloze_pattern, v)
             for cloze_content in clozes:
-                # Skip if it's a math expression (contains $, \, or other math indicators)
-                if any(indicator in cloze_content for indicator in ['$', '\\', '^', '_', '{', '}']):
+                # Check for nested dollar signs in cloze (this causes rendering issues)
+                if cloze_content.startswith('$') and cloze_content.endswith('$'):
+                    raise ValueError(
+                        f"Cloze deletion contains nested math delimiters: {{{{c1::{cloze_content[:30]}...}}}}\n"
+                        f"When the entire line is already in math mode ($ or $$), don't add $ inside the cloze.\n"
+                        f"Example fixes:\n"
+                        f"  WRONG: $$A = {{{{c1::$B + C$}}}}$$\n"
+                        f"  RIGHT: $$A = {{{{c1::B + C}}}}$$\n"
+                        f"  WRONG: $f(x) = {{{{c1::$2x + 1$}}}}$\n"
+                        f"  RIGHT: $f(x) = {{{{c1::2x + 1}}}}$"
+                    )
+                
+                # Skip word count check if it's a math expression (contains \, or other math indicators)
+                if any(indicator in cloze_content for indicator in ['\\', '^', '_', '{', '}']):
                     continue
                 # Check word count for non-math clozes
                 word_count = len(cloze_content.split())
                 if word_count > 5:
-                    logger.warning(f"Cloze deletion '{cloze_content[:30]}...' has {word_count} words (recommended max: 5)")
+                    raise ValueError(
+                        f"Cloze deletion is too long ({word_count} words). Maximum is 5 words.\n"
+                        f"Content: '{cloze_content[:50]}...'\n"
+                        f"Shorten to key terms only. Example:\n"
+                        f"  WRONG: {{{{c1::techniques that add constraints or penalties to prevent overfitting}}}}\n"
+                        f"  RIGHT: {{{{c1::regularization techniques}}}}"
+                    )
         
         # Fix LaTeX/math conflicts within cloze deletions
         if '{{c1::' in v:
@@ -547,6 +565,46 @@ class PlainCard(BaseModel):
         return self
     
     @model_validator(mode='after')
+    def ensure_image_cards_not_cloze(self):
+        """Ensure cards with images are not cloze cards."""
+        # Check if this card has an image
+        has_image = (self.front.image_path is not None) or (self.back.image_path is not None)
+        
+        # Check if this is a cloze card
+        is_cloze = "{{c" in self.front.text or "{{c" in self.back.text
+        
+        if has_image and is_cloze:
+            # Try to convert cloze to Q&A format
+            import re
+            cloze_pattern = r'\{\{c\d+::([^}]+)\}\}'
+            
+            if "{{c" in self.front.text:
+                # Extract the cloze content
+                matches = re.findall(cloze_pattern, self.front.text)
+                if matches:
+                    # Convert to a question format
+                    base_text = re.sub(cloze_pattern, '____', self.front.text)
+                    # Change to a question
+                    if not base_text.endswith('?'):
+                        base_text = f"What fills the blank in: {base_text}?"
+                    self.front.text = base_text
+                    # Put the answer in the back if it's not already there
+                    if not self.back.text or self.back.text == " ":
+                        self.back.text = ", ".join(matches)
+                    
+                    logger.warning(f"Converted image cloze card to Q&A format: {self.front.text[:50]}...")
+            
+            # If still cloze after attempted fix, raise error
+            if "{{c" in self.front.text or "{{c" in self.back.text:
+                raise ValueError(
+                    "Image cards cannot be cloze cards. Use Q&A format instead.\n"
+                    f"Current front: {self.front.text[:50]}...\n"
+                    "Convert to a question like: 'What does the diagram show?'"
+                )
+        
+        return self
+    
+    @model_validator(mode='after')
     def fix_cloze_card_format(self):
         """Fix common cloze card formatting issues.
         
@@ -775,7 +833,7 @@ class PlainCard(BaseModel):
                 md += f"[audio-back]({back_uri})\n\n"
             
             if formatted_tags:
-                md += f"#{', #'.join(formatted_tags)}\n\n"
+                md += f"- #{', #'.join(formatted_tags)}\n\n"
         elif include_audio and front_uri and back_uri:
             # Regular cards with audio
             md = f"## {front_text}\n\n"
@@ -794,7 +852,7 @@ class PlainCard(BaseModel):
             
             md += f"{self.back.text}\n\n"
             if formatted_tags:
-                md += f"#{', #'.join(formatted_tags)}\n\n"
+                md += f"- #{', #'.join(formatted_tags)}\n\n"
         else:
             # VSCode Anki format without audio
             md = f"## {front_text}\n\n"
@@ -810,7 +868,7 @@ class PlainCard(BaseModel):
                 md += f"![Image]({self.back.image_path})\n\n"
             
             if formatted_tags:
-                md += f"#{', #'.join(formatted_tags)}\n\n"
+                md += f"- #{', #'.join(formatted_tags)}\n\n"
         
         return md
 
