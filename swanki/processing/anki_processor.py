@@ -225,9 +225,9 @@ class AnkiProcessor:
             is_cloze = "{{c" in card['front']
             model_name = "Cloze" if is_cloze else "Basic"
             
-            # Convert LaTeX dollar notation to MathJax for Anki
-            front_content = self._convert_latex_to_mathjax(card['front'])
-            back_content = self._convert_latex_to_mathjax(card['back'])
+            # Process content for Anki (handle audio and convert math)
+            front_content = self._prepare_for_anki(card['front'])
+            back_content = self._prepare_for_anki(card['back'])
             
             # Prepare fields
             if is_cloze:
@@ -504,10 +504,10 @@ class AnkiProcessor:
                     tags = tag_matches + tags  # Prepend to maintain order
                     body.pop()
                 elif last_line.startswith('- #'):
-                    # List format: - #tag
-                    tag_match = re.search(r'#([\w.-]+)', last_line)
-                    if tag_match:
-                        tags.insert(0, tag_match.group(1))
+                    # List format: - #tag1, #tag2 or - #tag
+                    tag_matches = re.findall(r'#([\w.-]+)', last_line)
+                    # Prepend all found tags to maintain order
+                    tags = tag_matches + tags
                     body.pop()
                 elif last_line == '':
                     # Empty line, continue checking
@@ -532,9 +532,8 @@ class AnkiProcessor:
             # Split front/back
             front, back = self._split_front_back(heading, body)
             
-            # Process math and media
-            front = self._process_content(front)
-            back = self._process_content(back)
+            # Don't process content here - just keep raw markdown
+            # Processing will happen later when converting for Anki
             
             if tags:
                 logger.info(f"Extracted card with tags: {tags}")
@@ -607,16 +606,99 @@ class AnkiProcessor:
         
         return front, back
     
+    def _prepare_for_anki(self, text: str) -> str:
+        """Prepare markdown content for Anki.
+        
+        Handles:
+        1. Extract and convert audio links
+        2. Convert LaTeX to MathJax notation
+        3. Fix cloze issues
+        4. Convert markdown formatting to HTML
+        """
+        if not text:
+            return text
+            
+        # Step 1: Extract audio links BEFORE any processing
+        audio_front_match = re.search(r'\[audio-front\]\(([^)]+)\)', text)
+        audio_back_match = re.search(r'\[audio-back\]\(([^)]+)\)', text)
+        
+        # Remove audio links from text temporarily
+        text_without_audio = text
+        if audio_front_match:
+            text_without_audio = text_without_audio.replace(audio_front_match.group(0), '')
+        if audio_back_match:
+            text_without_audio = text_without_audio.replace(audio_back_match.group(0), '')
+        
+        # Step 2: Process the content (math, cloze, etc.)
+        processed = self._process_content(text_without_audio.strip())
+        
+        # Step 3: Add audio links back at the END in Anki format
+        # Add BOTH front and back audio if they exist
+        if audio_front_match:
+            audio_file = os.path.basename(audio_front_match.group(1))
+            processed = f"{processed}\n\n[sound:{audio_file}]"
+        if audio_back_match:  # Changed from elif to if to process both
+            audio_file = os.path.basename(audio_back_match.group(1))
+            processed = f"{processed}\n\n[sound:{audio_file}]"
+            
+        return processed
+        
     def _process_content(self, text: str) -> str:
-        """Process math and media in content."""
+        """Process math and media in content (without audio - handled separately)."""
         # Remove code fences around math
         text = MATH_FENCE_RE.sub(lambda m: m.group(1), text)
         
-        # Fix problematic cloze deletions
+        # Only detect truly raw LaTeX - not already in MathJax delimiters
+        # This should rarely trigger if generation is working correctly
+        # Pattern: LaTeX command NOT preceded by \( or $ and NOT followed by common math context
+        raw_latex_pattern = r'(?<![\\\$\(])(\\(?:mathbf|mathbb|mathrm|mathcal|operatorname|frac|sqrt|sum|prod|int|lambda|alpha|beta|gamma|delta|epsilon|sigma|theta|phi|psi|omega|Omega|Delta|Sigma|Pi|Lambda|Gamma)\{[^}]+\})'
+        
+        # Count how many we find for debugging
+        raw_matches = re.findall(raw_latex_pattern, text)
+        if raw_matches and len(raw_matches) <= 5:  # Only warn for a few, not hundreds
+            for match in raw_matches[:5]:
+                logger.warning(f"Found potentially raw LaTeX: {match[:30]}...")
+        
+        # Don't auto-wrap anymore - the warnings are enough
+        # If we're getting these warnings, the issue is in generation, not processing
+        
+        # Fix problematic cloze deletions (including pipe characters)
         text = self._fix_cloze_issues(text)
+        
+        # Also fix pipe characters in math outside of cloze (for determinants, absolute values)
+        # This prevents markdown table parsing issues
+        # Only convert pipes that are clearly in math context
+        def fix_math_pipes(text):
+            # Pattern to find inline math $...$ and display math $$...$$
+            inline_math_pattern = r'(?<!\$)\$(?!\$)([^$]+)\$(?!\$)'
+            display_math_pattern = r'\$\$([^$]+)\$\$'
+            
+            def replace_pipes_in_math(match):
+                math_content = match.group(1)
+                # Replace | with \vert for LaTeX compatibility
+                if '|' in math_content:
+                    math_content = math_content.replace('|', '\\vert ')
+                # Return with original delimiters
+                if match.group(0).startswith('$$'):
+                    return f'$${math_content}$$'
+                else:
+                    return f'${math_content}$'
+            
+            # Fix pipes in display math first (to avoid inline pattern matching parts of display)
+            text = re.sub(display_math_pattern, replace_pipes_in_math, text, flags=re.DOTALL)
+            # Then fix pipes in inline math
+            text = re.sub(inline_math_pattern, replace_pipes_in_math, text)
+            
+            return text
+        
+        text = fix_math_pipes(text)
         
         # Convert markdown tables to HTML (before code blocks to avoid converting tables in code)
         text = self._convert_markdown_tables_to_html(text)
+        
+        # Convert markdown lists to HTML for proper Anki rendering
+        # This ensures bullet points are displayed correctly
+        text = self._convert_markdown_lists_to_html(text)
         
         # Convert markdown code blocks to HTML for better Anki rendering
         # This preserves syntax highlighting in Anki
@@ -635,11 +717,11 @@ class AnkiProcessor:
         text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
         
         # Convert markdown math to MathJax
+        # For display math, use DOTALL to allow multiline equations
         text = re.sub(r"\$\$(.*?)\$\$", r"\\[\1\\]", text, flags=re.DOTALL)
-        text = re.sub(r"(?<!\$)\$(?!\$)(.*?)(?<!\$)\$(?!\$)", r"\\(\1\\)", text, flags=re.DOTALL)
-        
-        # Convert audio links to Anki format
-        text = AUDIO_LINK_RE.sub(lambda m: f"[sound:{os.path.basename(m.group(1))}]", text)
+        # For inline math, DON'T use DOTALL to prevent matching across lines
+        # This prevents audio links from being caught inside math delimiters
+        text = re.sub(r"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)", r"\\(\1\\)", text)
         
         # Convert image links to HTML
         def replace_image(match):
@@ -750,6 +832,37 @@ class AnkiProcessor:
         
         text = re.sub(multiline_cloze_pattern, fix_multiline_cloze, text, flags=re.DOTALL)
         
+        # Fix pipe characters (|) in cloze deletions for determinant notation
+        # These interfere with markdown table parsing and Anki rendering
+        # Look for cloze deletions that contain pipes (including those with math)
+        # Use a non-greedy match to properly capture content between {{ and }}
+        cloze_with_pipes_pattern = r'{{(c\d+::)(.*?)}}'
+        
+        def fix_pipes_in_cloze(match):
+            cloze_marker = match.group(1)
+            content = match.group(2)
+            
+            # Only process if there are pipes in the content
+            if '|' not in content:
+                return match.group(0)
+            
+            # Check if the pipes are within math context
+            # Look for common math indicators
+            # This prevents markdown table parsing issues
+            math_indicators = ['$', '\\(', '\\[', '\\mathbf', '\\lambda', '\\mathbb', 
+                             '\\mathrm', '\\frac', '\\partial', 'matrix', 'det']
+            
+            # Check if any math indicator is present
+            is_math = any(indicator in content for indicator in math_indicators)
+            
+            # Convert pipes to \vert for LaTeX/MathJax compatibility
+            # This works for both determinants and absolute values
+            fixed_content = content.replace('|', '\\vert ')
+            
+            return f'{{{{{cloze_marker}{fixed_content}}}}}'
+        
+        text = re.sub(cloze_with_pipes_pattern, fix_pipes_in_cloze, text)
+        
         # Fix display math inside cloze deletions
         # Pattern: {{c1::\[...\]}} or \[{{c1::...}}\]
         display_math_in_cloze = r'{{(c\d+::)\\\[(.*?)\\\]}}' 
@@ -768,8 +881,11 @@ class AnkiProcessor:
         text = re.sub(cloze_in_display_math, fix_cloze_in_display, text, flags=re.DOTALL)
         
         # Fix LaTeX issues inside cloze
-        # Add spaces before }} to avoid LaTeX conflicts
-        text = re.sub(r'({{c\d+::.*?)}}(?=})', r'\1 }}', text)
+        # Add spaces before }} to avoid LaTeX conflicts with cloze terminator
+        # This is CRITICAL per Anki documentation - when LaTeX ends with }, need space before }}
+        # Simply look for }}} pattern (LaTeX } followed by cloze }}) and add space
+        # This pattern is: any character that's a } followed by }}
+        text = re.sub(r'}}}', r'} }}', text)
         
         return text
     
@@ -801,6 +917,68 @@ class AnkiProcessor:
         text = re.sub(r'\s+\\mathrm{d}', r'\\,\\mathrm{d}', text)  # Add thin space before differentials
         
         return text
+    
+    def _convert_markdown_lists_to_html(self, text: str) -> str:
+        """Convert markdown lists to HTML for better Anki rendering.
+        
+        Converts both unordered (- or *) and ordered (1. 2. etc) lists to HTML.
+        This ensures proper spacing and indentation in Anki.
+        
+        Parameters
+        ----------
+        text : str
+            Text containing markdown lists
+            
+        Returns
+        -------
+        str
+            Text with lists converted to HTML
+        """
+        lines = text.split('\n')
+        result = []
+        in_ul = False
+        in_ol = False
+        
+        for line in lines:
+            # Check for unordered list item
+            if re.match(r'^[-*]\s+', line):
+                if not in_ul:
+                    if in_ol:
+                        result.append('</ol>')
+                        in_ol = False
+                    result.append('<ul>')
+                    in_ul = True
+                # Extract the list item content
+                item_content = re.sub(r'^[-*]\s+', '', line)
+                result.append(f'<li>{item_content}</li>')
+            # Check for ordered list item
+            elif re.match(r'^\d+\.\s+', line):
+                if not in_ol:
+                    if in_ul:
+                        result.append('</ul>')
+                        in_ul = False
+                    result.append('<ol>')
+                    in_ol = True
+                # Extract the list item content
+                item_content = re.sub(r'^\d+\.\s+', '', line)
+                result.append(f'<li>{item_content}</li>')
+            else:
+                # Not a list item - close any open lists
+                if in_ul:
+                    result.append('</ul>')
+                    in_ul = False
+                if in_ol:
+                    result.append('</ol>')
+                    in_ol = False
+                result.append(line)
+        
+        # Close any remaining open lists
+        if in_ul:
+            result.append('</ul>')
+        if in_ol:
+            result.append('</ol>')
+        
+        return '\n'.join(result)
     
     def _convert_markdown_tables_to_html(self, text: str) -> str:
         """Convert markdown tables to HTML for Anki rendering.
