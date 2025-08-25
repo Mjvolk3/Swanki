@@ -23,3 +23,7 @@ Example
 ## Code Execution
 
 - ~/opt/miniconda3/envs/swanki/bin/Swanki python script.py
+
+## Change Log
+
+- This is automatically updated. Don't edit it directly.
