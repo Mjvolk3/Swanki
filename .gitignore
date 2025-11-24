@@ -9,6 +9,7 @@ node_modules
 
 swanki-out/*
 __pycache__
+*.pyc
 /*.pdf
 
 # Python packaging
