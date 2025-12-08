@@ -785,7 +785,7 @@ Content to present:
                     },
                     "tts": {
                         "provider": "elevenlabs",
-                        "voice_id": "21m00Tcm4TlvDq8ikWAM",  # Rachel
+                        "voice_id": "onwK4e9ZLuTAKqWW03F9",  # Daniel
                         "model": "eleven_monolingual_v2",
                         "stability": 0.5,
                         "similarity_boost": 0.5,
@@ -1005,6 +1005,11 @@ Content to present:
     - Check: Would this sound natural when read aloud?
     - Use connecting words and transitions between concepts
     - Ensure sentences flow logically from one to the next
+14. CRITICAL Length Validation:
+    - Check if any card BACK text exceeds 500 characters (HARD LIMIT - will cause validation failure)
+    - Count actual characters in the back/answer field
+    - If ANY card exceeds 500 chars, flag it as FAILING validation with the exact character count
+    - Suggest shortening verbose answers to focus on key points only (aim for 200-400 chars)
 
 If ALL cards meet quality standards AND are educationally valuable, set done=True.
 Otherwise list specific issues with card numbers.""",
@@ -1069,6 +1074,12 @@ Example of correct math cloze:
 "The equation $E = {{c1::mc^2}}$ shows..." (hide part of equation)
 "The Gaussian has normalization factor {{c1::1/\\sqrt{2\\pi\\sigma^2}}}" (simple part)
 "This represents {{c1::a conditional probability distribution}}" (conceptual)
+
+17. Back content length validation:
+    - Cloze card backs should be MINIMAL (ideally empty, max 100 characters)
+    - If back content exceeds 100 characters, flag as an issue
+    - Front content (including the full text with cloze) should stay under 500 chars total
+    - Count characters and report if exceeding limits
 
 If ALL cards are correct AND educationally valuable, set done=True.""",
                         "image_cards": """Check these image-based cards:
@@ -1144,7 +1155,14 @@ If lecture is educational and clear, set done=True.""",
                         "regular_cards": """Fix ALL the issues identified in the feedback.
 Maintain the same number of cards.
 Ensure every card is self-contained.
-Use specific conceptual tags.""",
+Use specific conceptual tags.
+- CRITICAL: Shorten any card backs exceeding 500 characters:
+  * Remove verbose explanations and redundant phrases
+  * Keep only essential information (aim for 200-400 characters)
+  * Split into multiple cards if a concept needs more comprehensive coverage
+  * Focus on clarity and conciseness - cut unnecessary words
+  * Example: "The algorithm works by first initializing variables, then iterating..." → "The algorithm initializes variables and iterates..."
+""",
                         "cloze_cards": """Fix ALL cloze card issues:
 - CRITICAL: Convert questions to statements:
   * If card ends with '?', rewrite as a statement

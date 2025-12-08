@@ -3,13 +3,17 @@
     "allow": [
       "Read(*.py)",
       "Read(*.md)",
+      "Read(*.yaml)",
       "Read(*.txt)",
       "Write(*.py)",
       "Bash(mkdir:*)",
       "Bash(ls:*)",
       "Grep(*.py)",
       "Grep(*.md)",
-      "Grep(*.__log__)"
+      "Grep(*.__log__)",
+      "Search(*.py)",
+      "Search(*.md)",
+      "Search(*.py)"
     ]
   },
   "enableAllProjectMcpServers": false
