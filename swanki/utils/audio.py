@@ -314,22 +314,33 @@ def generate_card_transcript(
     
     if is_front:
         if is_cloze:
+            # Build system prompt based on whether card has an image
+            if image_summary_for_audio:
+                image_instructions = (
+                    "3. If the content includes 'Image description:' at the end, you MUST read it\n"
+                    "   - Image description ALWAYS comes AFTER the main content\n"
+                    "   - Read the image description exactly as provided\n"
+                    "   - Only convert LaTeX/math notation to speakable form if present\n"
+                    "4. Read ALL content in order: main cloze text first, then image description (if present)\n"
+                    "5. The image description is crucial for audio-only learners - never skip it\n"
+                    "6. CRITICAL: Image cards should NEVER be cloze cards (this is validated elsewhere)\n"
+                )
+            else:
+                image_instructions = (
+                    "3. This card has NO IMAGE - do not generate, imagine, or describe any images\n"
+                    "4. Only read the text content provided - nothing more\n"
+                )
+
             system_content = (
-                "Convert this text to natural speech for audio. "
+                "Read this text exactly as written for audio. "
                 "CRITICAL INSTRUCTIONS:\n"
                 "1. Say 'blank' exactly where it appears in the text\n"
                 "2. Do NOT try to figure out what the blank should be\n"
-                "3. If the content includes 'Image description:' at the end, you MUST read and humanize it\n"
-                "   - Image description ALWAYS comes AFTER the main content\n"
-                "   - Convert technical descriptions to natural language\n"
-                "   - Describe visual elements in a way that helps audio-only learners\n"
-                "   - Make the description conversational and clear\n"
-                "4. Read ALL content in order: main cloze text first, then image description (if present)\n"
-                "5. The image description is crucial for audio-only learners - never skip it\n"
-                "6. CRITICAL: Image cards should NEVER be cloze cards (this is validated elsewhere)\n"
+                f"{image_instructions}"
                 "\n"
-                "For mathematical expressions:\n"
-                "- Read them naturally as a mathematician would\n"
+                "FORBIDDEN: Do NOT paraphrase, expand, elaborate, or explain the content\n"
+                "\n"
+                "For mathematical expressions, convert LaTeX notation to speakable form:\n"
                 "- Fractions: \\frac{a}{b} as 'a over b', \\frac{1}{2} as 'one half'\n"
                 "- Summations: \\sum_{i=1}^n as 'sum from i equals 1 to n'\n"
                 "- Products: \\prod_{i=1}^n as 'product from i equals 1 to n'\n"
@@ -349,30 +360,41 @@ def generate_card_transcript(
                 "- \\text{} contents should be read normally\n"
                 "- Matrix notation: X_1 to X_6 as 'X one to X six'\n"
                 "- Greek letters: \\alpha as 'alpha', \\beta as 'beta', \\mathbf{w} as 'bold omega', etc.\n"
-                "- Complex expressions: Break down step by step, e.g., E(\\mathbf{w})=\\frac{1}{2}\\sum_{n=1}^N\\{y(x_n,\\mathbf{w})-t_n\\}^2 as 'E of vector w equals one half times the sum from n equals 1 to N of the quantity y of x sub n and vector w minus t sub n, all squared'\n"
                 "\n"
-                "Remember: Include ALL content, especially image descriptions"
+                "Remember: Include ALL content exactly as provided, especially image descriptions"
             )
         else:
+            # Build system prompt based on whether card has an image
+            if image_summary_for_audio:
+                image_instructions = (
+                    "3. 'Image description:' ALWAYS appears at the end - read it exactly as provided:\n"
+                    "   - Read the image description verbatim\n"
+                    "   - Only convert LaTeX/math notation to speakable form if present\n"
+                    "4. DO NOT answer the question or provide explanations\n"
+                    "5. DO NOT skip the image description - it's crucial for audio-only learners\n"
+                    "6. NEVER read tags (lines starting with # or - #)\n"
+                    "\n"
+                    "Example structure: [Question as written]. [Image description as provided]\n"
+                )
+            else:
+                image_instructions = (
+                    "3. This card has NO IMAGE - do not generate, imagine, or describe any images\n"
+                    "4. DO NOT answer the question or provide explanations\n"
+                    "5. NEVER read tags (lines starting with # or - #)\n"
+                    "\n"
+                    "Example structure: [Question as written]\n"
+                )
+
             system_content = (
-                "Convert this flashcard QUESTION to natural speech for audio. "
+                "Read this flashcard QUESTION exactly as written for audio. "
                 "CRITICAL INSTRUCTIONS:\n"
                 "1. This is the FRONT of a flashcard - read ALL content IN THE EXACT ORDER PROVIDED\n"
                 "2. DO NOT rearrange the content - read it exactly as given\n"
-                "3. 'Image description:' ALWAYS appears at the end - read it there and humanize it:\n"
-                "   - Convert technical descriptions to natural language\n"
-                "   - Describe visual elements in a way that helps audio-only learners\n"
-                "   - Make the description conversational and clear\n"
-                "4. DO NOT answer the question or provide explanations\n"
-                "5. DO NOT skip the image description - it's crucial for audio-only learners\n"
-                "6. NEVER read tags (lines starting with # or - #)\n"
+                f"{image_instructions}"
                 "\n"
-                "Example structure: [Question as written]. [Humanized image description if present]\n"
+                "FORBIDDEN: Do NOT paraphrase, expand, answer, explain, or elaborate on the question\n"
                 "\n"
-                "FORBIDDEN: Do not answer, explain, or elaborate on the question\n"
-                "\n"
-                "For mathematical expressions:\n"
-                "- Read them naturally as a mathematician would\n"
+                "For mathematical expressions, convert LaTeX notation to speakable form:\n"
                 "- Subscripts: X_j as 'X sub j', X_{parent} as 'X sub parent', X_i as 'X sub i'\n"
                 "- Superscripts: X^2 as 'X squared', X^n as 'X to the n'\n"
                 "- E[X | Y] as 'expected value of X given Y'\n"
@@ -388,21 +410,22 @@ def generate_card_transcript(
                 "- Matrix notation: X_1 to X_6 as 'X one to X six'\n"
                 "- \\sum as 'sum', \\prod as 'product', \\int as 'integral'\n"
                 "- Greek letters: \\alpha as 'alpha', \\beta as 'beta', etc.\n"
-                "- Parentheses in math: read naturally, e.g., \\(F(W)\\) as 'F of W'\n"
+                "- Parentheses in math: \\(F(W)\\) as 'F of W'\n"
                 "\n"
-                "Remember: This is a QUESTION only - do not provide the answer!"
+                "Remember: This is a QUESTION only - read it verbatim, do not provide the answer!"
             )
     else:  # Back of card
         if is_cloze:
             system_content = (
-                "Read this complete text naturally for audio. "
+                "Read this complete text exactly as written for audio. "
                 "This is the ANSWER that reveals what was hidden in the blanks. "
                 "IMPORTANT: The text has already been processed to remove cloze markers. "
                 "Do NOT say 'blank' - read all the words that are present. "
                 "Read it as a complete statement with all words revealed.\n\n"
+                "FORBIDDEN: Do NOT paraphrase, expand, elaborate, or explain the content\n\n"
                 "CRITICAL: Convert ALL mathematical notation to spoken form:\n"
                 "- \\(F(W)\\) → 'F of W'\n"
-                "- \\(h(W)=0\\) → 'h of W equals zero'\n" 
+                "- \\(h(W)=0\\) → 'h of W equals zero'\n"
                 "- \\(E[X_j \\mid X_{pa(j)}]\\) → 'expected value of X sub j given X sub parent of j'\n"
                 "- \\(g_j(f_j(X))\\) → 'g sub j of f sub j of X'\n"
                 "- \\(\\mathbb{E}[X_j \\mid X_{pa(j)}]\\) → 'expected value of X sub j given X sub parent of j'\n"
@@ -414,19 +437,30 @@ def generate_card_transcript(
                 "- Greek letters: \\alpha as 'alpha', \\beta as 'beta', etc.\n"
             )
         else:
+            # Build system prompt based on whether card has an image
+            if image_summary_for_audio:
+                image_instructions = (
+                    "3. 'Image description:' ALWAYS appears at the end - read it exactly as provided:\n"
+                    "   - Read the image description verbatim\n"
+                    "   - Only convert LaTeX/math notation to speakable form if present\n"
+                    "4. CRITICAL: NEVER read tags (lines starting with # or - #)\n"
+                )
+            else:
+                image_instructions = (
+                    "3. This card has NO IMAGE - do not generate, imagine, or describe any images\n"
+                    "4. CRITICAL: NEVER read tags (lines starting with # or - #)\n"
+                )
+
             system_content = (
-                "Convert this answer to natural speech for audio. "
+                "Read this answer exactly as written for audio. "
                 "CRITICAL INSTRUCTIONS:\n"
                 "1. Read ALL content IN THE EXACT ORDER PROVIDED\n"
                 "2. DO NOT rearrange the content - read it exactly as given\n"
-                "3. 'Image description:' ALWAYS appears at the end - read it there and humanize it:\n"
-                "   - Convert technical descriptions to natural language\n"
-                "   - Describe visual elements in a way that helps audio-only learners\n"
-                "   - Humanize any mathematical notation in the description\n"
-                "4. CRITICAL: NEVER read tags (lines starting with # or - #)\n"
+                f"{image_instructions}"
                 "\n"
-                "For mathematical expressions:\n"
-                "- Read them naturally as a mathematician would\n"
+                "FORBIDDEN: Do NOT paraphrase, expand, elaborate, or explain the content\n"
+                "\n"
+                "For mathematical expressions, convert LaTeX notation to speakable form:\n"
                 "- Fractions: \\frac{a}{b} as 'a over b', \\frac{1}{2} as 'one half'\n"
                 "- Summations: \\sum_{i=1}^n as 'sum from i equals 1 to n'\n"
                 "- Products: \\prod_{i=1}^n as 'product from i equals 1 to n'\n"
@@ -446,8 +480,6 @@ def generate_card_transcript(
                 "- \\text{} contents should be read normally\n"
                 "- Matrix notation: X_1 to X_6 as 'X one to X six'\n"
                 "- Greek letters: \\alpha as 'alpha', \\beta as 'beta', \\mathbf{w} as 'bold omega', etc.\n"
-                "- Complex expressions: Break down step by step, e.g., E(\\mathbf{w})=\\frac{1}{2}\\sum_{n=1}^N\\{y(x_n,\\mathbf{w})-t_n\\}^2 as 'E of vector w equals one half times the sum from n equals 1 to N of the quantity y of x sub n and vector w minus t sub n, all squared'\n"
-                "- Use context to determine proper reading"
             )
     
     # Handle chunks for long content
@@ -1055,9 +1087,8 @@ def generate_summary_audio(
                 
         except Exception as e:
             logger.warning(f"Attempt {attempt + 1}: Error generating summary transcript: {e}")
-        
+
         if attempt < max_retries - 1:
-            import time
             time.sleep(2 ** attempt)
     
     if not transcript:

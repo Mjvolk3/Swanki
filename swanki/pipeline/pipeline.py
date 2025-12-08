@@ -820,7 +820,7 @@ Generate {adjusted_num_cards} regular Q&A cards now. Focus on the actual subject
             messages=[
                 {
                     "role": "system",
-                    "content": "Generate ONLY regular Q&A flashcards. Do NOT create any cloze deletion cards.\n\nCRITICAL: ALL mathematical variables, symbols, and expressions MUST be wrapped in LaTeX delimiters using $ for inline math. For example: $W$, $X_j$, $h(W) = 0$, $W_{ji} \\neq 0$. NEVER write bare mathematical symbols without LaTeX."
+                    "content": "Generate ONLY regular Q&A flashcards. Do NOT create any cloze deletion cards.\n\nCRITICAL LENGTH REQUIREMENT:\n- Card answers (back) MUST be under 500 characters (HARD LIMIT - validation will fail otherwise)\n- Aim for 200-400 characters for optimal learning\n- Be concise and focus on key points only\n- Remove verbose explanations and unnecessary words\n\nCRITICAL: ALL mathematical variables, symbols, and expressions MUST be wrapped in LaTeX delimiters using $ for inline math. For example: $W$, $X_j$, $h(W) = 0$, $W_{ji} \\neq 0$. NEVER write bare mathematical symbols without LaTeX."
                 },
                 {
                     "role": "user",
@@ -835,8 +835,9 @@ Generate {adjusted_num_cards} regular Q&A cards now. Focus on the actual subject
             ),
         )
         
-        # Generate cloze cards separately
-        cloze_prompt = f"""Generate EXACTLY {adjusted_cloze_cards} cloze deletion flashcards from the main content.
+        # Generate cloze cards separately (only if requested)
+        if adjusted_cloze_cards > 0:
+            cloze_prompt = f"""Generate EXACTLY {adjusted_cloze_cards} cloze deletion flashcards from the main content.
 
 Content provided:
 {combined_content}
@@ -903,32 +904,35 @@ BAD Examples (AVOID):
 REMEMBER: EVERY cloze card MUST have tags just like regular cards!
 Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formulas, and facts from the actual content."""
 
-        # Configure retries for validation errors
-        cloze_response = self.instructor.chat.completions.create(
-            model=llm_config.get("model", "gpt-4"),
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Generate ONLY cloze deletion flashcards using {{c1::text}} syntax.\n\nCRITICAL LaTeX RULES:\n1. ALL mathematical variables and expressions MUST use LaTeX with $ delimiters\n2. When math is NOT inside cloze markers, wrap it properly: $W$, $X_j$, $h(W) = 0$\n3. When math IS inside cloze markers, still use LaTeX: {{c1::$E = mc^2$}}\n4. NEVER write bare math symbols without LaTeX (WRONG: W, X_j, W_{ji})"
-                },
-                {
-                    "role": "user",
-                    "content": cloze_prompt
-                }
-            ],
-            response_model=CardGenerationResponse,
-            max_retries=Retrying(
-                stop=stop_after_attempt(3),
-                wait=wait_exponential(multiplier=1, min=4, max=10),
-                reraise=True
-            ),
-        )
-        
+            # Configure retries for validation errors
+            cloze_response = self.instructor.chat.completions.create(
+                model=llm_config.get("model", "gpt-4"),
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Generate ONLY cloze deletion flashcards using {{c1::text}} syntax.\n\nCRITICAL LENGTH REQUIREMENT:\n- Cloze card BACKS should be MINIMAL (ideally empty, max 100 characters)\n- Front content (full text with cloze) must stay under 500 characters total\n- Keep content concise - cloze cards are meant to be brief\n\nCRITICAL LaTeX RULES:\n1. ALL mathematical variables and expressions MUST use LaTeX with $ delimiters\n2. When math is NOT inside cloze markers, wrap it properly: $W$, $X_j$, $h(W) = 0$\n3. When math IS inside cloze markers, still use LaTeX: {{c1::$E = mc^2$}}\n4. NEVER write bare math symbols without LaTeX (WRONG: W, X_j, W_{ji})"
+                    },
+                    {
+                        "role": "user",
+                        "content": cloze_prompt
+                    }
+                ],
+                response_model=CardGenerationResponse,
+                max_retries=Retrying(
+                    stop=stop_after_attempt(3),
+                    wait=wait_exponential(multiplier=1, min=4, max=10),
+                    reraise=True
+                ),
+            )
+        else:
+            # No cloze cards requested - set to None
+            cloze_response = None
+
         # Apply self-refine if enabled
         refinement_config = self.config.get("refinement", {}).get("refinement", {})
         if refinement_config.get("enabled", False):
             logger.info("Applying self-refine to improve card quality...")
-            
+
             # Refine regular cards
             if regular_response.cards and "regular" in refinement_config.get("content_types", ["regular", "cloze"]):
                 regular_response = self._self_refine_cards(
@@ -936,17 +940,17 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
                     doc_summary,
                     "regular"
                 )
-            
-            # Refine cloze cards
-            if cloze_response.cards and "cloze" in refinement_config.get("content_types", ["regular", "cloze"]):
+
+            # Refine cloze cards (only if they were generated)
+            if cloze_response and cloze_response.cards and "cloze" in refinement_config.get("content_types", ["regular", "cloze"]):
                 cloze_response = self._self_refine_cards(
                     cloze_response,
                     doc_summary,
                     "cloze"
                 )
-        
+
         # Combine responses
-        all_cards = regular_response.cards + cloze_response.cards
+        all_cards = regular_response.cards + (cloze_response.cards if cloze_response else [])
 
         # Debug: Check what cards were generated
         regular_cards = [c for c in all_cards if "{{c" not in c.front.text]
@@ -1406,7 +1410,7 @@ Generate {adjusted_num_cards} regular Q&A cards now. Focus on the actual subject
                 messages=[
                     {
                         "role": "system",
-                        "content": "Generate ONLY regular Q&A flashcards. Do NOT create any cloze deletion cards.\n\nCRITICAL: ALL mathematical variables, symbols, and expressions MUST be wrapped in LaTeX delimiters using $ for inline math. For example: $W$, $X_j$, $h(W) = 0$, $W_{ji} \\neq 0$. NEVER write bare mathematical symbols without LaTeX."
+                        "content": "Generate ONLY regular Q&A flashcards. Do NOT create any cloze deletion cards.\n\nCRITICAL LENGTH REQUIREMENT:\n- Card answers (back) MUST be under 500 characters (HARD LIMIT - validation will fail otherwise)\n- Aim for 200-400 characters for optimal learning\n- Be concise and focus on key points only\n- Remove verbose explanations and unnecessary words\n\nCRITICAL: ALL mathematical variables, symbols, and expressions MUST be wrapped in LaTeX delimiters using $ for inline math. For example: $W$, $X_j$, $h(W) = 0$, $W_{ji} \\neq 0$. NEVER write bare mathematical symbols without LaTeX."
                     },
                     {
                         "role": "user",
@@ -1495,7 +1499,7 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
                 messages=[
                     {
                         "role": "system",
-                        "content": "Generate ONLY cloze deletion flashcards using {{c1::text}} syntax.\n\nCRITICAL LaTeX RULES:\n1. ALL mathematical variables and expressions MUST use LaTeX with $ delimiters\n2. When math is NOT inside cloze markers, wrap it properly: $W$, $X_j$, $h(W) = 0$\n3. When math IS inside cloze markers, still use LaTeX: {{c1::$E = mc^2$}}\n4. NEVER write bare math symbols without LaTeX (WRONG: W, X_j, W_{ji})"
+                        "content": "Generate ONLY cloze deletion flashcards using {{c1::text}} syntax.\n\nCRITICAL LENGTH REQUIREMENT:\n- Cloze card BACKS should be MINIMAL (ideally empty, max 100 characters)\n- Front content (full text with cloze) must stay under 500 characters total\n- Keep content concise - cloze cards are meant to be brief\n\nCRITICAL LaTeX RULES:\n1. ALL mathematical variables and expressions MUST use LaTeX with $ delimiters\n2. When math is NOT inside cloze markers, wrap it properly: $W$, $X_j$, $h(W) = 0$\n3. When math IS inside cloze markers, still use LaTeX: {{c1::$E = mc^2$}}\n4. NEVER write bare math symbols without LaTeX (WRONG: W, X_j, W_{ji})"
                     },
                     {
                         "role": "user",

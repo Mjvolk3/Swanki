@@ -715,7 +715,13 @@ class AnkiProcessor:
         
         # Convert inline code to HTML
         text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
-        
+
+        # Convert markdown bold to HTML strong
+        text = re.sub(r'\*\*([^*]+?)\*\*', r'<strong>\1</strong>', text)
+
+        # Convert markdown italic to HTML em (avoid matching **)
+        text = re.sub(r'(?<!\*)\*(?!\*)([^*]+?)\*(?!\*)(?!\*)', r'<em>\1</em>', text)
+
         # Convert markdown math to MathJax
         # For display math, use DOTALL to allow multiline equations
         text = re.sub(r"\$\$(.*?)\$\$", r"\\[\1\\]", text, flags=re.DOTALL)
