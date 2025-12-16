@@ -726,25 +726,79 @@ Start generating cards now. First generate all {num_cloze} cloze cards, then gen
 Text: {text}
 Citation key: {citation_key}
 Known acronyms: {acronyms}""",
-                        "lecture_system": """You are creating a clear, informative audio presentation of academic content.
-Focus on clarity and educational value without unnecessary dramatization.
-Start directly with the content without lengthy introductions.""",
-                        "lecture_generation": """Create a clear educational presentation from this document.
+                        "lecture_system": """You are an expert educator creating an audio lecture from academic content.
 
-Guidelines:
-1. Begin directly with the main content - no lengthy introductions
-2. Use a professional, informative tone with natural flow
-3. Focus on key concepts and findings
-4. Avoid theatrical or overly dramatic language
-5. End concisely without extended conclusions
-6. Mention the citation key naturally at the beginning: {citation_key}
-7. Use smooth transitions between ideas - avoid choppy, terse sentences
-8. Write in a flowing, readable style that sounds natural when spoken
-9. Connect ideas with transitional phrases for better comprehension
-10. Avoid excessive parenthetical statements - integrate information naturally
+WRITING STYLE:
+Emulate the engaging, conversational style of popular science authors:
+- Philip Ball (How Life Works) - Accessible explanations with narrative flow
+- David Deutsch (The Beginning of Infinity) - Clear reasoning about complex ideas
+- Douglas Hofstadter (GEB) - Playful exploration with deep insights
+- Peter M Hoffmann (Life's Ratchet) - Vivid analogies and storytelling
 
-Content to present:
-{content}""",
+Write as if you're explaining to an intellectually curious friend over coffee.
+
+YOUR TASK:
+Transform the provided academic text into an engaging, conversational audio lecture.
+
+CRITICAL OUTPUT RULES:
+1. NO LISTS: Never use numbered lists (1., 2., 3.) or bullet points (-)
+   - Convert to flowing narrative
+
+2. NO LATEX: Convert ALL LaTeX to natural language for audio
+   - Tables: Replace with brief highlights ("For example, yeast has 16 chromosomes while...")
+   - Math symbols: Convert to words ("10%" not "$10 \\%$", "alpha-tubulin" not "$\\boldsymbol{\\alpha}$-tubulin")
+   - Figures: Introduce naturally ("In the text, an image shows...")
+   - Footnotes: Convert to inline narrative, never use \\footnotetext or \\footnote
+   - Equations: Speak them naturally ("E equals m c squared" not "$E = mc^2$")
+   - NEVER output LaTeX commands like \\begin{table}, \\begin{figure}, \\captionsetup, \\caption, \\hline, etc.
+
+3. SKIP METADATA: Completely omit these sections:
+   - References sections (NEVER include)
+   - "Further Reading" sections (NEVER include)
+   - "Competing interests"
+   - Author affiliations and emails
+   - Bibliography and citations
+   - Acknowledgments
+
+4. NO CITATIONS: Remove all inline citations
+   - NEVER include author citations like "(Smith et al., 2009)" or "Fernandez-Martinez and Rout, 2009"
+   - Instead describe the finding directly: "Research has shown..." or "Studies indicate..."
+   - Focus on the content, not who discovered it
+
+5. TABLES: Summarize key highlights only
+   - NEVER read tables verbatim
+   - Pick 2-3 interesting examples from the table
+   - Example: "Looking at genome sizes, yeast species range from about 9 to 20 megabases, with S. cerevisiae at around 12 megabases"
+   - NEVER use LaTeX table syntax (\\begin{tabular}, \\hline, etc.)
+
+6. FIGURES: Natural narrative integration
+   - Start with "In the text, an image shows..." or "Looking at a diagram, we can see..."
+   - Describe what's shown, not the figure itself
+   - Keep descriptions brief and relevant to the narrative
+
+7. CONVERSATIONAL TONE:
+   - Explain to a curious student
+   - Use smooth transitions between ideas
+   - Vary sentence structure
+   - Write complete, flowing sentences
+
+8. MARKDOWN ONLY: Output pure markdown
+   - NEVER use LaTeX commands or environments
+   - Convert all formatting to plain text or markdown
+   - Use ## for section headers if needed
+
+9. CONCLUDE WITH SUMMARY:
+   - End with 3-5 main takeaways
+   - Wrap up the key concepts covered
+
+10. TARGET LENGTH:
+    - Aim for 50% of source content
+    - Key concepts only, no exhaustive details""",
+                        "lecture_generation": "Begin your lecture on: {citation_key}\n\nContent:\n{content}",
+                        "lecture_prefix": "Begin your lecture on",
+                        # Lecture audio chunking configuration
+                        "lecture_max_section_tokens": 15000,  # Max tokens per section before splitting
+                        "lecture_context_tokens": 300,  # Context from previous section
                     },
                 }
             },
@@ -779,7 +833,7 @@ Content to present:
                 "models": {
                     "llm": {
                         "provider": "openai",
-                        "model": "gpt-5",
+                        "model": "gpt-5.2-2025-12-11",
                         "temperature": 0.7,
                         "max_retries": 3,
                     },

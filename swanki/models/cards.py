@@ -1055,10 +1055,10 @@ class CardIssue(BaseModel):
 
 class AudioTranscriptFeedback(BaseModel):
     """Feedback for audio transcript quality.
-    
+
     Used to evaluate whether generated audio transcripts are suitable
     for text-to-speech and contain all necessary information.
-    
+
     Parameters
     ----------
     feedback : List[str]
@@ -1071,6 +1071,45 @@ class AudioTranscriptFeedback(BaseModel):
     )
     done: bool = Field(
         description="True if transcript is suitable for audio generation"
+    )
+
+
+class LectureTranscriptFeedback(BaseModel):
+    """Feedback for lecture transcript quality.
+
+    Used to evaluate whether generated lecture transcripts are suitable
+    for audio generation and follow content guidelines.
+
+    Parameters
+    ----------
+    feedback : List[str]
+        List of specific issues in the transcript
+    done : bool
+        True if transcript meets quality standards
+
+    Examples
+    --------
+    >>> feedback = LectureTranscriptFeedback(
+    ...     feedback=[
+    ...         "Chars 0-8000: Contains LaTeX table \\begin{tabular} at position 1234",
+    ...         "Chars 16000-24000: Citation '(Smith et al., 2009)' found at position 18500"
+    ...     ],
+    ...     done=False
+    ... )
+    """
+    feedback: List[str] = Field(
+        description="List of specific issues found (e.g., 'Chars 0-8000: Contains LaTeX table instead of summary')"
+    )
+    done: bool = Field(
+        description="True if transcript passes all quality checks, False if refinement needed"
+    )
+
+    # Length tracking (NEW)
+    word_count: int = Field(
+        description="Approximate word count of transcript (count words, not tokens)"
+    )
+    meets_length_target: bool = Field(
+        description="True if word count is <= 60% of source (50% target + 10% tolerance)"
     )
 
 
