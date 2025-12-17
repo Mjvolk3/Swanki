@@ -1163,6 +1163,152 @@ def generate_summary_audio(
     return output_path.name
 
 
+def _humanize_latex(content: str, openai_client: OpenAI, model: str) -> str:
+    """Convert all LaTeX notation to natural readable text using LLM.
+
+    This is a dedicated preprocessing step that focuses solely on LaTeX-to-text
+    conversion before generating reading audio. Uses chunking to handle long documents.
+
+    Parameters
+    ----------
+    content : str
+        Content with LaTeX notation
+    openai_client : OpenAI
+        OpenAI client for conversion
+    model : str
+        OpenAI model to use (from config)
+
+    Returns
+    -------
+    str
+        Content with all LaTeX converted to natural language
+
+    Examples
+    --------
+    >>> humanized = _humanize_latex(
+    ...     "The Greek zymi ( $\\zeta υ \\mu ι$ ) is used...",
+    ...     openai_client
+    ... )
+    >>> print(humanized)
+    The Greek zymi (zeta upsilon mu iota) is used...
+    """
+    # System prompt focused ONLY on LaTeX conversion
+    system_prompt = """You are a LaTeX-to-text converter for academic audio transcripts.
+
+YOUR ONLY JOB: Convert ALL LaTeX notation to natural readable text.
+
+CRITICAL RULES:
+1. Convert EVERY LaTeX expression to spoken form
+2. Remove ALL dollar signs ($), backslashes (\\), and curly braces ({})
+3. NEVER output any LaTeX syntax in your response
+
+CONVERSIONS (apply ALL of these):
+
+Greek Letters (always convert):
+- $\\alpha$ → alpha
+- $\\beta$ → beta
+- $\\gamma$ → gamma
+- $\\delta$ → delta
+- $\\epsilon$ → epsilon
+- $\\zeta$ → zeta
+- $\\eta$ → eta
+- $\\theta$ → theta
+- $\\iota$ → iota
+- $\\kappa$ → kappa
+- $\\lambda$ → lambda
+- $\\mu$ → mu
+- $\\nu$ → nu
+- $\\xi$ → xi
+- $\\pi$ → pi
+- $\\rho$ → rho
+- $\\sigma$ → sigma
+- $\\tau$ → tau
+- $\\upsilon$ → upsilon
+- $\\phi$ → phi
+- $\\chi$ → chi
+- $\\psi$ → psi
+- $\\omega$ → omega
+
+Math Formatting (remove markup):
+- $\\mathbf{a}$ → a (remove bold)
+- $\\mathit{x}$ → x (remove italic)
+- $S$ → S (remove dollar signs from single letters)
+- $x_i$ → x sub i
+- $x^2$ → x squared
+- $x^{-1}$ → x to the negative 1
+- $10^{-3}$ → 10 to the negative 3
+
+Fractions:
+- $\\frac{1}{2}$ → one half
+- $\\frac{a}{b}$ → a over b
+
+Special Cases:
+- $\\zeta \\upsilon \\mu \\iota$ → zeta upsilon mu iota (space-separated Greek)
+- $a$ and $\\alpha$ → a and alpha
+- $\\mathbf{a}$ and $\\alpha$ → a and alpha
+
+EXAMPLES:
+
+Input: "The Greek zymi ( $\\zeta υ \\mu ι$ ) is used"
+Output: "The Greek zymi (zeta upsilon mu iota) is used"
+
+Input: "cells are of two mating-types, $\\mathbf{a}$ and $\\alpha$"
+Output: "cells are of two mating-types, a and alpha"
+
+Input: "The first genetic map of $S$. cerevisiae"
+Output: "The first genetic map of S. cerevisiae"
+
+DO NOT change any other text - only convert LaTeX. Preserve all prose exactly."""
+
+    # Chunk content if needed (LaTeX conversion can handle larger chunks)
+    enc = tiktoken.get_encoding("cl100k_base")
+    tokens = enc.encode(content)
+    max_chunk = 8000  # Larger chunks OK since this is simpler task
+    humanized_chunks = []
+
+    for start in range(0, len(tokens), max_chunk):
+        chunk = enc.decode(tokens[start : start + max_chunk])
+
+        # Convert LaTeX in this chunk
+        max_retries = 3
+        humanized_chunk = None
+
+        for attempt in range(max_retries):
+            try:
+                response = openai_client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": chunk},
+                    ],
+                    max_completion_tokens=10000,
+                )
+
+                if response.choices and len(response.choices) > 0 and response.choices[0].message.content:
+                    humanized_chunk = response.choices[0].message.content.strip()
+                    if humanized_chunk:
+                        break
+                    else:
+                        logger.warning(f"Attempt {attempt + 1}: LaTeX humanization returned empty")
+                else:
+                    logger.warning(f"Attempt {attempt + 1}: LaTeX humanization returned malformed response")
+
+            except Exception as e:
+                logger.warning(f"Attempt {attempt + 1}: Error in LaTeX humanization: {e}")
+
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+
+        if not humanized_chunk:
+            # Fallback: use original chunk if LLM fails
+            logger.error(f"LaTeX humanization failed after {max_retries} attempts, using original chunk")
+            humanized_chunk = chunk
+
+        humanized_chunks.append(humanized_chunk)
+
+    return "\n\n".join(humanized_chunks)
+
+
 def generate_reading_audio(
     full_content: str,
     output_path: Path,
@@ -1205,10 +1351,13 @@ def generate_reading_audio(
     
     Notes
     -----
-    - Converts LaTeX and math to natural speech
+    - Figures and tables are removed during markdown cleaning
+    - LaTeX notation is humanized in dedicated preprocessing step
+    - Converts all math symbols to natural language (e.g., α→alpha, x²→x squared)
     - Expands acronyms and technical terms
-    - Skips image references but reads captions
-    - Processes in 3000-token chunks for stability
+    - Preserves all prose exactly as written
+    - Uses two-pass LLM processing: (1) LaTeX humanization, (2) Audio optimization
+    - Processes in chunks for stability
     - Audio chunks limited to 2000 chars for quality
     
     Examples
@@ -1223,23 +1372,30 @@ def generate_reading_audio(
     voice_id = voice_id or DEFAULT_VOICE_ID
     
     # Generate transcript optimized for full reading
+    # Note: LaTeX has already been humanized in preprocessing step
     system_prompt = (
         "You are converting a full document to audio format for reading aloud. "
-        "Follow these rules precisely:\n"
-        "1. If there is a citation key, mention it at the beginning\n"
-        "2. Convert LaTeX and math notation to natural spoken form\n"
-        "3. Expand all acronyms and technical terms\n"
-        "4. Skip image references but read figure captions\n"
-        "5. Add natural pauses for section breaks\n"
-        "6. Maintain academic tone but make it listenable\n"
-        "7. Never include markup or formatting instructions\n"
+        "The content has already been preprocessed to remove LaTeX notation. "
+        "Follow these rules precisely:\n\n"
+        "1. If there is a citation key, mention it at the beginning\n\n"
+        "2. Expand all acronyms and technical terms on first use\n\n"
+        "3. Skip any remaining image references, URLs, or figure/table blocks entirely\n\n"
+        "4. Add natural pauses for section breaks\n\n"
+        "5. Maintain academic tone but make it listenable\n\n"
+        "6. Read all prose exactly as written - preserve the author's words and meaning\n\n"
+        "7. Make the text flow naturally for listening, not reading\n"
     )
     
     user_content = full_content
     if citation_key:
         humanized_key = humanize_citation_key(citation_key)
         user_content = f"Citation: {humanized_key}\n\n{full_content}"
-    
+
+    # Humanize all LaTeX notation before processing
+    logger.info("Humanizing LaTeX notation in content...")
+    user_content = _humanize_latex(user_content, openai_client, model)
+    logger.info("LaTeX humanization complete")
+
     # Process in chunks due to length
     enc = tiktoken.get_encoding("cl100k_base")
     tokens = enc.encode(user_content)
