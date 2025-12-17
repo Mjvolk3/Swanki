@@ -70,6 +70,7 @@ from ..processing import (
     ImageProcessor,
     AnkiProcessor,
 )
+from ..processing.markdown_cleaner import _natural_sort_key
 
 # Import audio utilities
 from ..utils.audio import (
@@ -449,7 +450,8 @@ class Pipeline:
             raise RuntimeError("Failed to convert any PDF pages to markdown.")
 
         logger.info(f"Successfully converted {len(markdown_files)} pages to markdown")
-        return sorted(markdown_files)
+        # Use natural sorting to ensure page-2.md comes before page-10.md
+        return sorted(markdown_files, key=_natural_sort_key)
 
     def clean_markdown(self, markdown_files: List[Path]) -> List[Path]:
         """Clean and standardize markdown files.

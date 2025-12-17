@@ -27,6 +27,33 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _natural_sort_key(path: Path) -> tuple:
+    """Extract numeric parts from filename for natural sorting.
+
+    Converts 'page-10.md' to ('page-', 10, '.md') for proper numeric ordering.
+    This ensures page-2.md comes before page-10.md.
+
+    Parameters
+    ----------
+    path : Path
+        File path to extract sort key from
+
+    Returns
+    -------
+    tuple
+        Tuple of alternating strings and integers for natural sorting
+
+    Examples
+    --------
+    >>> _natural_sort_key(Path("page-1.md"))
+    ('page-', 1, '.md')
+    >>> _natural_sort_key(Path("page-10.md"))
+    ('page-', 10, '.md')
+    """
+    parts = re.split(r'(\d+)', path.name)
+    return tuple(int(part) if part.isdigit() else part for part in parts)
+
+
 class MarkdownCleaner:
     """Handles markdown file cleaning and post-processing.
     
@@ -89,6 +116,11 @@ class MarkdownCleaner:
         'latex_textit': (r'\\textit{(.*?)}', r'*\1*'),
         'latex_emph': (r'\\emph{(.*?)}', r'*\1*'),
         'includegraphics': (r'\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}', r'![Image](\1)'),  # Convert LaTeX images to markdown
+        # New patterns for reading audio cleanup
+        'figure_blocks': (r'\\begin\{figure\}[\s\S]*?\\end\{figure\}', ''),  # Remove figure blocks
+        'table_blocks': (r'\\begin\{table\}[\s\S]*?\\end\{table\}', ''),  # Remove table blocks
+        'caption_setup': (r'\\captionsetup\{[^}]+\}', ''),  # Remove caption setup
+        'header_backslash': (r'^(#+\s+[\d.]+)\s+\\\\\s+', r'\1 '),  # Clean header backslashes
     }
     
     def __init__(self, output_base: Path):
@@ -132,9 +164,9 @@ class MarkdownCleaner:
         """
         # Create output directory
         self.clean_md_singles_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Get all markdown files
-        md_files = sorted(self.md_singles_dir.glob("*.md"))
+
+        # Get all markdown files with natural/numeric sorting
+        md_files = sorted(self.md_singles_dir.glob("*.md"), key=_natural_sort_key)
         
         if not md_files:
             logger.warning("No markdown files found to clean")
@@ -198,17 +230,17 @@ class MarkdownCleaner:
     
     def _apply_cleaning(self, content: str) -> str:
         """Apply all cleaning operations to markdown content.
-        
+
         Parameters
         ----------
         content : str
             Original markdown content
-        
+
         Returns
         -------
         str
             Cleaned markdown content
-        
+
         Notes
         -----
         Operations include:
@@ -217,10 +249,17 @@ class MarkdownCleaner:
         - Multiple empty line reduction
         - Trailing whitespace removal
         """
+        # Apply multiline patterns FIRST (before line splitting)
+        multiline_patterns = ['figure_blocks', 'table_blocks']
+        for pattern_name in multiline_patterns:
+            if pattern_name in self.PATTERNS:
+                pattern, replacement = self.PATTERNS[pattern_name]
+                content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+
         # Split into lines for line-by-line processing
         lines = content.split('\n')
         cleaned_lines = []
-        
+
         in_references = False
         consecutive_empty_lines = 0
         
