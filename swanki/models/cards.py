@@ -330,11 +330,35 @@ class CardContent(BaseModel):
         # Common mathematical patterns that should be in LaTeX
         math_issues = []
         
-        # Pattern 1: Subscripted variables (e.g., X_j, W_{ij}, X_{pa(j)})
-        # Be more selective to avoid false positives
-        subscript_pattern = r'\b([A-Z])_\{?([a-z0-9]+)\}?\b'
-        for match in re.finditer(subscript_pattern, text_without_latex):
+        # Pattern 1: Subscripted variables with two-stage matching
+        # Stage 1: Match subscript+superscript combinations (e.g., M_{m}^{(s)})
+        # Stage 2: Match subscript-only (e.g., M_{m})
+        # This prevents incomplete matches when superscripts follow subscripts
+
+        # Stage 1: Check for subscript+superscript combinations first
+        pattern_sub_super = r'\b([A-Z])_\{?([a-z0-9]+)\}?\^\{?[^}]+\}?'
+        for match in re.finditer(pattern_sub_super, text_without_latex):
+            full_expr = match.group(0)
+            context = match.string[max(0, match.start()-10):match.end()+10]
+            # Skip if it looks like a URL, filename, or is near a placeholder
+            if not any(x in context for x in ['.com', '.org', '.edu', '.io', '.pdf', '.png', '.jpg', 'LATEX_PLACEHOLDER', 'CLOZE_PLACEHOLDER']):
+                math_issues.append(
+                    f"Mathematical expression '{full_expr}' with subscript and superscript "
+                    f"should be wrapped in $ delimiters: ${full_expr}$"
+                )
+
+        # Stage 2: Check for subscript-only patterns (only if not already caught by stage 1)
+        # We need to avoid re-flagging parts of expressions already caught above
+        pattern_sub_only = r'\b([A-Z])_\{?([a-z0-9]+)\}?\b'
+        for match in re.finditer(pattern_sub_only, text_without_latex):
             var = match.group(0)
+            # Check if this overlaps with any subscript+superscript match
+            # by seeing if there's a ^ immediately after
+            end_pos = match.end()
+            if end_pos < len(text_without_latex) and text_without_latex[end_pos] == '^':
+                # This is part of a subscript+superscript, skip it (already caught in stage 1)
+                continue
+
             # Check context to avoid false positives
             context = match.string[max(0, match.start()-10):match.end()+10]
             # Skip if it looks like a URL, filename, or is near a LATEX_PLACEHOLDER

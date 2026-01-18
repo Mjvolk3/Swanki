@@ -42,7 +42,18 @@ def generate_reading_transcript_input(
 
                 # Replace image markdown with figure description text
                 replacement = f"[Figure {image_index}: {summary_content.strip()}]"
-                md_content = md_content.replace(f"![](${image_url})", replacement)
+                md_content = md_content.replace(f"![]({image_url})", replacement)
+
+        # Convert any remaining markdown images to figure captions (preserve alt text, remove URL)
+        # This handles images that weren't replaced with summaries above
+        def format_image_caption(match):
+            alt_text = match.group(1)
+            if alt_text.strip():
+                return f"Figure: {alt_text.strip()}"
+            else:
+                return ""  # Remove images with no caption
+
+        md_content = re.sub(r"!\[(.*?)\]\(.*?\)", format_image_caption, md_content)
 
         # Process LaTeX equations for verbal reading
         # Inline equations

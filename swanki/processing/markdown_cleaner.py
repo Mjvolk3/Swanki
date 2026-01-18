@@ -1,3 +1,8 @@
+# swanki/processing/markdown_cleaner
+# [[swanki.processing.markdown_cleaner]]
+# https://github.com/Mjvolk3/swanki/tree/main/swanki/processing/markdown_cleaner
+# Test file: tests/swanki/processing/test_markdown_cleaner.py
+
 """Markdown cleaning module for post-processing converted markdown files.
 
 This module cleans up markdown files after conversion from PDF, handling
@@ -115,11 +120,8 @@ class MarkdownCleaner:
         'latex_textbf': (r'\\textbf{(.*?)}', r'**\1**'),
         'latex_textit': (r'\\textit{(.*?)}', r'*\1*'),
         'latex_emph': (r'\\emph{(.*?)}', r'*\1*'),
-        'includegraphics': (r'\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}', r'![Image](\1)'),  # Convert LaTeX images to markdown
-        # New patterns for reading audio cleanup
-        'figure_blocks': (r'\\begin\{figure\}[\s\S]*?\\end\{figure\}', ''),  # Remove figure blocks
+        # Note: Figure blocks are handled by _convert_figure_blocks_to_markdown() method
         'table_blocks': (r'\\begin\{table\}[\s\S]*?\\end\{table\}', ''),  # Remove table blocks
-        'caption_setup': (r'\\captionsetup\{[^}]+\}', ''),  # Remove caption setup
         'header_backslash': (r'^(#+\s+[\d.]+)\s+\\\\\s+', r'\1 '),  # Clean header backslashes
     }
     
@@ -227,7 +229,66 @@ class MarkdownCleaner:
         except Exception as e:
             logger.error(f"Error cleaning {md_path.name}: {e}")
             return None
-    
+
+    def _convert_figure_blocks_to_markdown(self, content: str) -> str:
+        """Convert LaTeX figure blocks to markdown image syntax.
+
+        Extracts \includegraphics{url} from \begin{figure}...\end{figure} blocks
+        and converts them to markdown ![alt](url) format before the blocks are removed.
+
+        Parameters
+        ----------
+        content : str
+            Original markdown content with LaTeX figure blocks
+
+        Returns
+        -------
+        str
+            Content with figure blocks converted to markdown images
+
+        Notes
+        -----
+        This method must run BEFORE figure_blocks pattern removal to preserve
+        image URLs. Handles cases where Mathpix only outputs LaTeX format
+        without standalone markdown images.
+        """
+        def replace_figure_block(match):
+            """Replace a single figure block with markdown image."""
+            figure_content = match.group(0)
+
+            # Extract image URL from \includegraphics
+            img_pattern = r'\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}'
+            img_match = re.search(img_pattern, figure_content)
+
+            if not img_match:
+                # No image found, remove the block
+                return ''
+
+            image_url = img_match.group(1)
+
+            # Extract caption text if available
+            caption_pattern = r'\\caption\{(.*?)\}'
+            caption_match = re.search(caption_pattern, figure_content, re.DOTALL)
+
+            if caption_match:
+                # Clean up caption text: remove nested LaTeX commands
+                caption_text = caption_match.group(1)
+                # Remove \captionsetup and other LaTeX commands from caption
+                caption_text = re.sub(r'\\[a-zA-Z]+(\{[^}]*\}|\[[^\]]*\])*', '', caption_text)
+                caption_text = caption_text.strip()
+                alt_text = caption_text[:100] + '...' if len(caption_text) > 100 else caption_text
+            else:
+                alt_text = 'Image'
+
+            # Return markdown image
+            return f'![{alt_text}]({image_url})\n'
+
+        # Replace all figure blocks with markdown images
+        figure_pattern = r'\\begin\{figure\}[\s\S]*?\\end\{figure\}'
+        content = re.sub(figure_pattern, replace_figure_block, content, flags=re.DOTALL)
+
+        return content
+
     def _apply_cleaning(self, content: str) -> str:
         """Apply all cleaning operations to markdown content.
 
@@ -249,8 +310,11 @@ class MarkdownCleaner:
         - Multiple empty line reduction
         - Trailing whitespace removal
         """
-        # Apply multiline patterns FIRST (before line splitting)
-        multiline_patterns = ['figure_blocks', 'table_blocks']
+        # Convert figure blocks to markdown images BEFORE removing them
+        content = self._convert_figure_blocks_to_markdown(content)
+
+        # Apply multiline patterns (tables, etc.) - figures already converted
+        multiline_patterns = ['table_blocks']
         for pattern_name in multiline_patterns:
             if pattern_name in self.PATTERNS:
                 pattern, replacement = self.PATTERNS[pattern_name]
