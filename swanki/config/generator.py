@@ -217,16 +217,16 @@ class ConfigGenerator:
             pipeline_dir / "default.yaml",
             {
                 "processing": {
-                    "context_radius": 1,  # Number of pages before/after focal page for context (0 = no context)
-                    "num_cards_per_page": 4,  # Updated default from 3
-                    "cloze_cards_per_page": 1,  # Updated default from 2
+                    "context_radius": 2,  # Number of pages before/after focal page for context (0 = no context)
+                    "num_cards_per_page": 2,  # Updated default
+                    "cloze_cards_per_page": 0,  # Updated default - no cloze cards by default
                     "chunk_size": 1000,
                     "overlap": 200,
                     "blocking_audio": True,  # Based on learnings
                     "confirm_before_generation": True,  # Ask user confirmation after card estimation
                     "image_cards": {
                         "enabled": True,
-                        "cards_per_image": 3,
+                        "cards_per_image": 2,
                         "image_on_front": True,  # Whether image can appear on front of card
                         "image_on_back": True,  # Whether image can appear on back of card
                         "require_math_content": False,  # Only create cards for images with math

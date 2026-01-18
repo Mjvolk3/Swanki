@@ -1,0 +1,16 @@
+processing:
+  context_radius: 2
+  num_cards_per_page: 2
+  cloze_cards_per_page: 0
+  chunk_size: 1000
+  overlap: 200
+  blocking_audio: true
+  confirm_before_generation: true
+  image_cards:
+    enabled: true
+    cards_per_image: 2
+    image_on_front: true
+    image_on_back: true
+    require_math_content: false
+    placement_strategy: prefer_front
+    front_back_ratio: 0.5

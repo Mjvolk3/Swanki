@@ -547,6 +547,52 @@ def generate_card_transcript(
     return transcript
 
 
+def clean_markdown_for_tts(text: str) -> str:
+    """Remove markdown formatting that causes issues with TTS.
+
+    Removes headers (##, #), bold (**), italics (*), and other markdown
+    syntax that may be read literally by text-to-speech engines.
+    Preserves the actual text content for natural speech.
+
+    Parameters
+    ----------
+    text : str
+        Markdown text to clean
+
+    Returns
+    -------
+    str
+        Plain text suitable for TTS
+    """
+    cleaned = text
+
+    # Remove headers (## Header → Header)
+    cleaned = re.sub(r'^#{1,6}\s+', '', cleaned, flags=re.MULTILINE)
+
+    # Remove bold (**text** → text)
+    cleaned = re.sub(r'\*\*(.*?)\*\*', r'\1', cleaned)
+
+    # Remove italics (*text* → text)
+    cleaned = re.sub(r'\*(.*?)\*', r'\1', cleaned)
+
+    # Remove links but keep text ([text](url) → text)
+    cleaned = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', cleaned)
+
+    # Remove inline code (`code` → code)
+    cleaned = re.sub(r'`([^`]+)`', r'\1', cleaned)
+
+    # Remove horizontal rules (---, ***, ___)
+    cleaned = re.sub(r'^[\-\*\_]{3,}\s*$', '', cleaned, flags=re.MULTILINE)
+
+    # Remove blockquote markers (> text → text)
+    cleaned = re.sub(r'^>\s+', '', cleaned, flags=re.MULTILINE)
+
+    # Clean up excessive whitespace
+    cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+
+    return cleaned.strip()
+
+
 def chunk_text(text: str, max_chars: int = 3000) -> List[str]:
     """Split text into chunks without breaking words or sentences.
     
@@ -1123,8 +1169,8 @@ def generate_summary_audio(
         # Fallback: use the original summary text
         logger.error(f"Failed to generate transcript after {max_retries} attempts, using original text")
         transcript = user_content
-    
-    # Save transcript for debugging/editing
+
+    # Save transcript with markdown for human reading/editing
     transcripts_dir = output_path.parent / "summary_transcript"
     transcripts_dir.mkdir(parents=True, exist_ok=True)
     transcript_path = transcripts_dir / f"{output_path.stem}_transcript.md"
@@ -1133,9 +1179,20 @@ def generate_summary_audio(
         if citation_key:
             f.write(f"**Citation Key:** {citation_key}\n\n")
         f.write(f"**Generated Transcript:**\n\n{transcript}\n")
-    
-    # Generate audio
-    chunks = chunk_text(transcript)
+
+    # Create TTS-clean version (remove markdown symbols that cause robotic/botched readings)
+    tts_transcript = clean_markdown_for_tts(transcript)
+
+    # Save cleaned version for reference
+    cleaned_path = transcripts_dir / f"{output_path.stem}_transcript_cleaned_markdown.md"
+    with open(cleaned_path, "w", encoding="utf-8") as f:
+        f.write(f"Summary Audio Transcript (Cleaned for TTS)\n\n")
+        if citation_key:
+            f.write(f"Citation Key: {citation_key}\n\n")
+        f.write(f"Generated Transcript:\n\n{tts_transcript}\n")
+
+    # Generate audio using CLEANED version
+    chunks = chunk_text(tts_transcript)
     
     if not chunks:
         logger.error(f"No chunks generated from transcript. Transcript length: {len(transcript)}")
@@ -1443,8 +1500,8 @@ def generate_reading_audio(
         transcript_chunks.append(chunk_transcript)
     
     full_transcript = "\n\n".join(transcript_chunks)
-    
-    # Save transcript for debugging/editing
+
+    # Save transcript with markdown for human reading/editing
     transcripts_dir = output_path.parent / "full_read"
     transcripts_dir.mkdir(parents=True, exist_ok=True)
     transcript_path = transcripts_dir / f"{output_path.stem}_transcript.md"
@@ -1453,9 +1510,20 @@ def generate_reading_audio(
         if citation_key:
             f.write(f"**Citation Key:** {citation_key}\n\n")
         f.write(f"**Generated Transcript:**\n\n{full_transcript}\n")
-    
-    # Generate audio in chunks
-    audio_chunks = chunk_text(full_transcript, max_chars=2000)  # Smaller chunks for long content
+
+    # Create TTS-clean version (remove markdown symbols that cause robotic/botched readings)
+    tts_transcript = clean_markdown_for_tts(full_transcript)
+
+    # Save cleaned version for reference
+    cleaned_path = transcripts_dir / f"{output_path.stem}_transcript_cleaned_markdown.md"
+    with open(cleaned_path, "w", encoding="utf-8") as f:
+        f.write(f"Full Reading Audio Transcript (Cleaned for TTS)\n\n")
+        if citation_key:
+            f.write(f"Citation Key: {citation_key}\n\n")
+        f.write(f"Generated Transcript:\n\n{tts_transcript}\n")
+
+    # Generate audio in chunks using CLEANED version
+    audio_chunks = chunk_text(tts_transcript, max_chars=2000)  # Smaller chunks for long content
     chunk_paths = []
     
     for i, chunk in enumerate(audio_chunks):
@@ -2511,16 +2579,27 @@ PROVIDE THE COMPLETE REVISED TRANSCRIPT:"""
     # Use final transcript for audio
     full_transcript = current_transcript
 
-    # Save final transcript for debugging/editing
+    # Save final transcript with markdown for human reading/editing
     transcript_path = transcripts_dir / f"{output_path.stem}_transcript.md"
     with open(transcript_path, "w", encoding="utf-8") as f:
         f.write(f"# Lecture Audio Transcript\n\n")
         if citation_key:
             f.write(f"**Citation Key:** {citation_key}\n\n")
         f.write(f"**Generated Transcript:**\n\n{full_transcript}\n")
-    
-    # Generate audio in smaller chunks for stability
-    audio_chunks = chunk_text(full_transcript, max_chars=2000)
+
+    # Create TTS-clean version (remove markdown symbols that cause robotic/botched readings)
+    tts_transcript = clean_markdown_for_tts(full_transcript)
+
+    # Save cleaned version for reference
+    cleaned_path = transcripts_dir / f"{output_path.stem}_transcript_cleaned_markdown.md"
+    with open(cleaned_path, "w", encoding="utf-8") as f:
+        f.write(f"Lecture Audio Transcript (Cleaned for TTS)\n\n")
+        if citation_key:
+            f.write(f"Citation Key: {citation_key}\n\n")
+        f.write(f"Generated Transcript:\n\n{tts_transcript}\n")
+
+    # Generate audio in smaller chunks for stability using CLEANED version
+    audio_chunks = chunk_text(tts_transcript, max_chars=2000)
     chunk_paths = []
     
     for i, chunk in enumerate(audio_chunks):

@@ -15,50 +15,97 @@ Examples:
 """
 import argparse
 import sys
+import warnings
+import subprocess
+import tempfile
 from pathlib import Path
 from PyPDF2 import PdfReader, PdfWriter
 
 
+def repair_pdf_with_qpdf(input_path: Path) -> Path:
+    """Repair a corrupted PDF using qpdf.
+
+    Args:
+        input_path: Path to the corrupted PDF
+
+    Returns:
+        Path to the repaired PDF (in temp directory)
+    """
+    temp_dir = Path(tempfile.gettempdir())
+    repaired_path = temp_dir / f"repaired_{input_path.name}"
+
+    result = subprocess.run(
+        ["qpdf", str(input_path), str(repaired_path)],
+        capture_output=True,
+        text=True
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(f"qpdf repair failed: {result.stderr}")
+
+    return repaired_path
+
+
 def cut_pdf(start: int, end: int, input_path: Path, output_path: Path) -> None:
     """Cut a PDF file using Pythonic indexing (0-based, end-exclusive).
-    
+
     Args:
         start: Starting page index (0-based, inclusive)
         end: Ending page index (0-based, exclusive)
         input_path: Path to input PDF
         output_path: Path to output PDF
-        
+
     Raises:
         FileNotFoundError: If input file doesn't exist
         ValueError: If page indices are invalid
     """
     if not input_path.exists():
         raise FileNotFoundError(f"Input file not found: {input_path}")
-    
-    reader = PdfReader(input_path)
-    total_pages = len(reader.pages)
-    
-    # Validate indices
-    if start < 0:
-        raise ValueError(f"Start index must be >= 0, got {start}")
-    if end > total_pages:
-        raise ValueError(f"End index must be <= {total_pages} (total pages), got {end}")
-    if start >= end:
-        raise ValueError(f"Start index must be < end index, got start={start}, end={end}")
-    
-    writer = PdfWriter()
-    
-    # Extract pages [start:end] (Pythonic slicing)
-    for i in range(start, end):
-        writer.add_page(reader.pages[i])
-    
-    # Write output
-    with open(output_path, 'wb') as output_file:
-        writer.write(output_file)
-    
+
+    repaired_path = None
+    try:
+        # Try to process the PDF normally
+        _do_cut_pdf(start, end, input_path, output_path)
+    except (AssertionError, RuntimeError) as e:
+        # PDF is corrupted, try repairing with qpdf
+        print("PDF appears corrupted, attempting repair with qpdf...")
+        repaired_path = repair_pdf_with_qpdf(input_path)
+        _do_cut_pdf(start, end, repaired_path, output_path)
+    finally:
+        # Clean up temp file
+        if repaired_path and repaired_path.exists():
+            repaired_path.unlink()
+
     pages_extracted = end - start
     print(f"✓ Extracted {pages_extracted} pages [{start}:{end}] from {input_path.name}")
     print(f"  Saved to: {output_path}")
+
+
+def _do_cut_pdf(start: int, end: int, input_path: Path, output_path: Path) -> None:
+    """Internal function to perform the actual PDF cutting."""
+    # Suppress PyPDF2 warnings about malformed PDFs
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore")
+        reader = PdfReader(input_path, strict=False)
+        total_pages = len(reader.pages)
+
+        # Validate indices
+        if start < 0:
+            raise ValueError(f"Start index must be >= 0, got {start}")
+        if end > total_pages:
+            raise ValueError(f"End index must be <= {total_pages} (total pages), got {end}")
+        if start >= end:
+            raise ValueError(f"Start index must be < end index, got start={start}, end={end}")
+
+        writer = PdfWriter()
+
+        # Extract pages [start:end] (Pythonic slicing)
+        for i in range(start, end):
+            writer.add_page(reader.pages[i])
+
+        # Write output
+        with open(output_path, 'wb') as output_file:
+            writer.write(output_file)
 
 
 def main():
@@ -102,8 +149,10 @@ Note: This uses Python's slicing convention where:
     # Info mode - just show PDF details
     if args.info:
         try:
-            reader = PdfReader(input_path)
-            total_pages = len(reader.pages)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore")
+                reader = PdfReader(input_path, strict=False)
+                total_pages = len(reader.pages)
             print(f"PDF Info: {input_path.name}")
             print(f"  Total pages: {total_pages}")
             print(f"  Valid indices: 0 to {total_pages-1}")
@@ -129,8 +178,13 @@ Note: This uses Python's slicing convention where:
     try:
         cut_pdf(args.start, args.end, input_path, output_path)
         return 0
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
         return 1
 
 
