@@ -429,21 +429,17 @@ class CardContent(BaseModel):
             else:
                 # Few issues - provide helpful feedback for the retry
                 logger.info(f"Minor LaTeX formatting issues detected ({len(math_issues)} issues), allowing retry to fix")
-                # Provide specific guidance in the error message
-                specific_fixes = []
-                for issue in math_issues:
-                    if 'Greek letter' in issue:
-                        specific_fixes.append("Replace Greek letter names with LaTeX commands inside $ delimiters")
-                    elif 'Subscripted' in issue:
-                        specific_fixes.append("Ensure all subscripted variables are wrapped in $ delimiters")
-                
-                if specific_fixes:
-                    fix_msg = " Specific fixes needed: " + "; ".join(set(specific_fixes))
-                else:
-                    fix_msg = ""
-                
+                # Provide VERY specific guidance showing the exact issues found
+                # This helps the LLM fix the exact problematic text
+
+                # Show the first 3 specific issues found
+                issues_to_show = math_issues[:3]
+
                 raise ValueError(
-                    f"Please ensure ALL mathematical content uses proper LaTeX formatting with $ delimiters.{fix_msg}"
+                    f"Please ensure ALL mathematical content uses proper LaTeX formatting with $ delimiters. "
+                    f"Specific fixes needed: {'; '.join(issues_to_show)}. "
+                    f"IMPORTANT: Always use brackets after underscores: write $X_{{0}}$ not $X_0$, "
+                    f"write $X_{{p}}$ not $X_p$. Every subscript must be wrapped in $ AND use brackets like _{{...}}."
                 )
         
         # Check if cloze card ends with a question mark
