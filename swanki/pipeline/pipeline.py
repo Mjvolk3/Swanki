@@ -250,6 +250,9 @@ class Pipeline:
         self.output_base = output_path
         self.output_base.mkdir(parents=True, exist_ok=True)
 
+        # Log output directory for easy navigation
+        logger.info(f"Output directory: {self.output_base.absolute()}")
+
         # 1. Split PDF based on config
         self.state.current_stage = "pdf_split"
         pages = self.split_pdf(pdf_path)
