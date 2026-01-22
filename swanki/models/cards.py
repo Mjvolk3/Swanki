@@ -307,8 +307,13 @@ class CardContent(BaseModel):
         
         # Check for unformatted mathematical content
         # This checks for common patterns that indicate math but aren't wrapped in LaTeX
-        
-        # First, remove already properly formatted LaTeX to avoid false positives
+
+        # FIRST: Fix incomplete subscript braces (e.g., X_{0 → X_{0}, X_p} → X_{p})
+        # This prevents validation errors from malformed LaTeX
+        v = re.sub(r'([A-Z])_\{([a-z0-9]+)(?!\})', r'\1_{\2}', v)  # Add missing closing brace
+        v = re.sub(r'([A-Z])_([a-z0-9]+)\}(?!\})', r'\1_{\2}', v)  # Remove orphaned closing brace
+
+        # Then, remove already properly formatted LaTeX to avoid false positives
         # Also remove any LaTeX commands that might remain
         
         # Match LaTeX with \( \) delimiters
@@ -365,7 +370,15 @@ class CardContent(BaseModel):
             if not any(x in context for x in ['.com', '.org', '.edu', '.io', '.pdf', '.png', '.jpg', 'LATEX_PLACEHOLDER', 'CLOZE_PLACEHOLDER']):
                 # Also skip if the subscript ends with an open parenthesis (likely part of a function)
                 if not var.endswith('('):
-                    math_issues.append(f"Subscripted variable '{var}' should be ${var}$")
+                    # Ensure the suggestion has balanced braces
+                    var_corrected = var
+                    # Fix incomplete braces in the variable for the suggestion
+                    if '_{' in var and not var.endswith('}'):
+                        var_corrected = var + '}'
+                    elif '_' in var and '{' not in var:
+                        # Add braces if missing: X_0 → X_{0}
+                        var_corrected = re.sub(r'_([a-z0-9]+)', r'_{\1}', var)
+                    math_issues.append(f"Subscripted variable '{var}' should be ${var_corrected}$")
         
         # Pattern 2: Function notation (e.g., h(W), f(X), g_j(X))
         function_pattern = r'\b([a-z](?:_[a-z0-9]+)?)\(([A-Z][^)]*?)\)'
