@@ -58,6 +58,7 @@ import re
 import time
 import logging
 from pathlib import Path
+from string import Template
 from typing import List, Optional, Tuple
 from dotenv import load_dotenv
 from elevenlabs import ElevenLabs, VoiceSettings
@@ -1484,7 +1485,13 @@ def generate_reading_audio(
                     else:
                         logger.warning(f"Attempt {attempt + 1}: GPT-5 returned empty reading transcript for chunk")
                 else:
-                    logger.warning(f"Attempt {attempt + 1}: GPT-5 returned malformed response for reading")
+                    # Log detailed info about malformed response
+                    logger.warning(
+                        f"Attempt {attempt + 1}: GPT-5 returned malformed response for reading. "
+                        f"Response details: choices={len(response.choices) if response.choices else 0}, "
+                        f"has_content={bool(response.choices and response.choices[0].message.content) if response.choices else False}, "
+                        f"finish_reason={response.choices[0].finish_reason if response.choices and len(response.choices) > 0 else 'N/A'}"
+                    )
                     
             except Exception as e:
                 logger.warning(f"Attempt {attempt + 1}: Error generating reading transcript: {e}")
@@ -2450,10 +2457,10 @@ Transcript section to review:
         if iteration < max_iterations - 1:  # Don't refine on last iteration
             logger.info("Refining lecture transcript based on critique...")
 
-            refinement_prompt = """Revise this lecture transcript to fix the issues identified:
+            refinement_prompt_template = Template("""Revise this lecture transcript to fix the issues identified:
 
 ISSUES IDENTIFIED:
-{critique}
+$critique
 
 REVISION INSTRUCTIONS:
 1. Convert ALL lists to flowing narrative prose
@@ -2462,7 +2469,7 @@ REVISION INSTRUCTIONS:
 
 2. Convert ALL LaTeX to natural spoken language
    - Remove ALL LaTeX commands: \\begin{tabular}, \\begin{table}, \\hline, \\multirow, \\captionsetup, \\caption, \\footnotetext, \\footnote, etc.
-   - Convert math symbols: "$10 \\%$" → "10 percent", "$\\boldsymbol{\\alpha}$-tubulin" → "alpha-tubulin"
+   - Convert math symbols: "$$10 \\%$$" → "10 percent", "$$\\boldsymbol{\\alpha}$$-tubulin" → "alpha-tubulin"
    - Tables: Replace with brief highlights (2-3 examples), NEVER read row-by-row
    - Example: "Looking at genome sizes, yeast species range from about 9 to 20 megabases, with S. cerevisiae at around 12 megabases"
    - Footnotes: Integrate content inline naturally
@@ -2498,9 +2505,9 @@ REVISION INSTRUCTIONS:
    - Focus on key concepts only
 
 ORIGINAL TRANSCRIPT:
-{transcript}
+$transcript
 
-PROVIDE THE COMPLETE REVISED TRANSCRIPT:"""
+PROVIDE THE COMPLETE REVISED TRANSCRIPT:""")
 
             # Process in chunks if needed
             refined_chunks = []
@@ -2516,11 +2523,14 @@ PROVIDE THE COMPLETE REVISED TRANSCRIPT:"""
             for start in range(0, len(transcript_tokens), chunk_size):
                 chunk = enc.decode(transcript_tokens[start : start + chunk_size])
 
-                # Escape curly braces to avoid format string conflicts with LaTeX
                 # Format feedback as bullet points for the refinement prompt
                 feedback_text = "\n".join(f"- {issue}" for issue in critique_feedback.feedback)
-                feedback_escaped = feedback_text.replace('{', '{{').replace('}', '}}')
-                chunk_escaped = chunk.replace('{', '{{').replace('}', '}}')
+
+                # Use Template.substitute() which is safe for LaTeX (doesn't interpret {})
+                refinement_prompt = refinement_prompt_template.substitute(
+                    critique=feedback_text,
+                    transcript=chunk
+                )
 
                 # Add retry logic for refinement
                 refined_chunk = None
@@ -2531,10 +2541,7 @@ PROVIDE THE COMPLETE REVISED TRANSCRIPT:"""
                             model=model,
                             messages=[
                                 {"role": "system", "content": full_system_prompt},
-                                {"role": "user", "content": refinement_prompt.format(
-                                    critique=feedback_escaped,
-                                    transcript=chunk_escaped
-                                )}
+                                {"role": "user", "content": refinement_prompt}
                             ],
                             max_completion_tokens=max_output_tokens,
                         )
