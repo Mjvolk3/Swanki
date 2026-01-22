@@ -1475,7 +1475,7 @@ def generate_reading_audio(
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": chunk},
                     ],
-                    max_completion_tokens=1000,
+                    max_completion_tokens=8000,  # Increased for GPT-5.2 to prevent truncation
                 )
                 
                 if response.choices and len(response.choices) > 0 and response.choices[0].message.content:
