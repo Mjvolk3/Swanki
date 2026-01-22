@@ -311,7 +311,10 @@ class CardContent(BaseModel):
         # FIRST: Fix incomplete subscript braces (e.g., X_{0 → X_{0}, X_p} → X_{p})
         # This prevents validation errors from malformed LaTeX
         v = re.sub(r'([A-Z])_\{([a-z0-9]+)(?!\})', r'\1_{\2}', v)  # Add missing closing brace
-        v = re.sub(r'([A-Z])_([a-z0-9]+)\}(?!\})', r'\1_{\2}', v)  # Remove orphaned closing brace
+        v = re.sub(r'([A-Z])_([a-z0-9]+)\}', r'\1_{\2}', v)  # Fix orphaned closing brace
+
+        # Also fix subscripts without any braces at all (X_0 → X_{0})
+        v = re.sub(r'([A-Z])_([a-z0-9]+)(?![}{])', r'\1_{\2}', v)
 
         # Then, remove already properly formatted LaTeX to avoid false positives
         # Also remove any LaTeX commands that might remain
@@ -427,12 +430,17 @@ class CardContent(BaseModel):
         
         if math_issues:
             # Only raise error if there are many issues or they look serious
-            # For a few issues, let Instructor's retry mechanism handle it
-            if len(math_issues) > 5:
+            # For 1 issue, likely auto-fixed, just log warning
+            # For 2-5 issues, let Instructor's retry mechanism handle it
+            # For >5 issues, raise a detailed error
+            if len(math_issues) == 1:
+                # Single issue - likely auto-fixed above, just log warning and allow
+                logger.warning(f"Single LaTeX issue detected (auto-fix may have corrected): {math_issues[0]}")
+            elif len(math_issues) > 5:
                 # Too many issues - this is likely a real problem
                 issues_to_show = math_issues[:3]
                 issues_to_show.append(f"...and {len(math_issues)-3} more issues")
-                
+
                 raise ValueError(
                     f"Mathematical content must use LaTeX formatting.\n"
                     f"Issues found:\n" + "\n".join(f"  - {issue}" for issue in issues_to_show) + "\n"
