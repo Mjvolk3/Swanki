@@ -1974,11 +1974,13 @@ Content:
 
         # Generate (use regular OpenAI client, not instructor)
         # Use allocated budget from global target (convert words to tokens: ~1.33 tokens per word)
+        # IMPORTANT: For multi-section generation, use much higher token limits to avoid hitting length immediately
         if section_max_words > 0:
             section_max_tokens = int(section_max_words * 1.33)
-            max_completion_tokens = max(section_max_tokens, 1000)  # Min 1000 for very short sections
+            # Use 3x multiplier and minimum 4000 tokens to ensure enough room for generation
+            max_completion_tokens = max(section_max_tokens * 3, 4000)
         else:
-            max_completion_tokens = 5000  # Fallback for single-pass or old calls
+            max_completion_tokens = 10000  # Fallback for single-pass or old calls
 
         response = openai_client.chat.completions.create(
             model=model,
@@ -1989,7 +1991,26 @@ Content:
             max_completion_tokens=max_completion_tokens,
         )
 
-        chunk_transcript = response.choices[0].message.content.strip()
+        # Extract response and log diagnostics
+        chunk_transcript = response.choices[0].message.content.strip() if response.choices[0].message.content else ""
+        finish_reason = response.choices[0].finish_reason
+
+        # Log diagnostic info if content is empty or generation stopped prematurely
+        logger.info(
+            f"Section '{section_title}' response: "
+            f"content_length={len(chunk_transcript)}, "
+            f"finish_reason={finish_reason}, "
+            f"max_completion_tokens={max_completion_tokens}"
+        )
+
+        if not chunk_transcript:
+            logger.error(
+                f"Section '{section_title}' returned EMPTY content! "
+                f"finish_reason={finish_reason}, "
+                f"has_refusal={hasattr(response.choices[0].message, 'refusal') and response.choices[0].message.refusal is not None}"
+            )
+            if hasattr(response.choices[0].message, 'refusal') and response.choices[0].message.refusal:
+                logger.error(f"Refusal reason: {response.choices[0].message.refusal}")
 
         # Immediate critique using instructor
         try:
