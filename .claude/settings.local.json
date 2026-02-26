@@ -1,20 +1,48 @@
 {
   "permissions": {
+    "additionalDirectories": ["../Swanki_Data", "../iBioFoundry-AI"],
     "allow": [
-      "Read(*.py)",
-      "Read(*.md)",
-      "Read(*.yaml)",
-      "Read(*.txt)",
-      "Write(*.py)",
+      "Read(**)",
+      "Search(**)",
+      "Glob(**)",
+      "Grep(**)",
+      "Write(**/*.py)",
+      "Write(**/*.md)",
+      "Write(**/*.sh)",
+      "Edit(**/*.py)",
+      "Edit(**/*.md)",
+      "Edit(**/*.sh)",
       "Bash(mkdir:*)",
       "Bash(ls:*)",
-      "Grep(*.py)",
-      "Grep(*.md)",
-      "Grep(*.__log__)",
-      "Search(*.py)",
-      "Search(*.md)",
-      "Search(*.py)"
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(wc:*)",
+      "Bash(dendron-cli:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(grep:*)",
+      "Bash(code:*)",
+      "Bash(git add:*)",
+      "Bash(echo:*)"
+    ],
+    "deny": [
+      "Bash(rm *)",
+      "Bash(sudo *)",
+      "Bash(chmod *)",
+      "Bash(cat *.env*)",
+      "Bash(head *.env*)",
+      "Bash(tail *.env*)",
+      "Bash(echo *.env*)",
+      "Read(**/.env)",
+      "Read(**/*.env)",
+      "Read(**/*.pem)",
+      "Read(~/.ssh/**)",
+      "Edit(**/.env)",
+      "Edit(**/*.env)"
     ]
   },
-  "enableAllProjectMcpServers": false
+  "enableAllProjectMcpServers": false,
+  "outputStyle": "default"
 }
