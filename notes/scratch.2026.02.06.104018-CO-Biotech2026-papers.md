@@ -2,7 +2,7 @@
 id: kg7lzan8yptuoy3g3nj4y0e
 title: 104018-CO-Biotech2026-papers
 desc: ''
-updated: 1771103577644
+updated: 1772078484798
 created: 1770396028278
 ---
 - [x] carruthersAutomationMachineLearning2025
@@ -28,4 +28,6 @@ created: 1770396028278
 
 ***
 
-- []
+- [ ] sveshnikovaDesigningPathwaysBioproducing2025
+- [ ] luCellFactoryDesign2024
+- [ ] 
