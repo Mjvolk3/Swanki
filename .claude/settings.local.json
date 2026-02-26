@@ -1,6 +1,6 @@
 {
   "permissions": {
-    "additionalDirectories": ["../Swanki_Data", "../iBioFoundry-AI"],
+    "additionalDirectories": ["../Swanki_Data", "../iBioFoundry-AI", "../Zendron", "../Deep-Learning-Foundations-and-Concepts", "../instructor", "../openai-python"],
     "allow": [
       "Read(**)",
       "Search(**)",

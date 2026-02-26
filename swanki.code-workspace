@@ -9,6 +9,10 @@
             "path": "../iBioFoundry-AI"
         },
         {
+            "name": "Zendron",
+            "path": "../Zendron"
+        },
+        {
             "name": "Kbase",
             "path": "../Kbase"
         },
