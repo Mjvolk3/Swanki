@@ -2,7 +2,7 @@
 id: 0ltb6tnuikdyy1zswq4uph7
 title: 09
 desc: ''
-updated: 1772079157206
+updated: 1772083229286
 created: 1772072267037
 ---
 ## 2026.02.25
@@ -11,6 +11,9 @@ created: 1772072267037
 - [x] Resize oversized remote images before sending to vision API in image_processor [[swanki.processing.image_processor#20260225---resize-oversized-remote-images-before-sending-to-vision-api]]
 - [x] Added git worktree setup script, .gitattributes merge=union for weekly notes, and updated .gitignore
 - [x] Added Zendron and other workspace dirs to Claude Code settings
+- [x] Set dendron note ref aliasMode to none for insertNoteLink and copyNoteLink to avoid aliases by default
+- [x] Added montanolopezPhysiologicalLimitationsOpportunities2022 to CO-Biotech2026 paper list [[scratch.2026.02.06.104018-CO-Biotech2026-papers]]
+- [ ] [[dendron://Swanki/swanki.zotero-paper-import.plan-0]]
 
 ***
 
