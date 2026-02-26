@@ -24,6 +24,10 @@ Example
 
 - ~/opt/miniconda3/envs/swanki/bin/Swanki python script.py
 
+## Weekly Notes
+
+- When checking off a task in the weekly note, always add a one-sentence summary before the `[[link]]`. Never leave a checked item as just a bare link.
+
 ## Change Log
 
 - This is automatically updated. Don't edit it directly.
