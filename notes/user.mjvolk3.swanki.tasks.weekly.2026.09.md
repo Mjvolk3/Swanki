@@ -2,7 +2,7 @@
 id: 0ltb6tnuikdyy1zswq4uph7
 title: 09
 desc: ''
-updated: 1772089185742
+updated: 1772091055563
 created: 1772072267037
 ---
 ## 2026.02.25
@@ -14,9 +14,8 @@ created: 1772072267037
 - [x] Set dendron note ref aliasMode to none for insertNoteLink and copyNoteLink to avoid aliases by default
 - [x] Added montanolopezPhysiologicalLimitationsOpportunities2022 to CO-Biotech2026 paper list [[scratch.2026.02.06.104018-CO-Biotech2026-papers]]
 - [x] Implemented zotero-paper-import script and skill -- download, cut refs, prepare _clean.pdf and .sh in one command [[scripts.zotero_paper_import]]
-- [ ] [[swanki.zotero-paper-import.plan-0]]
+- [x] Plan for Zotero-to-Swanki_Data automation: download PDFs by citation key, cut refs, produce _clean.pdf and .sh [[swanki.zotero-paper-import.plan-0]]
 - [ ] Integrate with book player.
-
 
 ***
 
