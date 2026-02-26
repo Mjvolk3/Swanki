@@ -1,6 +1,6 @@
 ---
 id: joluv8aovvanvchzp4meheg
-title: Zotero_import
+title: Zotero_paper_import
 desc: ''
 updated: 1772090361742
 created: 1772090361742

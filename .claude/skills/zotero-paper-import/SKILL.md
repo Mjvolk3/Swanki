@@ -16,7 +16,7 @@ The user provides one or more citation keys as arguments, e.g.:
 ### Step 1: Run the import script
 
 ```bash
-/Users/michaelvolk/miniconda3/bin/python scripts/zotero_import.py <key1> [key2 ...]
+/Users/michaelvolk/miniconda3/bin/python scripts/zotero_paper_import.py <key1> [key2 ...]
 ```
 
 This single command handles everything per key:
