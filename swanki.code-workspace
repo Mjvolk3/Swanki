@@ -5,6 +5,10 @@
             "path": "."
         },
         {
+            "name": "iBioFoundry-AI",
+            "path": "../iBioFoundry-AI"
+        },
+        {
             "name": "Kbase",
             "path": "../Kbase"
         },
@@ -140,36 +144,24 @@
                 "command": "./notes/assets/publish/scripts/bib_tex_docx.sh ${file} ${fileDirname} ${fileBasenameNoExtension}",
                 "problemMatcher": []
             },
-            // Black
+            // Ruff
             {
-                "label": "black: file",
+                "label": "ruff: check file",
                 "type": "shell",
-                "command": "black",
-                "args": [
-                    "${file}"
-                ],
-                "problemMatcher": [],
-                "group": {
-                    "kind": "build",
-                    "isDefault": true
-                }
+                "command": "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/python -m ruff check ${file}",
+                "problemMatcher": []
             },
-            // autoflake
             {
-                "label": "autoflake: clean imports",
+                "label": "ruff: fix file",
                 "type": "shell",
-                "command": "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/autoflake",
-                "args": [
-                    "--remove-all-unused-imports",
-                    "--remove-duplicate-keys",
-                    "--in-place",
-                    "${file}"
-                ],
-                "problemMatcher": [],
-                "group": {
-                    "kind": "build",
-                    "isDefault": true
-                }
+                "command": "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/python -m ruff check --fix ${file}",
+                "problemMatcher": []
+            },
+            {
+                "label": "ruff: format file",
+                "type": "shell",
+                "command": "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/python -m ruff format ${file}",
+                "problemMatcher": []
             },
             // mypy
             {
@@ -216,17 +208,25 @@
                 "problemMatcher": [],
                 "group": "build"
             },
-            // isort
+            // Publish: export pod
             {
-                "label": "isort: file",
+                "label": "Dendron: export pod md",
                 "type": "shell",
-                "command": "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/isort ${file}",
-                "problemMatcher": [],
-                "presentation": {
-                    "reveal": "always",
-                    "panel": "shared",
-                    "close": false
-                }
+                "command": "bash ./notes/assets/publish/scripts/export_pod_md.sh ${file}",
+                "problemMatcher": []
+            },
+            {
+                "label": "Dendron: export pod md + pdf",
+                "type": "shell",
+                "command": "bash ./notes/assets/publish/scripts/export_pod_md.sh ${file} && ./notes/assets/publish/scripts/bib_tex_pdf.sh ./notes/assets/export-pod-md/${fileBasename} ./notes/assets/export-pod-md ${fileBasenameNoExtension} pdf-pod-output",
+                "problemMatcher": []
+            },
+            // Dendron tree
+            {
+                "label": "dendron: tree",
+                "type": "shell",
+                "command": "bash scripts/dendron-tree.sh -L ${input:dendronTreeDepth}",
+                "problemMatcher": []
             },
             //TC - workspace scripts notes/assets/scripts
             {
@@ -379,6 +379,18 @@
                     "4",
                     "8"
                     "16",
+                ]
+            },
+            {
+                "id": "dendronTreeDepth",
+                "description": "Dendron tree display depth",
+                "type": "pickString",
+                "options": [
+                    "1",
+                    "2",
+                    "3",
+                    "4",
+                    "5"
                 ]
             },
             {

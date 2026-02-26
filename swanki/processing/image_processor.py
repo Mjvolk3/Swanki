@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import re
 import logging
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse, parse_qs
 import shutil
 from openai import OpenAI
 import os
@@ -368,6 +368,30 @@ Keep the summary concise but informative (2-4 sentences)."""
                 # Use data URL for local images
                 mime_type = "image/png" if image_path.suffix.lower() == '.png' else "image/jpeg"
                 image_url = f"data:{mime_type};base64,{image_data}"
+            else:
+                # Check if remote image dimensions exceed threshold via URL params
+                max_dimension = 2000
+                parsed = urlparse(image_url)
+                params = parse_qs(parsed.query)
+                img_h = int(params.get('height', [0])[0])
+                img_w = int(params.get('width', [0])[0])
+                if img_h > max_dimension or img_w > max_dimension:
+                    import base64
+                    import io
+                    import requests
+                    from PIL import Image as PILImage
+
+                    logger.info(f"Remote image too large ({img_w}x{img_h}), downloading and resizing")
+                    resp = requests.get(image_url, timeout=60)
+                    resp.raise_for_status()
+                    img = PILImage.open(io.BytesIO(resp.content))
+                    scale = max_dimension / max(img.size)
+                    img = img.resize((int(img.size[0] * scale), int(img.size[1] * scale)), PILImage.LANCZOS)
+                    logger.info(f"Resized to {img.size[0]}x{img.size[1]}")
+                    buf = io.BytesIO()
+                    img.convert('RGB').save(buf, format='JPEG', quality=85)
+                    image_data = base64.b64encode(buf.getvalue()).decode('utf-8')
+                    image_url = f"data:image/jpeg;base64,{image_data}"
 
             # Add retry logic for image summary generation
             max_retries = 3

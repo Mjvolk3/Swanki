@@ -8,13 +8,38 @@
 \setlength{\droptitle}{-4em} % Move title up
 \posttitle{\par\end{center}\vspace{-4.5em}} % Distance between title and text
 
+% Use DejaVu Sans Mono for code blocks (supports Unicode box-drawing characters)
+\usepackage{fontspec}
+\setmonofont{DejaVu Sans Mono}[Scale=0.85]
+
+% Enable line wrapping in code blocks (fvextra extends fancyvrb loaded by pandoc)
+\usepackage{fvextra}
+\fvset{breaklines=true, breakanywhere=true}
+
+% Redirect plain \begin{verbatim} to fvextra's Verbatim so breaklines applies.
+% The Lua filter strips highlighting from code blocks with long lines, causing
+% pandoc to emit \begin{verbatim} (standard LaTeX, no wrapping support).
+% This makes those blocks use fvextra's Verbatim instead.
+\DefineVerbatimEnvironment{verbatim}{Verbatim}{}
+
+% Tone down red "alert/error" tokens from pandoc syntax highlighting.
+% Bash highlighter marks unmatched quotes and embedded JSON as errors (red).
+% Use the same dark color as normal code text instead.
+\makeatletter
+\AtBeginDocument{%
+  \@ifundefined{AlertTok}{}{%
+    \renewcommand{\AlertTok}[1]{\textcolor[rgb]{0.25,0.25,0.25}{#1}}%
+  }%
+}
+\makeatother
+
 % Image quality improvements
 \usepackage{graphicx}
 \DeclareGraphicsExtensions{.png,.pdf,.jpg}
 
 % Default image settings
 \setkeys{Gin}{draft=false}
-\setkeys{Gin}{width=\linewidth} % Slightly reduced from full width for better appearance or 0.9\linewidth
+\setkeys{Gin}{width=\linewidth}
 
 \usepackage{xcolor}
 \definecolor{linkred}{RGB}{205,92,92}      % Indian Red for citations and internal links

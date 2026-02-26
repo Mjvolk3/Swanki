@@ -37,7 +37,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["black", "semantic-release", "pip-tools", "pytest"]
+dev = ["ruff", "semantic-release", "pip-tools", "pytest", "pre-commit"]
 
 [project.urls]
 Homepage = "https://github.com/Mjvolk3/Swanki"
@@ -49,42 +49,27 @@ swanki-combine-pdf = "swanki.combine_pdf:main"
 swanki-to-anki = "swanki.send_to_anki:main"
 
 
-[tool.isort]
-profile = "black"
-known_first_party = ["docs", "tests", "swanki", "train"]
-skip_gitignore = true
-color_output = true
+[tool.ruff]
+target-version = "py311"
+line-length = 88
 
-[tool.black]
-target-version = ["py311"]
-color = true
-skip_magic_trailing_comma = true # true in torchgeo
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "D"]
+ignore = ["E501"]
 
-# [tool.mypy]
-# python_version = "3.11"
-# ignore_missing_imports = true
-# show_error_codes = true
-# files = ["swanki/**/*.py", "tests/**/*.py"]
+[tool.ruff.lint.per-file-ignores]
+# Frontmatter docstrings (path, dendron link, github URL) aren't Google-style summaries
+"**" = ["D205", "D212", "D415"]
+# Test files: pytest hooks and __init__.py don't need docstrings
+"tests/**" = ["D103", "D104"]
+# Utility scripts: small single-purpose tools, docstrings optional
+"notes/assets/scripts/**" = ["D100", "D103"]
 
-# Strict
-warn_unused_configs = true
-disallow_any_generics = true
-disallow_subclassing_any = true
-disallow_untyped_calls = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_return_any = true
-no_implicit_reexport = true
-strict_equality = true
-
-[tool.pydocstyle]
+[tool.ruff.lint.pydocstyle]
 convention = "google"
-match = "swanki/.*\\.py"
+
+[tool.ruff.format]
+quote-style = "double"
 
 # https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html
 [tool.setuptools.dynamic]
