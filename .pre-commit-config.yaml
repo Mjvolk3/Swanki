@@ -1,0 +1,26 @@
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.0
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+        files: ^(swanki|tests)/
+      - id: ruff-format
+        files: ^(swanki|tests)/
+
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.20.0
+    hooks:
+      - id: markdownlint-cli2
+        args: [--fix]
+        files: ^notes/.*\.md$
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: Run tests (testmon)
+        entry: python -m pytest tests/ -x -q --testmon
+        language: system
+        files: ^(swanki|tests)/.*\.py$
+        pass_filenames: false
