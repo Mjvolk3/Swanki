@@ -1,0 +1,2 @@
+# Weekly task notes are additive -- always union both sides on conflict
+notes/user.mjvolk3.swanki.tasks.weekly.*.md merge=union

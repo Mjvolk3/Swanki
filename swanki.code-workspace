@@ -101,6 +101,13 @@
     "tasks": {
         "version": "2.0.0",
         "tasks": [
+            // Setup
+            {
+                "label": "setup: worktree",
+                "type": "shell",
+                "command": "./scripts/setup-worktree.sh",
+                "problemMatcher": []
+            },
             // Publish
             {
                 "label": "Paper: compile",

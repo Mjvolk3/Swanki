@@ -1,11 +1,15 @@
+# environment
+.env
+.env.vscode
+
 # dendron
 .dendron.port
 .dendron.ws
 .dendron.port.cli
 node_modules
+notes/.dendron.cache.json
 
 .next
-.env
 
 swanki-out/*
 __pycache__
@@ -23,9 +27,11 @@ media
 .qodo
 
 radivojevicMachineLearningAutomated2020
-notes/.dendron.cache.json
 
+# CLAUDE user-specific settings
 **/CLAUDE.local.md
+.claude/config.json
+.claude/plans/
 
 outputs/*
 .swanki_config
@@ -42,3 +48,16 @@ docs/_templates/
 
 #figures
 *.pptx
+
+# mermaid filter side effect
+mermaid-filter.err
+
+# mypy
+.mypy_cache/*
+
+# pytest-testmon
+.testmondata
+
+# coverage
+.coverage
+htmlcov/
