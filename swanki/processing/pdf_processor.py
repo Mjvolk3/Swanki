@@ -23,6 +23,8 @@ Split into 10 pages
 from pathlib import Path
 from typing import List, Optional
 import logging
+import shutil
+import subprocess
 from PyPDF2 import PdfReader, PdfWriter
 
 logger = logging.getLogger(__name__)
@@ -128,36 +130,57 @@ class PDFProcessor:
         try:
             reader = PdfReader(pdf_path)
             num_pages = len(reader.pages)
-            
+
             if num_pages == 0:
                 raise ValueError(f"PDF has no pages: {pdf_path}")
-            
+
             logger.info(f"Splitting PDF with {num_pages} pages: {pdf_path.name}")
-            
+
             output_files = []
-            
+
             for page_num, page in enumerate(reader.pages, start=1):
-                # Create writer for single page
                 writer = PdfWriter()
                 writer.add_page(page)
-                
-                # Generate output filename
+
                 output_path = self.pdf_singles_dir / f"page-{page_num}.pdf"
-                
-                # Write single page PDF
+
                 with open(output_path, "wb") as output_file:
                     writer.write(output_file)
-                
+
                 output_files.append(output_path)
                 logger.debug(f"Created page {page_num}/{num_pages}: {output_path.name}")
-            
+
             logger.info(f"Successfully split PDF into {len(output_files)} pages")
             return output_files
-            
+
         except Exception as e:
-            logger.error(f"Error splitting PDF: {e}")
-            raise ValueError(f"Failed to process PDF: {e}")
+            logger.warning(f"PyPDF2 failed: {e}. Falling back to qpdf.")
+            return self._split_pdf_qpdf(pdf_path)
     
+    def _split_pdf_qpdf(self, pdf_path: Path) -> List[Path]:
+        """Split PDF using qpdf as a fallback for malformed PDFs."""
+        if not shutil.which("qpdf"):
+            raise ValueError("qpdf is not installed; cannot split malformed PDF")
+
+        reader = PdfReader(pdf_path)
+        num_pages = len(reader.pages)
+        self.pdf_singles_dir.mkdir(parents=True, exist_ok=True)
+
+        output_files = []
+        for page_num in range(1, num_pages + 1):
+            output_path = self.pdf_singles_dir / f"page-{page_num}.pdf"
+            result = subprocess.run(
+                ["qpdf", str(pdf_path), "--pages", ".", str(page_num), "--", str(output_path)],
+            )
+            # qpdf exit 0=success, 3=warnings (ok). Anything else is a real error.
+            if result.returncode not in (0, 3):
+                raise ValueError(f"qpdf failed on page {page_num} with exit code {result.returncode}")
+            output_files.append(output_path)
+            logger.debug(f"Created page {page_num}/{num_pages} via qpdf: {output_path.name}")
+
+        logger.info(f"Successfully split PDF into {len(output_files)} pages via qpdf")
+        return output_files
+
     def get_page_count(self, pdf_path: Path) -> int:
         """Get the number of pages in a PDF.
         

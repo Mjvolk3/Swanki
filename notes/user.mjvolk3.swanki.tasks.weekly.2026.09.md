@@ -2,7 +2,7 @@
 id: 0ltb6tnuikdyy1zswq4uph7
 title: 09
 desc: ''
-updated: 1772091055563
+updated: 1772136569928
 created: 1772072267037
 ---
 ## 2026.02.25
@@ -16,6 +16,10 @@ created: 1772072267037
 - [x] Implemented zotero-paper-import script and skill -- download, cut refs, prepare _clean.pdf and .sh in one command [[scripts.zotero_paper_import]]
 - [x] Plan for Zotero-to-Swanki_Data automation: download PDFs by citation key, cut refs, produce _clean.pdf and .sh [[swanki.zotero-paper-import.plan-0]]
 - [ ] Integrate with book player.
+
+## 2026.02.26
+
+- [x] Added qpdf fallback so malformed PDFs that crash PyPDF2 are still split page-by-page [[swanki.processing.pdf_processor#20260226---add-qpdf-fallback-for-malformed-pdfs]]
 
 ***
 
