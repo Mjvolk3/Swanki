@@ -2,7 +2,7 @@
 id: 0ltb6tnuikdyy1zswq4uph7
 title: 09
 desc: ''
-updated: 1772137856820
+updated: 1772221934211
 created: 1772072267037
 ---
 ## 2026.02.25
@@ -20,6 +20,11 @@ created: 1772072267037
 ## 2026.02.26
 
 - [x] Added qpdf fallback so malformed PDFs that crash PyPDF2 are still split page-by-page [[swanki.processing.pdf_processor#20260226---add-qpdf-fallback-for-malformed-pdfs]]
+- [ ] [[swanki.output-apkg.plan-0]]
+
+## 2026.03.06
+
+- [x] Added pipeline diagram and paper link to README for collaborator sharing
 
 ***
 
