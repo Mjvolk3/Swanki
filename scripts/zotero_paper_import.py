@@ -12,6 +12,20 @@ from pydantic import BaseModel
 from PyPDF2 import PdfReader
 from pyzotero import zotero
 
+import importlib.util
+import sys
+
+# Import pdf_classifier directly to avoid triggering swanki/__init__.py
+# (which pulls in Pipeline → instructor → anthropic, not available in base env)
+_spec = importlib.util.spec_from_file_location(
+    "pdf_classifier",
+    Path(__file__).resolve().parent.parent / "swanki" / "utils" / "pdf_classifier.py",
+)
+_mod = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = _mod
+_spec.loader.exec_module(_mod)
+classify_pdf = _mod.classify_pdf
+
 load_dotenv()
 
 ZOTERO_API_KEY = os.environ["ZOTERO_API_KEY"]
@@ -20,8 +34,23 @@ ZOTERO_LIBRARY_ID = os.environ["ZOTERO_LIBRARY_ID"]
 SWANKI_DATA = Path(__file__).resolve().parent.parent.parent / "Swanki_Data"
 SWANKI_CUT = "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/swanki-cut"
 
-REF_PATTERNS = re.compile(
-    r"^(References|REFERENCES|Bibliography|BIBLIOGRAPHY|Literature Cited)\s*$"
+# Headings that mark the end of educational content.
+# Acknowledgments, references, etc. have zero educational value.
+# Cut at the earliest match.
+#
+# NOTE: We omit short mid-page headings like "Author Information",
+# "Author Contributions", "Competing Interests", "Notes" because
+# journals often place these partway through a page that still has
+# real content above.  The headings below reliably start a section
+# that fills the rest of the page (and beyond) with non-educational text.
+END_MATTER_PATTERNS = re.compile(
+    r"^[■□▪▸►]?\s*("
+    r"References|REFERENCES|Bibliography|BIBLIOGRAPHY|Literature Cited"
+    r"|Acknowledg(?:e)?ments?|ACKNOWLEDG(?:E)?MENTS?"
+    r"|Supporting Information|SUPPORTING INFORMATION"
+    r"|Supplementary (?:Information|Materials?)|SUPPLEMENTARY (?:INFORMATION|MATERIALS?)"
+    r")\s*$",
+    re.IGNORECASE,
 )
 
 
@@ -46,10 +75,11 @@ class PrepareResult(BaseModel):
 
     citation_key: str
     total_pages: int
-    refs_page: int | None
+    keep_ranges: list[tuple[int, int]]  # 0-indexed [start, end)
     kept_pages: int
     clean_pdf: Path
     sh_script: Path
+    used_llm: bool
 
 
 def connect(config: ZoteroConfig) -> zotero.Zotero:
@@ -149,17 +179,21 @@ def download_pdfs(
 # --- PDF cleaning ---
 
 
-def find_references_page(pdf_path: Path) -> tuple[int | None, int]:
-    """Find the page containing a references heading. Returns (page_index, total)."""
+def find_end_matter_page(pdf_path: Path) -> tuple[int | None, str | None, int]:
+    """Find the first page containing a non-educational end-matter heading.
+
+    Returns (page_index, matched_heading, total_pages).
+    """
     warnings.filterwarnings("ignore")
     reader = PdfReader(str(pdf_path), strict=False)
     total = len(reader.pages)
     for i, page in enumerate(reader.pages):
         text = page.extract_text() or ""
         for line in text.split("\n"):
-            if REF_PATTERNS.match(line.strip()):
-                return i, total
-    return None, total
+            m = END_MATTER_PATTERNS.match(line.strip())
+            if m:
+                return i, m.group(1), total
+    return None, None, total
 
 
 def cut_pdf(input_pdf: Path, output_pdf: Path, start: int, end: int) -> None:
@@ -192,8 +226,46 @@ def write_sh_script(output_dir: Path, citation_key: str) -> Path:
     return sh_path
 
 
+def _get_keep_ranges_llm(pdf_path: Path) -> tuple[list[tuple[int, int]], int]:
+    """Use LLM classifier to get keep-ranges. Returns (keep_ranges, total_pages)."""
+    plan = classify_pdf(pdf_path)
+    total = len(plan.pages)
+    print(f"  LLM classification:")
+    for p in plan.pages:
+        status = "KEEP" if p.keep else "CUT"
+        print(f"    Page {p.page}: {p.label} [{status}]")
+    return plan.keep_ranges, total
+
+
+def _get_keep_ranges_regex(pdf_path: Path) -> tuple[list[tuple[int, int]], int]:
+    """Use regex fallback to get keep-ranges. Returns (keep_ranges, total_pages)."""
+    end_page, heading, total = find_end_matter_page(pdf_path)
+    if end_page is not None:
+        print(f"  Regex fallback: '{heading}' at page {end_page + 1}, keeping 0:{end_page}")
+        return [(0, end_page)], total
+    print(f"  Regex fallback: no end-matter detected, keeping all {total} pages")
+    return [(0, total)], total
+
+
+def _get_keep_ranges(pdf_path: Path) -> tuple[list[tuple[int, int]], int, bool]:
+    """Get keep-ranges via LLM (preferred) or regex fallback.
+
+    Returns (keep_ranges, total_pages, used_llm).
+    """
+    if os.environ.get("OPENAI_API_KEY"):
+        try:
+            ranges, total = _get_keep_ranges_llm(pdf_path)
+            return ranges, total, True
+        except ImportError as e:
+            print(f"  LLM classifier unavailable ({e}), using regex fallback")
+    else:
+        print("  OPENAI_API_KEY not set, using regex fallback")
+    ranges, total = _get_keep_ranges_regex(pdf_path)
+    return ranges, total, False
+
+
 def clean_pdf(output_dir: Path, citation_key: str) -> PrepareResult:
-    """Detect references, cut, unite, and write .sh script."""
+    """Classify pages, cut keep-ranges, unite, and write .sh script."""
     main_pdf = output_dir / f"{citation_key}.pdf"
     si_pdf = None
     for name in (f"{citation_key}_si.pdf", f"{citation_key}_SI.pdf", f"{citation_key}_si1.pdf"):
@@ -202,29 +274,27 @@ def clean_pdf(output_dir: Path, citation_key: str) -> PrepareResult:
             si_pdf = candidate
             break
 
-    # Detect references in main PDF
-    refs_page, total = find_references_page(main_pdf)
-    if refs_page is not None:
-        keep_end = refs_page + 1
-        print(f"  References detected at page {refs_page}, keeping pages 0:{keep_end} of {total}")
-    else:
-        keep_end = total
-        print(f"  No references heading detected ({total} pages), keeping all pages")
+    keep_ranges, total, used_llm = _get_keep_ranges(main_pdf)
 
-    # Cut main PDF
+    # Cut each keep-range from the main PDF
     cut_pieces: list[Path] = []
-    main_cut = output_dir / f"{citation_key}_cut.pdf"
-    cut_pdf(main_pdf, main_cut, 0, keep_end)
-    cut_pieces.append(main_cut)
+    for i, (start, end) in enumerate(keep_ranges):
+        piece = output_dir / f"{citation_key}_range{i}.pdf"
+        cut_pdf(main_pdf, piece, start, end)
+        cut_pieces.append(piece)
+        print(f"  Keep range: pages {start + 1}-{end} of {total}")
+
+    kept_pages = sum(end - start for start, end in keep_ranges)
 
     # Cut SI if present
     if si_pdf:
-        si_refs, si_total = find_references_page(si_pdf)
-        si_keep = (si_refs + 1) if si_refs is not None else si_total
-        si_cut = output_dir / f"{citation_key}_si_cut.pdf"
-        cut_pdf(si_pdf, si_cut, 0, si_keep)
-        cut_pieces.append(si_cut)
-        print(f"  SI: kept {si_keep} of {si_total} pages")
+        si_ranges, si_total, _ = _get_keep_ranges(si_pdf)
+        for i, (start, end) in enumerate(si_ranges):
+            piece = output_dir / f"{citation_key}_si_range{i}.pdf"
+            cut_pdf(si_pdf, piece, start, end)
+            cut_pieces.append(piece)
+        si_kept = sum(end - start for start, end in si_ranges)
+        print(f"  SI: kept {si_kept} of {si_total} pages")
 
     # Unite into _clean.pdf
     clean_path = output_dir / f"{citation_key}_clean.pdf"
@@ -238,10 +308,11 @@ def clean_pdf(output_dir: Path, citation_key: str) -> PrepareResult:
     return PrepareResult(
         citation_key=citation_key,
         total_pages=total,
-        refs_page=refs_page,
-        kept_pages=keep_end,
+        keep_ranges=keep_ranges,
+        kept_pages=kept_pages,
         clean_pdf=clean_path,
         sh_script=sh_path,
+        used_llm=used_llm,
     )
 
 
@@ -279,9 +350,11 @@ def main():
 
         if not args.download_only:
             result = clean_pdf(output_dir, key)
+            method = "LLM" if result.used_llm else "regex"
+            ranges_str = ", ".join(f"{s+1}-{e}" for s, e in result.keep_ranges)
             print(
-                f"  Summary: {result.kept_pages}/{result.total_pages} pages kept, "
-                f"refs at page {result.refs_page}"
+                f"  Summary: {result.kept_pages}/{result.total_pages} pages kept "
+                f"({method}), ranges: [{ranges_str}]"
             )
 
     print(f"\nDone. Processed {len(args.keys)} paper(s).")

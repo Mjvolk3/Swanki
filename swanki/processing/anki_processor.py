@@ -50,6 +50,512 @@ MATH_FENCE_RE = re.compile(r"```+\s*([$]{1,2}[\s\S]*?[$]{1,2})\s*```+", re.DOTAL
 HR_SPLIT_RE = re.compile(r"^[*-]{3,}\s*$")
 
 
+# ── Module-level card-processing functions ──────────────────────────────
+# These have no dependency on AnkiConnect (no host/port/url).
+# AnkiProcessor methods delegate to these so both AnkiConnect and
+# ApkgExporter can share the same parsing/formatting logic.
+
+
+def parse_tags(body: List[str]) -> Tuple[List[str], List[str]]:
+    """Parse tags from card body lines.
+
+    Parameters
+    ----------
+    body : List[str]
+        Lines of a card body
+    Returns
+    -------
+    Tuple[List[str], List[str]]
+        (tags, filtered_body) where filtered_body has tag lines removed
+    """
+    tags = []
+    filtered = []
+    for line in body:
+        match = TAG_LINE_RE.match(line)
+        if match:
+            raw_tags = match.group(1)
+            if ',' in raw_tags:
+                for tag in TAG_SPLIT_RE.split(raw_tags):
+                    tag = tag.strip().lstrip('#')
+                    if tag:
+                        tags.append(tag)
+            else:
+                tag = raw_tags.strip().lstrip('#')
+                if tag:
+                    tags.append(tag)
+        else:
+            filtered.append(line)
+    return tags, filtered
+
+
+def split_front_back(heading: str, body: List[str]) -> Tuple[str, str]:
+    """Split card into front and back content.
+
+    Parameters
+    ----------
+    heading : str
+        Card heading text (without ``## `` prefix)
+    body : List[str]
+        Card body lines
+
+    Returns
+    -------
+    Tuple[str, str]
+        (front, back)
+    """
+    split_idx = None
+    for i, line in enumerate(body):
+        if line.strip() == "%" or HR_SPLIT_RE.match(line):
+            split_idx = i
+            break
+
+    if split_idx is not None:
+        front = heading + "\n" + "\n".join(body[:split_idx]).strip()
+        back_lines = body[split_idx + 1:]
+        tag_lines = []
+        while back_lines and (
+            back_lines[-1].strip().startswith('#')
+            or back_lines[-1].strip().startswith('- #')
+            or back_lines[-1].strip() == ''
+        ):
+            line = back_lines.pop()
+            if line.strip():
+                tag_lines.insert(0, line)
+        back = "\n".join(back_lines).strip()
+    else:
+        front = heading
+        back = "\n".join(body).strip()
+
+    return front, back
+
+
+def extract_cards(lines: List[str]) -> List[Dict[str, Any]]:
+    """Extract cards from markdown lines.
+
+    Parameters
+    ----------
+    lines : List[str]
+        Lines from a markdown file
+
+    Returns
+    -------
+    List[Dict[str, Any]]
+        Card dicts with 'front', 'back', and 'tags' keys
+    """
+    card_indices = [i for i, line in enumerate(lines) if line.startswith("## ")]
+    if not card_indices:
+        return []
+
+    card_indices.append(len(lines))
+
+    cards = []
+    for i in range(len(card_indices) - 1):
+        start = card_indices[i]
+        end = card_indices[i + 1]
+
+        heading = lines[start][3:].strip()
+        body = lines[start + 1:end]
+
+        tags = []
+        while body:
+            last_line = body[-1].strip()
+            if last_line.startswith('#'):
+                tag_matches = re.findall(r'#([\w.-]+)', last_line)
+                tags = tag_matches + tags
+                body.pop()
+            elif last_line.startswith('- #'):
+                tag_matches = re.findall(r'#([\w.-]+)', last_line)
+                tags = tag_matches + tags
+                body.pop()
+            elif last_line == '':
+                body.pop()
+            else:
+                break
+
+        additional_tags, body = parse_tags(body)
+        tags.extend(additional_tags)
+
+        seen: Set[str] = set()
+        unique_tags = []
+        for tag in tags:
+            if tag not in seen:
+                seen.add(tag)
+                unique_tags.append(tag)
+        tags = unique_tags
+
+        front, back = split_front_back(heading, body)
+
+        if tags:
+            logger.info(f"Extracted card with tags: {tags}")
+        else:
+            logger.warning(f"No tags found for card: {heading[:50]}...")
+
+        cards.append({'front': front, 'back': back, 'tags': tags})
+
+    return cards
+
+
+def validate_and_fix_cloze_format(card: Dict[str, Any]) -> None:
+    """Validate and fix cloze card formatting issues in-place.
+
+    Parameters
+    ----------
+    card : Dict[str, Any]
+        Card dict with 'front', 'back', 'tags'
+    """
+    has_cloze_in_front = "{{c" in card['front']
+    has_cloze_in_back = "{{c" in card['back']
+
+    if has_cloze_in_back and not has_cloze_in_front:
+        logger.warning("Fixing misformatted cloze card: cloze markers found in back instead of front")
+        cloze_pattern = r'\{\{c\d+::(.+?)\}\}'
+        cloze_matches = re.findall(cloze_pattern, card['back'], re.DOTALL)
+        if cloze_matches:
+            cloze_content = cloze_matches[0].strip()
+            if card['front'].endswith('?'):
+                base_text = card['front'].rstrip('?').strip()
+                if re.match(r'^What is the (.+)$', base_text, re.IGNORECASE):
+                    card['front'] = re.sub(
+                        r'^What is the (.+)$',
+                        r'The \1 is {{c1::' + cloze_content + '}}',
+                        base_text, flags=re.IGNORECASE,
+                    )
+                elif re.match(r'^Which (.+)$', base_text, re.IGNORECASE):
+                    card['front'] = f"{{{{c1::{cloze_content}}}}} {base_text[6:]}"
+                elif re.match(r'^In (.+), what (.+)$', base_text, re.IGNORECASE):
+                    match = re.match(r'^In (.+), what (.+)$', base_text, re.IGNORECASE)
+                    card['front'] = f"In {match.group(1)}, {{{{c1::{cloze_content}}}}} {match.group(2)}"
+                else:
+                    card['front'] = f"{base_text} is {{{{c1::{cloze_content}}}}}"
+            else:
+                card['front'] = f"{card['front']} {{{{c1::{cloze_content}}}}}"
+            card['back'] = ""
+            logger.info(f"Fixed cloze format - moved to front: {card['front'][:80]}...")
+
+    elif has_cloze_in_back and has_cloze_in_front:
+        logger.warning("Cloze card has markers in both front and back - removing from back")
+        card['back'] = re.sub(r'\{\{c\d+::[^}]+\}\}', '', card['back']).strip()
+
+    if has_cloze_in_front:
+        cloze_pattern = r'{{c\d+::([^}]+)}}'
+        for match in re.finditer(cloze_pattern, card['front']):
+            cloze_content = match.group(1)
+            if '|' in cloze_content:
+                for line in cloze_content.split('\n'):
+                    if line.count('|') >= 2:
+                        logger.warning("Table detected inside cloze deletion - may cause rendering issues")
+                        logger.warning(f"Problematic cloze content: {match.group(0)[:100]}...")
+                        break
+
+
+def fix_cloze_issues(text: str) -> str:
+    """Fix common cloze deletion issues that cause Anki import failures.
+
+    Parameters
+    ----------
+    text : str
+        Text containing cloze deletions
+
+    Returns
+    -------
+    str
+        Text with fixed cloze deletions
+    """
+    multiline_cloze_pattern = r'({{c\d+::(?:[^}]|\n)*?}})'
+
+    def fix_multiline_cloze(match):
+        cloze_text = match.group(1)
+        fixed_cloze = cloze_text.replace('\n', ' ')
+        fixed_cloze = re.sub(r'\s+', ' ', fixed_cloze)
+        return fixed_cloze
+
+    text = re.sub(multiline_cloze_pattern, fix_multiline_cloze, text, flags=re.DOTALL)
+
+    cloze_with_pipes_pattern = r'{{(c\d+::)(.*?)}}'
+
+    def fix_pipes_in_cloze(match):
+        cloze_marker = match.group(1)
+        content = match.group(2)
+        if '|' not in content:
+            return match.group(0)
+        fixed_content = content.replace('|', '\\vert ')
+        return f'{{{{{cloze_marker}{fixed_content}}}}}'
+
+    text = re.sub(cloze_with_pipes_pattern, fix_pipes_in_cloze, text)
+
+    display_math_in_cloze = r'{{(c\d+::)\\\[(.*?)\\\]}}'
+    text = re.sub(display_math_in_cloze, r'{{\1\\(\2\\)}}', text, flags=re.DOTALL)
+
+    cloze_in_display_math = r'\\\[(.*?){{(c\d+::.*?}})(.*?)\\\]'
+
+    def fix_cloze_in_display(match):
+        before = match.group(1)
+        cloze = match.group(2)
+        after = match.group(3)
+        return f'\\({before}{{{cloze}{after}\\)'
+
+    text = re.sub(cloze_in_display_math, fix_cloze_in_display, text, flags=re.DOTALL)
+
+    text = re.sub(r'}}}', r'} }}', text)
+
+    return text
+
+
+def process_table_lines(table_lines: List[str]) -> str:
+    """Convert markdown table lines to styled HTML.
+
+    Parameters
+    ----------
+    table_lines : List[str]
+        Lines forming a markdown table
+
+    Returns
+    -------
+    str
+        HTML table with Anki-friendly styling
+    """
+    import markdown
+
+    table_md = '\n'.join(table_lines)
+    try:
+        table_html = markdown.markdown(table_md, extensions=['tables'])
+        table_html = table_html.replace(
+            '<table>',
+            '<table style="border-collapse: collapse; margin: 10px auto; width: auto;">',
+        )
+        table_html = table_html.replace('<thead>', '<thead style="background-color: #f2f2f2;">')
+        table_html = table_html.replace(
+            '<th>', '<th style="border: 1px solid #ddd; padding: 8px; text-align: left;">'
+        )
+        table_html = table_html.replace('<td>', '<td style="border: 1px solid #ddd; padding: 8px;">')
+        table_html = table_html.strip()
+        if table_html.startswith('<p>') and table_html.endswith('</p>'):
+            table_html = table_html[3:-4]
+        return table_html
+    except Exception as e:
+        logger.warning(f"Failed to convert table to HTML: {e}")
+        return table_md
+
+
+def convert_markdown_tables_to_html(text: str) -> str:
+    """Convert markdown tables in text to styled HTML.
+
+    Parameters
+    ----------
+    text : str
+        Text potentially containing markdown tables
+
+    Returns
+    -------
+    str
+        Text with tables converted to HTML
+    """
+    lines = text.split('\n')
+    result_lines = []
+    in_table = False
+    table_buf: List[str] = []
+    in_cloze = False
+
+    for i, line in enumerate(lines):
+        if '{{c' in line:
+            in_cloze = True
+        if '}}' in line and in_cloze:
+            in_cloze = False
+
+        if '|' in line and not line.strip().startswith('```') and not in_cloze:
+            if line.count('|') >= 2:
+                in_table = True
+                table_buf.append(line)
+            else:
+                if in_table and table_buf:
+                    result_lines.append(process_table_lines(table_buf))
+                    table_buf = []
+                    in_table = False
+                result_lines.append(line)
+        elif in_table and (line.strip() == '' or i == len(lines) - 1):
+            if i == len(lines) - 1 and line.strip() != '':
+                table_buf.append(line)
+            if table_buf:
+                result_lines.append(process_table_lines(table_buf))
+                table_buf = []
+                in_table = False
+            if line.strip() == '':
+                result_lines.append(line)
+        else:
+            if in_table:
+                if table_buf:
+                    result_lines.append(process_table_lines(table_buf))
+                    table_buf = []
+                    in_table = False
+            result_lines.append(line)
+
+    if table_buf:
+        result_lines.append(process_table_lines(table_buf))
+
+    return '\n'.join(result_lines)
+
+
+def convert_markdown_lists_to_html(text: str) -> str:
+    """Convert markdown lists to HTML for Anki rendering.
+
+    Parameters
+    ----------
+    text : str
+        Text containing markdown lists
+
+    Returns
+    -------
+    str
+        Text with lists converted to HTML
+    """
+    lines = text.split('\n')
+    result = []
+    in_ul = False
+    in_ol = False
+
+    for line in lines:
+        if re.match(r'^[-*]\s+', line):
+            if not in_ul:
+                if in_ol:
+                    result.append('</ol>')
+                    in_ol = False
+                result.append('<ul>')
+                in_ul = True
+            item_content = re.sub(r'^[-*]\s+', '', line)
+            result.append(f'<li>{item_content}</li>')
+        elif re.match(r'^\d+\.\s+', line):
+            if not in_ol:
+                if in_ul:
+                    result.append('</ul>')
+                    in_ul = False
+                result.append('<ol>')
+                in_ol = True
+            item_content = re.sub(r'^\d+\.\s+', '', line)
+            result.append(f'<li>{item_content}</li>')
+        else:
+            if in_ul:
+                result.append('</ul>')
+                in_ul = False
+            if in_ol:
+                result.append('</ol>')
+                in_ol = False
+            result.append(line)
+
+    if in_ul:
+        result.append('</ul>')
+    if in_ol:
+        result.append('</ol>')
+
+    return '\n'.join(result)
+
+
+def process_content(text: str) -> str:
+    """Process math, media, and formatting in content for Anki.
+
+    Parameters
+    ----------
+    text : str
+        Raw card content
+
+    Returns
+    -------
+    str
+        Content processed for Anki (tables, lists, math, images, code, cloze fixes)
+    """
+    text = MATH_FENCE_RE.sub(lambda m: m.group(1), text)
+
+    raw_latex_pattern = r'(?<![\\\$\(])(\\(?:mathbf|mathbb|mathrm|mathcal|operatorname|frac|sqrt|sum|prod|int|lambda|alpha|beta|gamma|delta|epsilon|sigma|theta|phi|psi|omega|Omega|Delta|Sigma|Pi|Lambda|Gamma)\{[^}]+\})'
+    raw_matches = re.findall(raw_latex_pattern, text)
+    if raw_matches and len(raw_matches) <= 5:
+        for match in raw_matches[:5]:
+            logger.warning(f"Found potentially raw LaTeX: {match[:30]}...")
+
+    text = fix_cloze_issues(text)
+
+    def fix_math_pipes(t):
+        inline_math_pattern = r'(?<!\$)\$(?!\$)([^$]+)\$(?!\$)'
+        display_math_pattern = r'\$\$([^$]+)\$\$'
+
+        def replace_pipes_in_math(m):
+            math_content = m.group(1)
+            if '|' in math_content:
+                math_content = math_content.replace('|', '\\vert ')
+            if m.group(0).startswith('$$'):
+                return f'$${math_content}$$'
+            return f'${math_content}$'
+
+        t = re.sub(display_math_pattern, replace_pipes_in_math, t, flags=re.DOTALL)
+        t = re.sub(inline_math_pattern, replace_pipes_in_math, t)
+        return t
+
+    text = fix_math_pipes(text)
+
+    text = convert_markdown_tables_to_html(text)
+    text = convert_markdown_lists_to_html(text)
+
+    code_block_pattern = r'```(\w+)?\n(.*?)```'
+
+    def replace_code_block(match):
+        lang = match.group(1) or ''
+        code = match.group(2)
+        code = code.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        return f'<pre><code class="{lang}">{code}</code></pre>'
+
+    text = re.sub(code_block_pattern, replace_code_block, text, flags=re.DOTALL)
+    text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
+    text = re.sub(r'\*\*([^*]+?)\*\*', r'<strong>\1</strong>', text)
+    text = re.sub(r'(?<!\*)\*(?!\*)([^*]+?)\*(?!\*)(?!\*)', r'<em>\1</em>', text)
+    text = re.sub(r"\$\$(.*?)\$\$", r"\\[\1\\]", text, flags=re.DOTALL)
+    text = re.sub(r"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)", r"\\(\1\\)", text)
+
+    def replace_image(match):
+        url = match.group(1)
+        if url.startswith(("http://", "https://")):
+            return f'<img src="{url}">'
+        return f'<img src="{os.path.basename(url)}">'
+
+    text = IMAGE_RE.sub(replace_image, text)
+
+    return text
+
+
+def prepare_for_anki(text: str) -> str:
+    """Prepare markdown content for Anki (audio extraction + content processing).
+
+    Parameters
+    ----------
+    text : str
+        Raw card text potentially containing audio links
+
+    Returns
+    -------
+    str
+        Processed text ready for Anki
+    """
+    if not text:
+        return text
+
+    audio_front_match = re.search(r'\[audio-front\]\(([^)]+)\)', text)
+    audio_back_match = re.search(r'\[audio-back\]\(([^)]+)\)', text)
+
+    text_without_audio = text
+    if audio_front_match:
+        text_without_audio = text_without_audio.replace(audio_front_match.group(0), '')
+    if audio_back_match:
+        text_without_audio = text_without_audio.replace(audio_back_match.group(0), '')
+
+    processed = process_content(text_without_audio.strip())
+
+    if audio_front_match:
+        audio_file = os.path.basename(audio_front_match.group(1))
+        processed = f"{processed}\n\n[sound:{audio_file}]"
+    if audio_back_match:
+        audio_file = os.path.basename(audio_back_match.group(1))
+        processed = f"{processed}\n\n[sound:{audio_file}]"
+
+    return processed
+
+
 class AnkiProcessor:
     """Process and send cards to Anki using AnkiConnect.
     
@@ -453,447 +959,25 @@ class AnkiProcessor:
             return False
     
     def _extract_cards(self, lines: List[str]) -> List[Dict[str, Any]]:
-        """Extract cards from markdown lines.
-        
-        Parses markdown content to extract flashcards, including
-        front/back content and tags.
-        
-        Parameters
-        ----------
-        lines : List[str]
-            Lines from the markdown file
-        
-        Returns
-        -------
-        List[Dict[str, Any]]
-            List of card dictionaries with 'front', 'back', and 'tags'
-        
-        Notes
-        -----
-        Cards are identified by ## headers. Tags can be in multiple
-        formats: #tag1, #tag2 or - #tag or bullet lists.
-        """
-        # Find all H2 headers (card starts)
-        card_indices = [i for i, line in enumerate(lines) if line.startswith("## ")]
-        if not card_indices:
-            return []
-        
-        card_indices.append(len(lines))  # Add end marker
-        
-        cards = []
-        for i in range(len(card_indices) - 1):
-            start = card_indices[i]
-            end = card_indices[i + 1]
-            
-            # Extract card content
-            heading = lines[start][3:].strip()  # Remove "## "
-            body = lines[start + 1:end]
-            
-            # First, extract tags from the end of the card
-            # Tags are typically at the very end after all content
-            tags = []
-            
-            # Check from the end of body for tag lines
-            while body:
-                last_line = body[-1].strip()
-                
-                # Check if this is a tag line
-                if last_line.startswith('#'):
-                    # Inline format: #tag1, #tag2 or just #tag
-                    tag_matches = re.findall(r'#([\w.-]+)', last_line)
-                    tags = tag_matches + tags  # Prepend to maintain order
-                    body.pop()
-                elif last_line.startswith('- #'):
-                    # List format: - #tag1, #tag2 or - #tag
-                    tag_matches = re.findall(r'#([\w.-]+)', last_line)
-                    # Prepend all found tags to maintain order
-                    tags = tag_matches + tags
-                    body.pop()
-                elif last_line == '':
-                    # Empty line, continue checking
-                    body.pop()
-                else:
-                    # Not a tag line, stop
-                    break
-            
-            # Also parse tags using the original method (for other formats)
-            additional_tags, body = self._parse_tags(body)
-            tags.extend(additional_tags)
-            
-            # Remove duplicates while preserving order
-            seen = set()
-            unique_tags = []
-            for tag in tags:
-                if tag not in seen:
-                    seen.add(tag)
-                    unique_tags.append(tag)
-            tags = unique_tags
-            
-            # Split front/back
-            front, back = self._split_front_back(heading, body)
-            
-            # Don't process content here - just keep raw markdown
-            # Processing will happen later when converting for Anki
-            
-            if tags:
-                logger.info(f"Extracted card with tags: {tags}")
-            else:
-                logger.warning(f"No tags found for card: {heading[:50]}...")
-            
-            cards.append({
-                'front': front,
-                'back': back,
-                'tags': tags
-            })
-        
-        return cards
+        return extract_cards(lines)
     
     def _parse_tags(self, body: List[str]) -> Tuple[List[str], List[str]]:
-        """Parse tags from card body."""
-        tags = []
-        filtered = []
-        
-        for line in body:
-            match = TAG_LINE_RE.match(line)
-            if match:
-                raw_tags = match.group(1)
-                # Handle both comma-separated and single tags
-                if ',' in raw_tags:
-                    # Multiple tags separated by commas
-                    for tag in TAG_SPLIT_RE.split(raw_tags):
-                        tag = tag.strip().lstrip('#')
-                        if tag:
-                            tags.append(tag)
-                else:
-                    # Single tag
-                    tag = raw_tags.strip().lstrip('#')
-                    if tag:
-                        tags.append(tag)
-            else:
-                filtered.append(line)
-        
-        return tags, filtered
+        return parse_tags(body)
     
     def _split_front_back(self, heading: str, body: List[str]) -> Tuple[str, str]:
-        """Split card into front and back."""
-        # Find split marker (% or ---)
-        split_idx = None
-        for i, line in enumerate(body):
-            if line.strip() == "%" or HR_SPLIT_RE.match(line):
-                split_idx = i
-                break
-        
-        if split_idx is not None:
-            front = heading + "\n" + "\n".join(body[:split_idx]).strip()
-            back_lines = body[split_idx + 1:]
-            
-            # Check if the last line(s) contain tags
-            # Tags might be at the very end after the back content
-            tag_lines = []
-            while back_lines and (
-                back_lines[-1].strip().startswith('#') or 
-                back_lines[-1].strip().startswith('- #') or
-                back_lines[-1].strip() == ''
-            ):
-                line = back_lines.pop()
-                if line.strip():  # Only add non-empty lines
-                    tag_lines.insert(0, line)
-            
-            back = "\n".join(back_lines).strip()
-        else:
-            front = heading
-            back = "\n".join(body).strip()
-        
-        return front, back
+        return split_front_back(heading, body)
     
     def _prepare_for_anki(self, text: str) -> str:
-        """Prepare markdown content for Anki.
-        
-        Handles:
-        1. Extract and convert audio links
-        2. Convert LaTeX to MathJax notation
-        3. Fix cloze issues
-        4. Convert markdown formatting to HTML
-        """
-        if not text:
-            return text
-            
-        # Step 1: Extract audio links BEFORE any processing
-        audio_front_match = re.search(r'\[audio-front\]\(([^)]+)\)', text)
-        audio_back_match = re.search(r'\[audio-back\]\(([^)]+)\)', text)
-        
-        # Remove audio links from text temporarily
-        text_without_audio = text
-        if audio_front_match:
-            text_without_audio = text_without_audio.replace(audio_front_match.group(0), '')
-        if audio_back_match:
-            text_without_audio = text_without_audio.replace(audio_back_match.group(0), '')
-        
-        # Step 2: Process the content (math, cloze, etc.)
-        processed = self._process_content(text_without_audio.strip())
-        
-        # Step 3: Add audio links back at the END in Anki format
-        # Add BOTH front and back audio if they exist
-        if audio_front_match:
-            audio_file = os.path.basename(audio_front_match.group(1))
-            processed = f"{processed}\n\n[sound:{audio_file}]"
-        if audio_back_match:  # Changed from elif to if to process both
-            audio_file = os.path.basename(audio_back_match.group(1))
-            processed = f"{processed}\n\n[sound:{audio_file}]"
-            
-        return processed
+        return prepare_for_anki(text)
         
     def _process_content(self, text: str) -> str:
-        """Process math and media in content (without audio - handled separately)."""
-        # Remove code fences around math
-        text = MATH_FENCE_RE.sub(lambda m: m.group(1), text)
-        
-        # Only detect truly raw LaTeX - not already in MathJax delimiters
-        # This should rarely trigger if generation is working correctly
-        # Pattern: LaTeX command NOT preceded by \( or $ and NOT followed by common math context
-        raw_latex_pattern = r'(?<![\\\$\(])(\\(?:mathbf|mathbb|mathrm|mathcal|operatorname|frac|sqrt|sum|prod|int|lambda|alpha|beta|gamma|delta|epsilon|sigma|theta|phi|psi|omega|Omega|Delta|Sigma|Pi|Lambda|Gamma)\{[^}]+\})'
-        
-        # Count how many we find for debugging
-        raw_matches = re.findall(raw_latex_pattern, text)
-        if raw_matches and len(raw_matches) <= 5:  # Only warn for a few, not hundreds
-            for match in raw_matches[:5]:
-                logger.warning(f"Found potentially raw LaTeX: {match[:30]}...")
-        
-        # Don't auto-wrap anymore - the warnings are enough
-        # If we're getting these warnings, the issue is in generation, not processing
-        
-        # Fix problematic cloze deletions (including pipe characters)
-        text = self._fix_cloze_issues(text)
-        
-        # Also fix pipe characters in math outside of cloze (for determinants, absolute values)
-        # This prevents markdown table parsing issues
-        # Only convert pipes that are clearly in math context
-        def fix_math_pipes(text):
-            # Pattern to find inline math $...$ and display math $$...$$
-            inline_math_pattern = r'(?<!\$)\$(?!\$)([^$]+)\$(?!\$)'
-            display_math_pattern = r'\$\$([^$]+)\$\$'
-            
-            def replace_pipes_in_math(match):
-                math_content = match.group(1)
-                # Replace | with \vert for LaTeX compatibility
-                if '|' in math_content:
-                    math_content = math_content.replace('|', '\\vert ')
-                # Return with original delimiters
-                if match.group(0).startswith('$$'):
-                    return f'$${math_content}$$'
-                else:
-                    return f'${math_content}$'
-            
-            # Fix pipes in display math first (to avoid inline pattern matching parts of display)
-            text = re.sub(display_math_pattern, replace_pipes_in_math, text, flags=re.DOTALL)
-            # Then fix pipes in inline math
-            text = re.sub(inline_math_pattern, replace_pipes_in_math, text)
-            
-            return text
-        
-        text = fix_math_pipes(text)
-        
-        # Convert markdown tables to HTML (before code blocks to avoid converting tables in code)
-        text = self._convert_markdown_tables_to_html(text)
-        
-        # Convert markdown lists to HTML for proper Anki rendering
-        # This ensures bullet points are displayed correctly
-        text = self._convert_markdown_lists_to_html(text)
-        
-        # Convert markdown code blocks to HTML for better Anki rendering
-        # This preserves syntax highlighting in Anki
-        code_block_pattern = r'```(\w+)?\n(.*?)```'
-        def replace_code_block(match):
-            lang = match.group(1) or ''
-            code = match.group(2)
-            # Escape HTML entities in code
-            code = code.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-            # Use monospace font and preserve whitespace
-            return f'<pre><code class="{lang}">{code}</code></pre>'
-        
-        text = re.sub(code_block_pattern, replace_code_block, text, flags=re.DOTALL)
-        
-        # Convert inline code to HTML
-        text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
-
-        # Convert markdown bold to HTML strong
-        text = re.sub(r'\*\*([^*]+?)\*\*', r'<strong>\1</strong>', text)
-
-        # Convert markdown italic to HTML em (avoid matching **)
-        text = re.sub(r'(?<!\*)\*(?!\*)([^*]+?)\*(?!\*)(?!\*)', r'<em>\1</em>', text)
-
-        # Convert markdown math to MathJax
-        # For display math, use DOTALL to allow multiline equations
-        text = re.sub(r"\$\$(.*?)\$\$", r"\\[\1\\]", text, flags=re.DOTALL)
-        # For inline math, DON'T use DOTALL to prevent matching across lines
-        # This prevents audio links from being caught inside math delimiters
-        text = re.sub(r"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)", r"\\(\1\\)", text)
-        
-        # Convert image links to HTML
-        def replace_image(match):
-            url = match.group(1)
-            if url.startswith(("http://", "https://")):
-                return f'<img src="{url}">'
-            else:
-                return f'<img src="{os.path.basename(url)}">'
-        
-        text = IMAGE_RE.sub(replace_image, text)
-        
-        return text
+        return process_content(text)
     
     def _validate_and_fix_cloze_format(self, card: Dict[str, Any]) -> None:
-        """Validate and fix cloze card formatting issues.
-        
-        Ensures cloze deletions are in the front, not the back.
-        This catches cards that were incorrectly generated.
-        
-        Parameters
-        ----------
-        card : Dict[str, Any]
-            Card dictionary with 'front', 'back', and 'tags'
-        """
-        # Check if cloze markers are in the wrong place
-        has_cloze_in_front = "{{c" in card['front']
-        has_cloze_in_back = "{{c" in card['back']
-        
-        if has_cloze_in_back and not has_cloze_in_front:
-            # Misformatted cloze card - cloze is in back instead of front
-            logger.warning(f"Fixing misformatted cloze card: cloze markers found in back instead of front")
-            
-            # Extract cloze content from back
-            cloze_pattern = r'\{\{c\d+::(.+?)\}\}'
-            cloze_matches = re.findall(cloze_pattern, card['back'], re.DOTALL)
-            
-            if cloze_matches:
-                cloze_content = cloze_matches[0].strip()
-                
-                # Transform the card based on front content
-                if card['front'].endswith('?'):
-                    # It's a question - transform to statement with cloze
-                    base_text = card['front'].rstrip('?').strip()
-                    
-                    # Common transformations
-                    if re.match(r'^What is the (.+)$', base_text, re.IGNORECASE):
-                        card['front'] = re.sub(r'^What is the (.+)$', r'The \1 is {{c1::' + cloze_content + '}}', base_text, flags=re.IGNORECASE)
-                    elif re.match(r'^Which (.+)$', base_text, re.IGNORECASE):
-                        card['front'] = f"{{{{c1::{cloze_content}}}}} {base_text[6:]}"
-                    elif re.match(r'^In (.+), what (.+)$', base_text, re.IGNORECASE):
-                        match = re.match(r'^In (.+), what (.+)$', base_text, re.IGNORECASE)
-                        card['front'] = f"In {match.group(1)}, {{{{c1::{cloze_content}}}}} {match.group(2)}"
-                    else:
-                        # Generic transformation
-                        card['front'] = f"{base_text} is {{{{c1::{cloze_content}}}}}"
-                else:
-                    # Not a question - just append cloze
-                    card['front'] = f"{card['front']} {{{{c1::{cloze_content}}}}}"
-                
-                # Clear the back (should only have audio for cloze)
-                card['back'] = ""
-                logger.info(f"Fixed cloze format - moved to front: {card['front'][:80]}...")
-        
-        elif has_cloze_in_back and has_cloze_in_front:
-            # Both have cloze - remove from back
-            logger.warning("Cloze card has markers in both front and back - removing from back")
-            card['back'] = re.sub(r'\{\{c\d+::[^}]+\}\}', '', card['back']).strip()
-        
-        # Check for tables inside cloze deletions
-        if has_cloze_in_front:
-            # Extract cloze content to check for tables
-            cloze_pattern = r'{{c\d+::([^}]+)}}'
-            for match in re.finditer(cloze_pattern, card['front']):
-                cloze_content = match.group(1)
-                # Check if there's a table structure (multiple pipes on same line)
-                if '|' in cloze_content:
-                    lines = cloze_content.split('\n')
-                    for line in lines:
-                        if line.count('|') >= 2:
-                            logger.warning(f"Table detected inside cloze deletion - this is not supported and may cause rendering issues")
-                            logger.warning(f"Problematic cloze content: {match.group(0)[:100]}...")
-                            break
+        validate_and_fix_cloze_format(card)
     
     def _fix_cloze_issues(self, text: str) -> str:
-        """Fix common cloze deletion issues that cause Anki import failures.
-        
-        Parameters
-        ----------
-        text : str
-            Text containing cloze deletions
-            
-        Returns
-        -------
-        str
-            Text with fixed cloze deletions
-        """
-        # Fix multiline cloze deletions
-        # Pattern to find cloze that spans multiple lines
-        multiline_cloze_pattern = r'({{c\d+::(?:[^}]|\n)*?}})'
-        
-        def fix_multiline_cloze(match):
-            cloze_text = match.group(1)
-            # Replace newlines with spaces inside cloze
-            fixed_cloze = cloze_text.replace('\n', ' ')
-            # Clean up multiple spaces
-            fixed_cloze = re.sub(r'\s+', ' ', fixed_cloze)
-            return fixed_cloze
-        
-        text = re.sub(multiline_cloze_pattern, fix_multiline_cloze, text, flags=re.DOTALL)
-        
-        # Fix pipe characters (|) in cloze deletions for determinant notation
-        # These interfere with markdown table parsing and Anki rendering
-        # Look for cloze deletions that contain pipes (including those with math)
-        # Use a non-greedy match to properly capture content between {{ and }}
-        cloze_with_pipes_pattern = r'{{(c\d+::)(.*?)}}'
-        
-        def fix_pipes_in_cloze(match):
-            cloze_marker = match.group(1)
-            content = match.group(2)
-            
-            # Only process if there are pipes in the content
-            if '|' not in content:
-                return match.group(0)
-            
-            # Check if the pipes are within math context
-            # Look for common math indicators
-            # This prevents markdown table parsing issues
-            math_indicators = ['$', '\\(', '\\[', '\\mathbf', '\\lambda', '\\mathbb', 
-                             '\\mathrm', '\\frac', '\\partial', 'matrix', 'det']
-            
-            # Check if any math indicator is present
-            is_math = any(indicator in content for indicator in math_indicators)
-            
-            # Convert pipes to \vert for LaTeX/MathJax compatibility
-            # This works for both determinants and absolute values
-            fixed_content = content.replace('|', '\\vert ')
-            
-            return f'{{{{{cloze_marker}{fixed_content}}}}}'
-        
-        text = re.sub(cloze_with_pipes_pattern, fix_pipes_in_cloze, text)
-        
-        # Fix display math inside cloze deletions
-        # Pattern: {{c1::\[...\]}} or \[{{c1::...}}\]
-        display_math_in_cloze = r'{{(c\d+::)\\\[(.*?)\\\]}}' 
-        text = re.sub(display_math_in_cloze, r'{{\1\\(\2\\)}}', text, flags=re.DOTALL)
-        
-        # Pattern: \[...{{c1::...}}...\]
-        cloze_in_display_math = r'\\\[(.*?){{(c\d+::.*?}})(.*?)\\\]'
-        
-        def fix_cloze_in_display(match):
-            before = match.group(1)
-            cloze = match.group(2)
-            after = match.group(3)
-            # Convert to inline math with cloze
-            return f'\\({before}{{{cloze}{after}\\)'
-        
-        text = re.sub(cloze_in_display_math, fix_cloze_in_display, text, flags=re.DOTALL)
-        
-        # Fix LaTeX issues inside cloze
-        # Add spaces before }} to avoid LaTeX conflicts with cloze terminator
-        # This is CRITICAL per Anki documentation - when LaTeX ends with }, need space before }}
-        # Simply look for }}} pattern (LaTeX } followed by cloze }}) and add space
-        # This pattern is: any character that's a } followed by }}
-        text = re.sub(r'}}}', r'} }}', text)
-        
-        return text
+        return fix_cloze_issues(text)
     
     def _convert_latex_to_mathjax(self, text: str) -> str:
         """Convert LaTeX dollar notation to MathJax format for Anki.
@@ -925,185 +1009,13 @@ class AnkiProcessor:
         return text
     
     def _convert_markdown_lists_to_html(self, text: str) -> str:
-        """Convert markdown lists to HTML for better Anki rendering.
-        
-        Converts both unordered (- or *) and ordered (1. 2. etc) lists to HTML.
-        This ensures proper spacing and indentation in Anki.
-        
-        Parameters
-        ----------
-        text : str
-            Text containing markdown lists
-            
-        Returns
-        -------
-        str
-            Text with lists converted to HTML
-        """
-        lines = text.split('\n')
-        result = []
-        in_ul = False
-        in_ol = False
-        
-        for line in lines:
-            # Check for unordered list item
-            if re.match(r'^[-*]\s+', line):
-                if not in_ul:
-                    if in_ol:
-                        result.append('</ol>')
-                        in_ol = False
-                    result.append('<ul>')
-                    in_ul = True
-                # Extract the list item content
-                item_content = re.sub(r'^[-*]\s+', '', line)
-                result.append(f'<li>{item_content}</li>')
-            # Check for ordered list item
-            elif re.match(r'^\d+\.\s+', line):
-                if not in_ol:
-                    if in_ul:
-                        result.append('</ul>')
-                        in_ul = False
-                    result.append('<ol>')
-                    in_ol = True
-                # Extract the list item content
-                item_content = re.sub(r'^\d+\.\s+', '', line)
-                result.append(f'<li>{item_content}</li>')
-            else:
-                # Not a list item - close any open lists
-                if in_ul:
-                    result.append('</ul>')
-                    in_ul = False
-                if in_ol:
-                    result.append('</ol>')
-                    in_ol = False
-                result.append(line)
-        
-        # Close any remaining open lists
-        if in_ul:
-            result.append('</ul>')
-        if in_ol:
-            result.append('</ol>')
-        
-        return '\n'.join(result)
+        return convert_markdown_lists_to_html(text)
     
     def _convert_markdown_tables_to_html(self, text: str) -> str:
-        """Convert markdown tables to HTML for Anki rendering.
-        
-        Note: Tables inside cloze deletions are not supported and will be skipped.
-        
-        Parameters
-        ----------
-        text : str
-            Text containing markdown tables
-            
-        Returns
-        -------
-        str
-            Text with HTML tables for Anki
-        """
-        import markdown
-        
-        # Split text into lines to process tables separately
-        lines = text.split('\n')
-        result_lines = []
-        in_table = False
-        table_lines = []
-        in_cloze = False
-        
-        for i, line in enumerate(lines):
-            # Track if we're inside a cloze deletion
-            if '{{c' in line:
-                in_cloze = True
-            if '}}' in line and in_cloze:
-                in_cloze = False
-            
-            # Detect table start/continuation (not in code blocks or cloze)
-            if '|' in line and not line.strip().startswith('```') and not in_cloze:
-                # Check if this looks like a table row (at least 2 pipes)
-                if line.count('|') >= 2:
-                    in_table = True
-                    table_lines.append(line)
-                else:
-                    # Not a table, just a line with a pipe
-                    if in_table and table_lines:
-                        # Process accumulated table
-                        table_html = self._process_table_lines(table_lines)
-                        result_lines.append(table_html)
-                        table_lines = []
-                        in_table = False
-                    result_lines.append(line)
-            elif in_table and (line.strip() == '' or i == len(lines) - 1):
-                # End of table - convert and add
-                if i == len(lines) - 1 and line.strip() != '':
-                    table_lines.append(line)  # Add last line if not empty
-                
-                if table_lines:
-                    table_html = self._process_table_lines(table_lines)
-                    result_lines.append(table_html)
-                    table_lines = []
-                    in_table = False
-                
-                if line.strip() == '':
-                    result_lines.append(line)  # Add the empty line
-            else:
-                if in_table:
-                    # No longer in table
-                    if table_lines:
-                        table_html = self._process_table_lines(table_lines)
-                        result_lines.append(table_html)
-                        table_lines = []
-                        in_table = False
-                result_lines.append(line)
-        
-        # Handle table at end of text if still accumulating
-        if table_lines:
-            table_html = self._process_table_lines(table_lines)
-            result_lines.append(table_html)
-        
-        return '\n'.join(result_lines)
+        return convert_markdown_tables_to_html(text)
     
     def _process_table_lines(self, table_lines: List[str]) -> str:
-        """Process accumulated table lines into HTML.
-        
-        Parameters
-        ----------
-        table_lines : List[str]
-            Lines that form a markdown table
-            
-        Returns
-        -------
-        str
-            HTML table with Anki-friendly styling
-        """
-        import markdown
-        
-        # Join lines to form complete table
-        table_md = '\n'.join(table_lines)
-        
-        # Convert to HTML using python-markdown
-        try:
-            table_html = markdown.markdown(table_md, extensions=['tables'])
-            
-            # Add Anki-friendly styling
-            table_html = table_html.replace('<table>', 
-                '<table style="border-collapse: collapse; margin: 10px auto; width: auto;">')
-            table_html = table_html.replace('<thead>', 
-                '<thead style="background-color: #f2f2f2;">')
-            table_html = table_html.replace('<th>', 
-                '<th style="border: 1px solid #ddd; padding: 8px; text-align: left;">')
-            table_html = table_html.replace('<td>', 
-                '<td style="border: 1px solid #ddd; padding: 8px;">')
-            
-            # Remove surrounding <p> tags that markdown might add
-            table_html = table_html.strip()
-            if table_html.startswith('<p>') and table_html.endswith('</p>'):
-                table_html = table_html[3:-4]
-            
-            return table_html
-        except Exception as e:
-            logger.warning(f"Failed to convert table to HTML: {e}")
-            # Return original markdown if conversion fails
-            return table_md
+        return process_table_lines(table_lines)
     
     def _fields_differ(self, existing: Dict[str, Any], new: Dict[str, str]) -> bool:
         """Check if fields differ between existing and new note."""

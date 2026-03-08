@@ -69,6 +69,7 @@ from ..processing import (
     MarkdownCleaner,
     ImageProcessor,
     AnkiProcessor,
+    ApkgExporter,
 )
 from ..processing.markdown_cleaner import _natural_sort_key
 
@@ -354,6 +355,20 @@ class Pipeline:
             self.generate_audio(
                 all_cards, doc_summary, outputs, cleaned_files, image_summaries
             )
+
+        # 9b. Re-export .apkg with audio if audio cards were generated
+        output_config = self.config.get("output", {}).get("output", {})
+        if output_config.get("create_anki_deck", False) and "cards_audio" in outputs:
+            anki_cfg = self.config.get("anki", {}).get("anki", {})
+            deck_template = anki_cfg.get("deck_name", "{deck_name}")
+            deck_name_value = (
+                self.audio_prefix if hasattr(self, "audio_prefix") else self.citation_key
+            )
+            deck_name = self.format_deck_name(deck_template, deck_name_value)
+            apkg_path = self.output_base / f"{self.citation_key}.apkg"
+            exporter = ApkgExporter(deck_name)
+            exporter.export_from_file(outputs["cards_audio"], apkg_path)
+            outputs["apkg"] = apkg_path
 
         # 10. Send to Anki if configured
         anki_config = self.config.get("anki", {}).get("anki", {})
@@ -1969,6 +1984,19 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                     )
                 )
         outputs["cards_plain"] = plain_path
+
+        # Export .apkg alongside the markdown if configured
+        if output_config.get("create_anki_deck", False):
+            anki_config = self.config.get("anki", {}).get("anki", {})
+            deck_template = anki_config.get("deck_name", "{deck_name}")
+            deck_name_value = (
+                self.audio_prefix if hasattr(self, "audio_prefix") else self.citation_key
+            )
+            deck_name = self.format_deck_name(deck_template, deck_name_value)
+            apkg_path = output_dir / f"{self.citation_key}.apkg"
+            exporter = ApkgExporter(deck_name)
+            exporter.export_from_file(plain_path, apkg_path)
+            outputs["apkg"] = apkg_path
 
         # Note: Cards with audio will be written after audio generation
         # This ensures the audio URIs are properly set on the cards

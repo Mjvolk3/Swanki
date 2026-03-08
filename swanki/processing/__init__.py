@@ -9,11 +9,13 @@ from .markdown_converter import MarkdownConverter
 from .markdown_cleaner import MarkdownCleaner
 from .image_processor import ImageProcessor
 from .anki_processor import AnkiProcessor
+from .apkg_exporter import ApkgExporter
 
 __all__ = [
     'PDFProcessor',
-    'MarkdownConverter', 
+    'MarkdownConverter',
     'MarkdownCleaner',
     'ImageProcessor',
     'AnkiProcessor',
+    'ApkgExporter',
 ]
