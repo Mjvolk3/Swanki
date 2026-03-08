@@ -6,8 +6,42 @@ repos:
       - id: ruff-check
         args: [--fix]
         files: ^(swanki|tests)/
+      - id: ruff-check
+        args: [--fix]
+        files: ^(swanki|tests)/
+        stages: [pre-push]
       - id: ruff-format
         files: ^(swanki|tests)/
+      - id: ruff-format
+        files: ^(swanki|tests)/
+        stages: [pre-push]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0
+    hooks:
+      - id: mypy
+        files: ^swanki/
+        args: [--strict, --show-error-codes]
+        additional_dependencies:
+          - pydantic
+          - openai
+          - python-dotenv
+          - types-requests
+          - types-PyYAML
+
+  - repo: local
+    hooks:
+      - id: check-frontmatter
+        name: Check Python docstring frontmatter
+        entry: python notes/assets/scripts/check_frontmatter.py
+        language: python
+        files: ^swanki/.*\.py$
+
+      - id: prettify-markdown-tables
+        name: Prettify markdown tables
+        entry: python notes/assets/scripts/prettify_markdown_tables.py
+        language: python
+        files: ^notes/.*\.md$
 
   - repo: https://github.com/DavidAnson/markdownlint-cli2
     rev: v0.20.0

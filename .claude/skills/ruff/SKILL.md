@@ -10,7 +10,7 @@ Run ruff check on staged or specified Python files, then fix errors following th
 ## Workflow
 
 ```
-(edit python) -> /ruff -> /update-py-notes -> /commit
+(edit python) -> /ruff -> /mypy -> /update-py-notes -> /commit
 ```
 
 ## Arguments
@@ -57,7 +57,7 @@ Remove the variable or prefix with `_` if the assignment has a needed side effec
 
 ### Pyupgrade (`UP` rules)
 
-Auto-fixed by `--fix`. These modernize syntax to Python 3.11+ (e.g., `dict` instead of `typing.Dict`).
+Auto-fixed by `--fix`. These modernize syntax to Python 3.13+ (e.g., `dict` instead of `typing.Dict`).
 
 ### Docstring rules (`D` rules)
 

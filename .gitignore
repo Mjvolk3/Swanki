@@ -32,6 +32,12 @@ radivojevicMachineLearningAutomated2020
 **/CLAUDE.local.md
 .claude/config.json
 .claude/plans/
+.claude/settings.local.json
+
+# Agent working files (worktree-local, not committed)
+AGENT.md
+.agent-prompt.txt
+.agent-launcher.sh
 
 outputs/*
 .swanki_config

@@ -70,7 +70,7 @@ Use `AskUserQuestion` with `multiSelect: true` to let the user choose which bloc
 
 Print reminders as informational text (not blocking):
 
-- If selected files include `.py` under `swanki/` or `tests/`: "Python files detected. Consider running `/update-py-notes` and `/ruff` first."
+- If selected files include `.py` under `swanki/` or `tests/`: "Python files detected. Consider running `/update-py-notes`, `/ruff`, and `/mypy` first."
 
 ## Step 6: Stage selected blocks
 

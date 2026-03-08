@@ -17,7 +17,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 keywords = ["An example package", "starving artist"]
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 dependencies = [
     "python-dotenv",
     "langchain-community",
@@ -38,7 +38,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff", "semantic-release", "pip-tools", "pytest", "pre-commit"]
+dev = ["ruff", "semantic-release", "pip-tools", "pytest", "pytest-testmon", "pre-commit", "mypy", "coverage"]
 
 [project.urls]
 Homepage = "https://github.com/Mjvolk3/Swanki"
@@ -51,7 +51,7 @@ swanki-to-anki = "swanki.send_to_anki:main"
 
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py313"
 line-length = 88
 
 [tool.ruff.lint]
@@ -113,3 +113,26 @@ allowed_tags = [
 major_tags = ["API"]
 minor_tags = ["DEP", "DEV", "ENH", "REV", "FEAT"]
 patch_tags = ["BLD", "BUG", "MAINT"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+disallow_untyped_decorators = false
+
+[tool.pytest.ini_options]
+markers = [
+    "llm: LLM API calls, skipped by default (--llm)",
+    "integration: integration tests requiring external services, skipped by default (--integration)",
+]
+
+[tool.coverage.run]
+source = ["swanki"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if __name__ == .__main__.", "if TYPE_CHECKING:"]
