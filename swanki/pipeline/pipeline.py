@@ -1,92 +1,65 @@
-"""Main processing pipeline for Swanki.
+"""
+swanki/pipeline/pipeline.py
+[[swanki.pipeline.pipeline]]
+https://github.com/Mjvolk3/Swanki/tree/main/swanki/pipeline/pipeline.py
+Test file: tests/test_pipeline.py
 
-This module contains the Pipeline class which orchestrates the entire
-workflow of converting PDFs to Anki flashcards. It coordinates all
-processing steps including PDF conversion, markdown cleaning, image
-processing, card generation, audio creation, and Anki integration.
-
-The pipeline is configuration-driven using Hydra configs and supports
-various processing options and output formats.
-
-Classes
--------
-Pipeline
-    Main orchestrator for PDF to Anki card conversion
-
-Examples
---------
->>> from swanki import Pipeline, ConfigGenerator
->>> from pathlib import Path
->>>
->>> # Generate configuration
->>> config_gen = ConfigGenerator()
->>> config = config_gen.generate(
-...     pdf_path="paper.pdf",
-...     output_dir="output",
-...     deck_name="MyDeck"
-... )
->>>
->>> # Create and run pipeline
->>> pipeline = Pipeline(config)
->>> outputs = pipeline.process_full(
-...     pdf_path=Path("paper.pdf"),
-...     citation_key="Smith2023"
-... )
+Main processing pipeline orchestrating PDF-to-Anki conversion.
 """
 
-from pathlib import Path
-from typing import Dict, Any, List, Optional
-from omegaconf import DictConfig
-import instructor
-from openai import OpenAI
+import logging
 import os
 import random
-import subprocess
-import logging
 import re
+from pathlib import Path
+from typing import Any
+
+import instructor
 from dotenv import load_dotenv
-from tenacity import Retrying, stop_after_attempt, wait_exponential, retry_if_exception_type
+from openai import OpenAI
 from pydantic import ValidationError
+from tenacity import (
+    Retrying,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
-logger = logging.getLogger(__name__)
-
+# Import audio utilities
+from ..audio import (
+    generate_card_audio,
+    generate_lecture_audio,
+    generate_reading_audio,
+    generate_summary_audio,
+)
 from ..models import (
-    DocumentSummary,
-    CardGenerationResponse,
-    ImageSummary,
-    ProcessingState,
-    PlainCard,
-    CardFeedback,
     AudioTranscriptFeedback,
+    CardFeedback,
+    CardGenerationResponse,
+    DocumentSummary,
+    ImageSummary,
+    PlainCard,
+    ProcessingState,
     RefinementHistory,
-    EnhancedCardGenerationResponse,
 )
 
 # Import new processing modules
 from ..processing import (
-    PDFProcessor,
-    MarkdownConverter,
-    MarkdownCleaner,
-    ImageProcessor,
     AnkiProcessor,
     ApkgExporter,
+    ImageProcessor,
+    MarkdownCleaner,
+    PDFProcessor,
 )
 from ..processing.markdown_cleaner import _natural_sort_key
 
-# Import audio utilities
-from ..utils.audio import (
-    generate_card_audio,
-    generate_summary_audio,
-    generate_reading_audio,
-    generate_lecture_audio,
-)
-
 # Import content utilities
 from ..utils.content import (
-    extract_images_from_markdown,
     detect_math_content,
-    generate_image_card_prompts,
+    extract_images_from_markdown,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class Pipeline:
@@ -101,7 +74,7 @@ class Pipeline:
     config : Dict[str, Any]
         Hydra configuration dictionary containing all processing options
 
-    Attributes
+    Attributes:
     ----------
     config : Dict[str, Any]
         Configuration dictionary
@@ -116,7 +89,7 @@ class Pipeline:
     citation_key : str
         Citation key for the current document
 
-    Methods
+    Methods:
     -------
     process_full(pdf_path, citation_key)
         Run the complete processing pipeline
@@ -141,7 +114,7 @@ class Pipeline:
     send_to_anki(cards, outputs, anki_config)
         Send cards to Anki via AnkiConnect
 
-    Examples
+    Examples:
     --------
     >>> config = {
     ...     'pipeline': {'processing': {'window_size': 2}},
@@ -155,7 +128,7 @@ class Pipeline:
     ... )
     """
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         """Initialize the pipeline with configuration.
 
         Parameters
@@ -163,7 +136,7 @@ class Pipeline:
         config : Dict[str, Any]
             Hydra configuration dictionary with processing options
 
-        Notes
+        Notes:
         -----
         Loads environment variables including SWANKI_DATA for output directory.
         Initializes OpenAI client with instructor for structured outputs.
@@ -178,7 +151,7 @@ class Pipeline:
 
     def process_full(
         self, pdf_path: Path, citation_key: str, output_dir: str = None
-    ) -> Dict[str, Path]:
+    ) -> dict[str, Path]:
         """Process PDF through the complete pipeline.
 
         Executes all processing steps from PDF to final outputs, including
@@ -194,7 +167,7 @@ class Pipeline:
         output_dir : str, optional
             Name for the output directory. If not provided, uses citation_key
 
-        Returns
+        Returns:
         -------
         Dict[str, Path]
             Dictionary mapping output types to file paths:
@@ -202,12 +175,12 @@ class Pipeline:
             - 'cards_audio': Cards with audio links (if enabled)
             - 'summary': Document summary
 
-        Raises
+        Raises:
         ------
         RuntimeError
             If PDF conversion fails or no markdown content generated
 
-        Examples
+        Examples:
         --------
         >>> pipeline = Pipeline(config)
         >>> outputs = pipeline.process_full(
@@ -217,7 +190,6 @@ class Pipeline:
         >>> print(outputs['cards_plain'])
         PosixPath('swanki-out/Einstein1905/cards-plain.md')
         """
-
         # Initialize state
         self.state = ProcessingState(
             pdf_path=pdf_path, citation_key=citation_key, current_stage="initialization"
@@ -284,27 +256,39 @@ class Pipeline:
         # 5.5. Estimate card count
         pipeline_config = self.config.get("pipeline", {})
         processing_config = pipeline_config.get("processing", {})
-        estimated_cards = self.estimate_card_count(cleaned_files, image_summaries, processing_config)
-        
+        estimated_cards = self.estimate_card_count(
+            cleaned_files, image_summaries, processing_config
+        )
+
         # Check if user confirmation is required
         confirm_required = processing_config.get("confirm_before_generation", True)
         if confirm_required:
-            logger.info(f"Proceeding with card generation (estimated: {estimated_cards} cards)")
-            response = input(f"\nContinue with card generation? ({estimated_cards} cards estimated) [Y/n]: ").strip().lower()
-            if response and response not in ['y', 'yes', '']:
+            logger.info(
+                f"Proceeding with card generation (estimated: {estimated_cards} cards)"
+            )
+            response = (
+                input(
+                    f"\nContinue with card generation? ({estimated_cards} cards estimated) [Y/n]: "
+                )
+                .strip()
+                .lower()
+            )
+            if response and response not in ["y", "yes", ""]:
                 logger.info("Card generation cancelled by user")
                 raise KeyboardInterrupt("User cancelled card generation")
         else:
-            logger.info(f"Proceeding with card generation (estimated: {estimated_cards} cards)")
+            logger.info(
+                f"Proceeding with card generation (estimated: {estimated_cards} cards)"
+            )
 
         # 6. Generate cards with sliding window - now interleaved with image cards
         self.state.current_stage = "card_generation"
         all_cards = []
-        
+
         # Get image card config
         image_config = processing_config.get("image_cards", {})
         image_cards_enabled = image_config.get("enabled", True)
-        
+
         # Process each page to generate cards in document order
         for page_idx, markdown_file in enumerate(cleaned_files):
             # Generate text cards for this page with context
@@ -316,7 +300,7 @@ class Pipeline:
                 num_cards=processing_config.get("num_cards_per_page", 3),
             )
             all_cards.extend(page_cards)
-            
+
             # Generate image cards for this page if enabled
             if image_cards_enabled:
                 page_image_cards = self._generate_image_cards_for_page(
@@ -362,7 +346,9 @@ class Pipeline:
             anki_cfg = self.config.get("anki", {}).get("anki", {})
             deck_template = anki_cfg.get("deck_name", "{deck_name}")
             deck_name_value = (
-                self.audio_prefix if hasattr(self, "audio_prefix") else self.citation_key
+                self.audio_prefix
+                if hasattr(self, "audio_prefix")
+                else self.citation_key
             )
             deck_name = self.format_deck_name(deck_template, deck_name_value)
             apkg_path = self.output_base / f"{self.citation_key}.apkg"
@@ -379,7 +365,7 @@ class Pipeline:
         self.state.outputs = outputs
         return outputs
 
-    def split_pdf(self, pdf_path: Path) -> List[Path]:
+    def split_pdf(self, pdf_path: Path) -> list[Path]:
         """Split PDF into individual pages.
 
         Uses PDFProcessor to split a multi-page PDF into separate
@@ -390,12 +376,12 @@ class Pipeline:
         pdf_path : Path
             Path to the input PDF file
 
-        Returns
+        Returns:
         -------
         List[Path]
             List of paths to individual page PDFs
 
-        See Also
+        See Also:
         --------
         PDFProcessor : Handles PDF splitting operations
         """
@@ -403,7 +389,7 @@ class Pipeline:
         pdf_files = pdf_processor.split_pdf(pdf_path)
         return pdf_files
 
-    def convert_to_markdown(self, pages: List[Path]) -> List[Path]:
+    def convert_to_markdown(self, pages: list[Path]) -> list[Path]:
         """Convert PDF pages to markdown format.
 
         Converts individual PDF pages to markdown using the Mathpix
@@ -414,22 +400,21 @@ class Pipeline:
         pages : List[Path]
             List of single-page PDF files to convert
 
-        Returns
+        Returns:
         -------
         List[Path]
             List of paths to generated markdown files
 
-        Raises
+        Raises:
         ------
         RuntimeError
             If no pages could be converted successfully
 
-        Notes
+        Notes:
         -----
         Uses os.system for better TTY handling with the mpx command.
         Creates output in 'md-singles' subdirectory.
         """
-
         # Create output directory
         md_singles_dir = self.output_base / "md-singles"
         md_singles_dir.mkdir(parents=True, exist_ok=True)
@@ -471,7 +456,7 @@ class Pipeline:
         # Use natural sorting to ensure page-2.md comes before page-10.md
         return sorted(markdown_files, key=_natural_sort_key)
 
-    def clean_markdown(self, markdown_files: List[Path]) -> List[Path]:
+    def clean_markdown(self, markdown_files: list[Path]) -> list[Path]:
         """Clean and standardize markdown files.
 
         Applies various cleaning operations to markdown files including
@@ -482,12 +467,12 @@ class Pipeline:
         markdown_files : List[Path]
             List of markdown files to clean
 
-        Returns
+        Returns:
         -------
         List[Path]
             List of paths to cleaned markdown files
 
-        See Also
+        See Also:
         --------
         MarkdownCleaner : Handles markdown cleaning operations
         """
@@ -495,7 +480,7 @@ class Pipeline:
         cleaned_files = cleaner.clean_all_markdown_files()
         return cleaned_files
 
-    def process_images(self, markdown_files: List[Path]) -> List[ImageSummary]:
+    def process_images(self, markdown_files: list[Path]) -> list[ImageSummary]:
         """Extract and summarize images from markdown.
 
         Processes all images found in markdown files, generating
@@ -506,12 +491,12 @@ class Pipeline:
         markdown_files : List[Path]
             List of markdown files to process
 
-        Returns
+        Returns:
         -------
         List[ImageSummary]
             List of image summaries with metadata
 
-        See Also
+        See Also:
         --------
         ImageProcessor : Handles image extraction and summarization
         ImageSummary : Data model for image information
@@ -529,7 +514,7 @@ class Pipeline:
         # Convert to ImageSummary objects
         image_summaries = []
         images_without_summaries = []
-        
+
         for idx, info in enumerate(image_infos):
             if "summary" in info:
                 try:
@@ -542,11 +527,17 @@ class Pipeline:
                     )
                     image_summaries.append(image_summary)
                 except ValidationError as e:
-                    logger.warning(f"Image summary validation error for image {idx}: {e}")
+                    logger.warning(
+                        f"Image summary validation error for image {idx}: {e}"
+                    )
                     # Truncate the summary to fit within the limit
                     words = info["summary"].split()
-                    truncated_summary = " ".join(words[:295]) + "..." if len(words) > 300 else info["summary"]
-                    
+                    truncated_summary = (
+                        " ".join(words[:295]) + "..."
+                        if len(words) > 300
+                        else info["summary"]
+                    )
+
                     try:
                         image_summary = ImageSummary(
                             image_url=info["url"],
@@ -556,9 +547,13 @@ class Pipeline:
                             context=info.get("context", ""),
                         )
                         image_summaries.append(image_summary)
-                        logger.info(f"Successfully added truncated summary for image {idx}")
+                        logger.info(
+                            f"Successfully added truncated summary for image {idx}"
+                        )
                     except Exception as e2:
-                        logger.error(f"Failed to add image {idx} even with truncation: {e2}")
+                        logger.error(
+                            f"Failed to add image {idx} even with truncation: {e2}"
+                        )
                         images_without_summaries.append(info["url"])
             else:
                 images_without_summaries.append(info["url"])
@@ -572,7 +567,7 @@ class Pipeline:
         return image_summaries
 
     def generate_document_summary(
-        self, markdown_files: List[Path], image_summaries: List[ImageSummary]
+        self, markdown_files: list[Path], image_summaries: list[ImageSummary]
     ) -> DocumentSummary:
         """Generate comprehensive document summary.
 
@@ -587,17 +582,17 @@ class Pipeline:
         image_summaries : List[ImageSummary]
             List of image summaries to include
 
-        Returns
+        Returns:
         -------
         DocumentSummary
             Structured document summary with metadata
 
-        Notes
+        Notes:
         -----
         Uses configured prompts and LLM model for generation.
         Summary must be 200-500 words as validated by DocumentSummary.
 
-        See Also
+        See Also:
         --------
         DocumentSummary : Data model for document summaries
         """
@@ -655,38 +650,36 @@ Image summaries:
 
     def _detect_math_density(self, content: str) -> float:
         """Detect the density of mathematical content in text.
-        
+
         Returns a score from 0.0 to 1.0 indicating math density.
         """
-        import re
-        
         # Count various math indicators
         math_patterns = [
-            r'\$[^$]+\$',  # Inline math
-            r'\$\$[^$]+\$\$',  # Display math
-            r'\\[a-zA-Z]+\{',  # LaTeX commands
-            r'\\frac\{',  # Fractions
-            r'\\sum',  # Summations
-            r'\\int',  # Integrals
-            r'\\mathbf',  # Bold math
-            r'[=<>≤≥≠]',  # Math operators
-            r'\^{',  # Superscripts
-            r'_{',  # Subscripts
-            r'\\theta|\\alpha|\\beta|\\gamma',  # Greek letters
-            r'theorem|proof|lemma|corollary',  # Math terminology
-            r'equation|formula|function',  # More math terms
+            r"\$[^$]+\$",  # Inline math
+            r"\$\$[^$]+\$\$",  # Display math
+            r"\\[a-zA-Z]+\{",  # LaTeX commands
+            r"\\frac\{",  # Fractions
+            r"\\sum",  # Summations
+            r"\\int",  # Integrals
+            r"\\mathbf",  # Bold math
+            r"[=<>≤≥≠]",  # Math operators
+            r"\^{",  # Superscripts
+            r"_{",  # Subscripts
+            r"\\theta|\\alpha|\\beta|\\gamma",  # Greek letters
+            r"theorem|proof|lemma|corollary",  # Math terminology
+            r"equation|formula|function",  # More math terms
         ]
-        
+
         total_matches = 0
         for pattern in math_patterns:
             matches = re.findall(pattern, content, re.IGNORECASE)
             total_matches += len(matches)
-        
+
         # Calculate density (normalized by content length)
         words = len(content.split())
         if words == 0:
             return 0.0
-        
+
         # Normalize to 0-1 range (assume 1 math element per 20 words is high density)
         density = min(1.0, total_matches / (words / 20))
         return density
@@ -694,16 +687,16 @@ Image summaries:
     def _generate_cards_for_page_with_context(
         self,
         page_idx: int,
-        markdown_files: List[Path],
+        markdown_files: list[Path],
         doc_summary: DocumentSummary,
         context_radius: int,
         num_cards: int,
-    ) -> List[PlainCard]:
+    ) -> list[PlainCard]:
         """Generate cards for a single page with context from surrounding pages.
-        
+
         This is a helper method that processes one page at a time, used by
         the main pipeline to interleave text and image cards in document order.
-        
+
         Parameters
         ----------
         page_idx : int
@@ -716,8 +709,8 @@ Image summaries:
             Number of pages before/after focal page for context
         num_cards : int
             Number of cards to generate for this page
-            
-        Returns
+
+        Returns:
         -------
         List[PlainCard]
             Generated cards for this page
@@ -725,17 +718,17 @@ Image summaries:
         # Determine context window
         start_idx = max(0, page_idx - context_radius)
         end_idx = min(len(markdown_files), page_idx + context_radius + 1)
-        
+
         # Get focal page
         focal_page = markdown_files[page_idx]
         focal_content = focal_page.read_text()
-        
+
         # Get context pages
         context_pages = []
         for idx in range(start_idx, end_idx):
             if idx != page_idx:  # Skip the focal page itself
                 context_pages.append(markdown_files[idx])
-        
+
         # Build content with clear separation
         if context_pages:
             # Add context before focal content
@@ -745,8 +738,6 @@ Image summaries:
             combined_content = focal_content
 
         # Get config values
-        prompts_config = self.config.get("prompts", {}).get("prompts", {})
-        cards_prompts = prompts_config.get("cards", {})
         models_config = self.config.get("models", {}).get("models", {})
         llm_config = models_config.get("llm", {})
         processing_config = self.config.get("pipeline", {}).get("processing", {})
@@ -754,21 +745,29 @@ Image summaries:
         # Detect math density and adjust card count
         math_density = self._detect_math_density(focal_content)
         adjusted_num_cards = num_cards
-        adjusted_cloze_cards = processing_config.get('cloze_cards_per_page', 2)
-        
+        adjusted_cloze_cards = processing_config.get("cloze_cards_per_page", 2)
+
         if math_density > 0.5:  # High math density
             adjusted_num_cards = int(num_cards * 1.5)  # 50% more cards
             adjusted_cloze_cards = int(adjusted_cloze_cards * 1.5)
-            logger.info(f"High math density ({math_density:.2f}) detected on page {page_idx + 1}, increasing cards from {num_cards} to {adjusted_num_cards}")
+            logger.info(
+                f"High math density ({math_density:.2f}) detected on page {page_idx + 1}, increasing cards from {num_cards} to {adjusted_num_cards}"
+            )
         elif math_density > 0.3:  # Medium math density
             adjusted_num_cards = int(num_cards * 1.25)  # 25% more cards
-            logger.info(f"Medium math density ({math_density:.2f}) detected on page {page_idx + 1}, increasing cards from {num_cards} to {adjusted_num_cards}")
-        
+            logger.info(
+                f"Medium math density ({math_density:.2f}) detected on page {page_idx + 1}, increasing cards from {num_cards} to {adjusted_num_cards}"
+            )
+
         # Debug logging
-        logger.debug(f"Processing page {page_idx + 1}/{len(markdown_files)} with context radius {context_radius}")
+        logger.debug(
+            f"Processing page {page_idx + 1}/{len(markdown_files)} with context radius {context_radius}"
+        )
         logger.debug(f"Math density: {math_density:.2f}")
-        logger.debug(f"Requesting {adjusted_num_cards} regular cards and {adjusted_cloze_cards} cloze cards from focal page")
-        
+        logger.debug(
+            f"Requesting {adjusted_num_cards} regular cards and {adjusted_cloze_cards} cloze cards from focal page"
+        )
+
         # Generate regular cards first
         regular_prompt = f"""Generate EXACTLY {adjusted_num_cards} regular Q&A flashcards from the main content.
 
@@ -840,21 +839,18 @@ Generate {adjusted_num_cards} regular Q&A cards now. Focus on the actual subject
             messages=[
                 {
                     "role": "system",
-                    "content": "Generate ONLY regular Q&A flashcards. Do NOT create any cloze deletion cards.\n\nCRITICAL LENGTH REQUIREMENT:\n- Card answers (back) MUST be under 500 characters (HARD LIMIT - validation will fail otherwise)\n- Aim for 200-400 characters for optimal learning\n- Be concise and focus on key points only\n- Remove verbose explanations and unnecessary words\n\nCRITICAL: ALL mathematical variables, symbols, and expressions MUST be wrapped in LaTeX delimiters using $ for inline math. For example: $W$, $X_j$, $h(W) = 0$, $W_{ji} \\neq 0$. NEVER write bare mathematical symbols without LaTeX."
+                    "content": "Generate ONLY regular Q&A flashcards. Do NOT create any cloze deletion cards.\n\nCRITICAL LENGTH REQUIREMENT:\n- Card answers (back) MUST be under 500 characters (HARD LIMIT - validation will fail otherwise)\n- Aim for 200-400 characters for optimal learning\n- Be concise and focus on key points only\n- Remove verbose explanations and unnecessary words\n\nCRITICAL: ALL mathematical variables, symbols, and expressions MUST be wrapped in LaTeX delimiters using $ for inline math. For example: $W$, $X_j$, $h(W) = 0$, $W_{ji} \\neq 0$. NEVER write bare mathematical symbols without LaTeX.",
                 },
-                {
-                    "role": "user",
-                    "content": regular_prompt
-                }
+                {"role": "user", "content": regular_prompt},
             ],
             response_model=CardGenerationResponse,
             max_retries=Retrying(
                 stop=stop_after_attempt(3),
                 wait=wait_exponential(multiplier=1, min=4, max=10),
-                reraise=True
+                reraise=True,
             ),
         )
-        
+
         # Generate cloze cards separately (only if requested)
         if adjusted_cloze_cards > 0:
             cloze_prompt = f"""Generate EXACTLY {adjusted_cloze_cards} cloze deletion flashcards from the main content.
@@ -930,18 +926,15 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
                 messages=[
                     {
                         "role": "system",
-                        "content": "Generate ONLY cloze deletion flashcards using {{c1::text}} syntax.\n\nCRITICAL LENGTH REQUIREMENT:\n- Cloze card BACKS should be MINIMAL (ideally empty, max 100 characters)\n- Front content (full text with cloze) must stay under 500 characters total\n- Keep content concise - cloze cards are meant to be brief\n\nCRITICAL LaTeX RULES:\n1. ALL mathematical variables and expressions MUST use LaTeX with $ delimiters\n2. When math is NOT inside cloze markers, wrap it properly: $W$, $X_j$, $h(W) = 0$\n3. When math IS inside cloze markers, still use LaTeX: {{c1::$E = mc^2$}}\n4. NEVER write bare math symbols without LaTeX (WRONG: W, X_j, W_{ji})"
+                        "content": "Generate ONLY cloze deletion flashcards using {{c1::text}} syntax.\n\nCRITICAL LENGTH REQUIREMENT:\n- Cloze card BACKS should be MINIMAL (ideally empty, max 100 characters)\n- Front content (full text with cloze) must stay under 500 characters total\n- Keep content concise - cloze cards are meant to be brief\n\nCRITICAL LaTeX RULES:\n1. ALL mathematical variables and expressions MUST use LaTeX with $ delimiters\n2. When math is NOT inside cloze markers, wrap it properly: $W$, $X_j$, $h(W) = 0$\n3. When math IS inside cloze markers, still use LaTeX: {{c1::$E = mc^2$}}\n4. NEVER write bare math symbols without LaTeX (WRONG: W, X_j, W_{ji})",
                     },
-                    {
-                        "role": "user",
-                        "content": cloze_prompt
-                    }
+                    {"role": "user", "content": cloze_prompt},
                 ],
                 response_model=CardGenerationResponse,
                 max_retries=Retrying(
                     stop=stop_after_attempt(3),
                     wait=wait_exponential(multiplier=1, min=4, max=10),
-                    reraise=True
+                    reraise=True,
                 ),
             )
         else:
@@ -954,58 +947,73 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
             logger.info("Applying self-refine to improve card quality...")
 
             # Refine regular cards
-            if regular_response.cards and "regular" in refinement_config.get("content_types", ["regular", "cloze"]):
+            if regular_response.cards and "regular" in refinement_config.get(
+                "content_types", ["regular", "cloze"]
+            ):
                 regular_response = self._self_refine_cards(
-                    regular_response,
-                    doc_summary,
-                    "regular"
+                    regular_response, doc_summary, "regular"
                 )
 
             # Refine cloze cards (only if they were generated)
-            if cloze_response and cloze_response.cards and "cloze" in refinement_config.get("content_types", ["regular", "cloze"]):
+            if (
+                cloze_response
+                and cloze_response.cards
+                and "cloze"
+                in refinement_config.get("content_types", ["regular", "cloze"])
+            ):
                 cloze_response = self._self_refine_cards(
-                    cloze_response,
-                    doc_summary,
-                    "cloze"
+                    cloze_response, doc_summary, "cloze"
                 )
 
         # Combine responses
-        all_cards = regular_response.cards + (cloze_response.cards if cloze_response else [])
+        all_cards = regular_response.cards + (
+            cloze_response.cards if cloze_response else []
+        )
 
         # Debug: Check what cards were generated
         regular_cards = [c for c in all_cards if "{{c" not in c.front.text]
         cloze_cards = [c for c in all_cards if "{{c" in c.front.text]
-        logger.debug(f"Generated: {len(regular_cards)} regular cards, {len(cloze_cards)} cloze cards")
-        
+        logger.debug(
+            f"Generated: {len(regular_cards)} regular cards, {len(cloze_cards)} cloze cards"
+        )
+
         # Check for math content
         math_cards = [c for c in all_cards if "$" in c.front.text or "$" in c.back.text]
         logger.debug(f"Math cards: {len(math_cards)}")
-        
+
         # Check for references
-        ref_cards = [c for c in all_cards if any(ref in c.front.text.lower() or ref in c.back.text.lower() 
-                                                      for ref in ["ref.", "reference", "according to", "["])]
+        ref_cards = [
+            c
+            for c in all_cards
+            if any(
+                ref in c.front.text.lower() or ref in c.back.text.lower()
+                for ref in ["ref.", "reference", "according to", "["]
+            )
+        ]
         if ref_cards:
-            logger.debug(f"{len(ref_cards)} cards contain references that should have been removed")
-        
+            logger.debug(
+                f"{len(ref_cards)} cards contain references that should have been removed"
+            )
+
         return all_cards
 
     def _generate_image_cards_for_page(
         self,
         markdown_file: Path,
         doc_summary: DocumentSummary,
-        all_image_summaries: List[ImageSummary],
+        all_image_summaries: list[ImageSummary],
         cards_per_image: int = 3,
         image_on_front: bool = True,
         image_on_back: bool = True,
         require_math: bool = False,
         placement_strategy: str = "smart",
         front_back_ratio: float = 0.5,
-    ) -> List[PlainCard]:
+    ) -> list[PlainCard]:
         """Generate image cards for a single page.
-        
+
         This is a helper method that processes images from one page at a time,
         used by the main pipeline to interleave text and image cards.
-        
+
         Parameters
         ----------
         markdown_file : Path
@@ -1026,25 +1034,27 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
             Strategy for image placement (default "smart")
         front_back_ratio : float, optional
             Ratio for random placement (default 0.5)
-            
-        Returns
+
+        Returns:
         -------
         List[PlainCard]
             Generated image cards for this page
         """
         image_cards = []
-        
+
         content = markdown_file.read_text()
-        
+
         # Extract images from this file
         images = extract_images_from_markdown(content, markdown_file.parent)
-        
+
         for image_info in images:
             # Check if math content is required and present
             if require_math and not detect_math_content(image_info["context"]):
                 continue
 
-            logger.debug(f"Generating {cards_per_image} cards for image: {image_info['path']}")
+            logger.debug(
+                f"Generating {cards_per_image} cards for image: {image_info['path']}"
+            )
 
             # Get surrounding content (more context around the image)
             file_content = content
@@ -1061,25 +1071,34 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
                 # Try to match by URL/path
                 for img_summary in all_image_summaries:
                     # Check if paths match (handle different path formats)
-                    if (image_info['path'] in img_summary.image_url or 
-                        img_summary.image_url in image_info['path'] or
-                        Path(image_info['path']).name == Path(img_summary.image_url).name):
+                    if (
+                        image_info["path"] in img_summary.image_url
+                        or img_summary.image_url in image_info["path"]
+                        or Path(image_info["path"]).name
+                        == Path(img_summary.image_url).name
+                    ):
                         image_summary_text = img_summary.summary
-                        logger.debug(f"Found image summary for {image_info['path']}: {image_summary_text[:50]}...")
+                        logger.debug(
+                            f"Found image summary for {image_info['path']}: {image_summary_text[:50]}..."
+                        )
                         break
-                
+
                 if not image_summary_text:
-                    logger.debug(f"No matching image summary found for {image_info['path']}")
-                    logger.debug(f"  Available summaries: {[img.image_url for img in all_image_summaries]}")
-            
+                    logger.debug(
+                        f"No matching image summary found for {image_info['path']}"
+                    )
+                    logger.debug(
+                        f"  Available summaries: {[img.image_url for img in all_image_summaries]}"
+                    )
+
             # Create a specialized prompt for image cards
             image_prompt = f"""Create {cards_per_image} educational flashcards based on this image and its context.
 
 Image Information:
-- Path: {image_info['path']}
-- Alt text: {image_info['alt']}
-- Context: {image_info['context']}
-{f'- Image Description: {image_summary_text}' if image_summary_text else ''}
+- Path: {image_info["path"]}
+- Alt text: {image_info["alt"]}
+- Context: {image_info["context"]}
+{f"- Image Description: {image_summary_text}" if image_summary_text else ""}
 
 Document Summary Context:
 - Title: {doc_summary.title}
@@ -1103,7 +1122,7 @@ Requirements:
 - Cards can reference specific parts of the image (e.g., "What does the upper pathway represent?")
 - Include mathematical notation if present in the image
 - Make questions test conceptual understanding, not just visual identification
-- {'Image can appear on front or back of card as appropriate' if image_on_front and image_on_back else 'Image should appear on front of card' if image_on_front else 'Image should appear on back of card' if image_on_back else 'No image placement preference'}
+- {"Image can appear on front or back of card as appropriate" if image_on_front and image_on_back else "Image should appear on front of card" if image_on_front else "Image should appear on back of card" if image_on_back else "No image placement preference"}
 
 FORMAT RULES:
 1. Use ## for the question (front of card) - NO IMAGE MARKDOWN
@@ -1142,43 +1161,54 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 )
 
                 # Apply self-refine if enabled for image cards
-                refinement_config = self.config.get("refinement", {}).get("refinement", {})
-                if refinement_config.get("enabled", False) and "image" in refinement_config.get("content_types", ["regular", "cloze", "image"]):
-                    logger.info(f"Applying self-refine to image cards for {image_info['path']}...")
-                    response = self._self_refine_cards(
-                        response,
-                        doc_summary,
-                        "image"
+                refinement_config = self.config.get("refinement", {}).get(
+                    "refinement", {}
+                )
+                if refinement_config.get(
+                    "enabled", False
+                ) and "image" in refinement_config.get(
+                    "content_types", ["regular", "cloze", "image"]
+                ):
+                    logger.info(
+                        f"Applying self-refine to image cards for {image_info['path']}..."
                     )
+                    response = self._self_refine_cards(response, doc_summary, "image")
 
                 # Add image paths to the generated cards
                 for idx, card in enumerate(response.cards):
                     # Clean up any image markdown that might have slipped through
                     # Remove ![Image](...) patterns from both front and back text
                     import re
-                    image_pattern = r'!\[.*?\]\([^)]+\)'
-                    card.front.text = re.sub(image_pattern, '', card.front.text).strip()
-                    card.back.text = re.sub(image_pattern, '', card.back.text).strip()
-                    
+
+                    image_pattern = r"!\[.*?\]\([^)]+\)"
+                    card.front.text = re.sub(image_pattern, "", card.front.text).strip()
+                    card.back.text = re.sub(image_pattern, "", card.back.text).strip()
+
                     # CRITICAL: Ensure image cards are not cloze cards
                     if "{{c" in card.front.text or "{{c" in card.back.text:
-                        logger.error(f"Image card generated as cloze card, skipping: {card.front.text[:50]}")
+                        logger.error(
+                            f"Image card generated as cloze card, skipping: {card.front.text[:50]}"
+                        )
                         continue  # Skip this card entirely
-                    
+
                     # Decide where to place the image based on config
                     if image_on_front and not image_on_back:
                         card.front.image_path = image_info["original_path"]
                         if image_summary_text:
                             card.front.image_summary = image_summary_text
                         else:
-                            logger.error(f"No image summary found for {image_info['path']} - skipping this image card")
+                            logger.error(
+                                f"No image summary found for {image_info['path']} - skipping this image card"
+                            )
                             continue  # Skip this card entirely
                     elif image_on_back and not image_on_front:
                         card.back.image_path = image_info["original_path"]
                         if image_summary_text:
                             card.back.image_summary = image_summary_text
                         else:
-                            logger.error(f"No image summary found for {image_info['path']} - skipping this image card")
+                            logger.error(
+                                f"No image summary found for {image_info['path']} - skipping this image card"
+                            )
                             continue  # Skip this card entirely
                     elif image_on_front and image_on_back:
                         # Both allowed, but NEVER put the same image on both sides
@@ -1217,7 +1247,9 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                             if image_summary_text:
                                 card.front.image_summary = image_summary_text
                             else:
-                                logger.error(f"No image summary found for {image_info['path']} - skipping this image card")
+                                logger.error(
+                                    f"No image summary found for {image_info['path']} - skipping this image card"
+                                )
                                 continue  # Skip this card entirely
                             # Explicitly ensure IMAGE is not on the back
                             card.back.image_path = None
@@ -1226,7 +1258,9 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                             if image_summary_text:
                                 card.back.image_summary = image_summary_text
                             else:
-                                logger.error(f"No image summary found for {image_info['path']} - skipping this image card")
+                                logger.error(
+                                    f"No image summary found for {image_info['path']} - skipping this image card"
+                                )
                                 continue  # Skip this card entirely
                             # Explicitly ensure IMAGE is not on the front
                             card.front.image_path = None
@@ -1234,28 +1268,30 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 image_cards.extend(response.cards)
 
                 # Debug output for image placement
-                front_count = sum(
-                    1 for card in response.cards if card.front.image_path
+                front_count = sum(1 for card in response.cards if card.front.image_path)
+                back_count = sum(1 for card in response.cards if card.back.image_path)
+                logger.debug(
+                    f"Generated {len(response.cards)} cards for image {image_info['path']}"
                 )
-                back_count = sum(
-                    1 for card in response.cards if card.back.image_path
+                logger.debug(
+                    f"  Image placement - Front: {front_count}, Back: {back_count} (strategy: {placement_strategy})"
                 )
-                logger.debug(f"Generated {len(response.cards)} cards for image {image_info['path']}")
-                logger.debug(f"  Image placement - Front: {front_count}, Back: {back_count} (strategy: {placement_strategy})")
 
             except Exception as e:
-                logger.error(f"Error generating cards for image {image_info['path']}: {e}")
+                logger.error(
+                    f"Error generating cards for image {image_info['path']}: {e}"
+                )
                 continue
 
         return image_cards
 
     def generate_cards_with_context(
         self,
-        markdown_files: List[Path],
+        markdown_files: list[Path],
         doc_summary: DocumentSummary,
         context_radius: int,
         num_cards: int,
-    ) -> List[PlainCard]:
+    ) -> list[PlainCard]:
         """Generate flashcards for each page with surrounding context.
 
         Processes each page as a focal point, using surrounding pages
@@ -1275,12 +1311,12 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         num_cards : int
             Number of cards to generate per focal page
 
-        Returns
+        Returns:
         -------
         List[PlainCard]
             Generated flashcards
 
-        Examples
+        Examples:
         --------
         >>> # Process each page with ±1 page context
         >>> cards = pipeline.generate_cards_with_context(
@@ -1290,30 +1326,30 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         ...     num_cards=3
         ... )
 
-        Notes
+        Notes:
         -----
         Context pages provide supporting information but cards are
         only generated from the focal page content. This ensures
         consistent card counts while improving question quality.
         """
         all_cards = []
-        
+
         # Process each page as focal with surrounding context
         for focal_idx in range(len(markdown_files)):
             # Determine context window
             start_idx = max(0, focal_idx - context_radius)
             end_idx = min(len(markdown_files), focal_idx + context_radius + 1)
-            
+
             # Get focal page
             focal_page = markdown_files[focal_idx]
             focal_content = focal_page.read_text()
-            
+
             # Get context pages
             context_pages = []
             for idx in range(start_idx, end_idx):
                 if idx != focal_idx:  # Skip the focal page itself
                     context_pages.append(markdown_files[idx])
-            
+
             # Build content with clear separation
             if context_pages:
                 # Add context before focal content
@@ -1323,42 +1359,36 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 combined_content = focal_content
 
             # Get config values
-            prompts_config = self.config.get("prompts", {}).get("prompts", {})
-            cards_prompts = prompts_config.get("cards", {})
             models_config = self.config.get("models", {}).get("models", {})
             llm_config = models_config.get("llm", {})
             processing_config = self.config.get("pipeline", {}).get("processing", {})
 
-            # Generate cards for this window
-            # Debug: Log the actual prompt being sent
-            actual_prompt = cards_prompts.get(
-                "generate_cards",
-                "Create {num_cards} flashcards from this content.",
-            ).replace('{num_cards}', str(num_cards)
-            ).replace('{num_cloze}', str(processing_config.get("cloze_cards_per_page", 2))
-            ).replace('{title}', doc_summary.title
-            ).replace('{acronyms}', str(doc_summary.acronyms)
-            ).replace('{technical_terms}', str(doc_summary.technical_terms)
-            ).replace('{content}', combined_content)
-            
             # Detect math density and adjust card count
             math_density = self._detect_math_density(focal_content)
             adjusted_num_cards = num_cards
-            adjusted_cloze_cards = processing_config.get('cloze_cards_per_page', 2)
-            
+            adjusted_cloze_cards = processing_config.get("cloze_cards_per_page", 2)
+
             if math_density > 0.5:  # High math density
                 adjusted_num_cards = int(num_cards * 1.5)  # 50% more cards
                 adjusted_cloze_cards = int(adjusted_cloze_cards * 1.5)
-                logger.info(f"High math density ({math_density:.2f}) detected on page {focal_idx + 1}, increasing cards from {num_cards} to {adjusted_num_cards}")
+                logger.info(
+                    f"High math density ({math_density:.2f}) detected on page {focal_idx + 1}, increasing cards from {num_cards} to {adjusted_num_cards}"
+                )
             elif math_density > 0.3:  # Medium math density
                 adjusted_num_cards = int(num_cards * 1.25)  # 25% more cards
-                logger.info(f"Medium math density ({math_density:.2f}) detected on page {focal_idx + 1}, increasing cards from {num_cards} to {adjusted_num_cards}")
-            
+                logger.info(
+                    f"Medium math density ({math_density:.2f}) detected on page {focal_idx + 1}, increasing cards from {num_cards} to {adjusted_num_cards}"
+                )
+
             # Debug logging
-            logger.debug(f"Processing page {focal_idx + 1}/{len(markdown_files)} with context radius {context_radius}")
+            logger.debug(
+                f"Processing page {focal_idx + 1}/{len(markdown_files)} with context radius {context_radius}"
+            )
             logger.debug(f"Math density: {math_density:.2f}")
-            logger.debug(f"Requesting {adjusted_num_cards} regular cards and {adjusted_cloze_cards} cloze cards from focal page")
-            
+            logger.debug(
+                f"Requesting {adjusted_num_cards} regular cards and {adjusted_cloze_cards} cloze cards from focal page"
+            )
+
             # Generate regular cards first
             regular_prompt = f"""Generate EXACTLY {adjusted_num_cards} regular Q&A flashcards from the main content.
 
@@ -1430,21 +1460,18 @@ Generate {adjusted_num_cards} regular Q&A cards now. Focus on the actual subject
                 messages=[
                     {
                         "role": "system",
-                        "content": "Generate ONLY regular Q&A flashcards. Do NOT create any cloze deletion cards.\n\nCRITICAL LENGTH REQUIREMENT:\n- Card answers (back) MUST be under 500 characters (HARD LIMIT - validation will fail otherwise)\n- Aim for 200-400 characters for optimal learning\n- Be concise and focus on key points only\n- Remove verbose explanations and unnecessary words\n\nCRITICAL: ALL mathematical variables, symbols, and expressions MUST be wrapped in LaTeX delimiters using $ for inline math. For example: $W$, $X_j$, $h(W) = 0$, $W_{ji} \\neq 0$. NEVER write bare mathematical symbols without LaTeX."
+                        "content": "Generate ONLY regular Q&A flashcards. Do NOT create any cloze deletion cards.\n\nCRITICAL LENGTH REQUIREMENT:\n- Card answers (back) MUST be under 500 characters (HARD LIMIT - validation will fail otherwise)\n- Aim for 200-400 characters for optimal learning\n- Be concise and focus on key points only\n- Remove verbose explanations and unnecessary words\n\nCRITICAL: ALL mathematical variables, symbols, and expressions MUST be wrapped in LaTeX delimiters using $ for inline math. For example: $W$, $X_j$, $h(W) = 0$, $W_{ji} \\neq 0$. NEVER write bare mathematical symbols without LaTeX.",
                     },
-                    {
-                        "role": "user",
-                        "content": regular_prompt
-                    }
+                    {"role": "user", "content": regular_prompt},
                 ],
                 response_model=CardGenerationResponse,
                 max_retries=Retrying(
                     stop=stop_after_attempt(3),
                     wait=wait_exponential(multiplier=1, min=4, max=10),
-                    reraise=True
+                    reraise=True,
                 ),
             )
-            
+
             # Generate cloze cards separately
             cloze_prompt = f"""Generate EXACTLY {adjusted_cloze_cards} cloze deletion flashcards from the main content.
 
@@ -1519,63 +1546,73 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
                 messages=[
                     {
                         "role": "system",
-                        "content": "Generate ONLY cloze deletion flashcards using {{c1::text}} syntax.\n\nCRITICAL LENGTH REQUIREMENT:\n- Cloze card BACKS should be MINIMAL (ideally empty, max 100 characters)\n- Front content (full text with cloze) must stay under 500 characters total\n- Keep content concise - cloze cards are meant to be brief\n\nCRITICAL LaTeX RULES:\n1. ALL mathematical variables and expressions MUST use LaTeX with $ delimiters\n2. When math is NOT inside cloze markers, wrap it properly: $W$, $X_j$, $h(W) = 0$\n3. When math IS inside cloze markers, still use LaTeX: {{c1::$E = mc^2$}}\n4. NEVER write bare math symbols without LaTeX (WRONG: W, X_j, W_{ji})"
+                        "content": "Generate ONLY cloze deletion flashcards using {{c1::text}} syntax.\n\nCRITICAL LENGTH REQUIREMENT:\n- Cloze card BACKS should be MINIMAL (ideally empty, max 100 characters)\n- Front content (full text with cloze) must stay under 500 characters total\n- Keep content concise - cloze cards are meant to be brief\n\nCRITICAL LaTeX RULES:\n1. ALL mathematical variables and expressions MUST use LaTeX with $ delimiters\n2. When math is NOT inside cloze markers, wrap it properly: $W$, $X_j$, $h(W) = 0$\n3. When math IS inside cloze markers, still use LaTeX: {{c1::$E = mc^2$}}\n4. NEVER write bare math symbols without LaTeX (WRONG: W, X_j, W_{ji})",
                     },
-                    {
-                        "role": "user",
-                        "content": cloze_prompt
-                    }
+                    {"role": "user", "content": cloze_prompt},
                 ],
                 response_model=CardGenerationResponse,
                 max_retries=Retrying(
                     stop=stop_after_attempt(3),
                     wait=wait_exponential(multiplier=1, min=4, max=10),
-                    reraise=True
+                    reraise=True,
                 ),
             )
-            
+
             # Apply self-refine if enabled
             refinement_config = self.config.get("refinement", {}).get("refinement", {})
             if refinement_config.get("enabled", False):
                 logger.info("Applying self-refine to improve card quality...")
-                
+
                 # Refine regular cards
-                if regular_response.cards and "regular" in refinement_config.get("content_types", ["regular", "cloze"]):
+                if regular_response.cards and "regular" in refinement_config.get(
+                    "content_types", ["regular", "cloze"]
+                ):
                     regular_response = self._self_refine_cards(
-                        regular_response,
-                        doc_summary,
-                        "regular"
+                        regular_response, doc_summary, "regular"
                     )
-                
+
                 # Refine cloze cards
-                if cloze_response.cards and "cloze" in refinement_config.get("content_types", ["regular", "cloze"]):
+                if cloze_response.cards and "cloze" in refinement_config.get(
+                    "content_types", ["regular", "cloze"]
+                ):
                     cloze_response = self._self_refine_cards(
-                        cloze_response,
-                        doc_summary,
-                        "cloze"
+                        cloze_response, doc_summary, "cloze"
                     )
-            
+
             # Combine responses
             response = CardGenerationResponse(
                 cards=regular_response.cards + cloze_response.cards,
-                skipped_sections=regular_response.skipped_sections + cloze_response.skipped_sections
+                skipped_sections=regular_response.skipped_sections
+                + cloze_response.skipped_sections,
             )
 
             # Debug: Check what cards were generated
             regular_cards = [c for c in response.cards if "{{c" not in c.front.text]
             cloze_cards = [c for c in response.cards if "{{c" in c.front.text]
-            logger.debug(f"Generated: {len(regular_cards)} regular cards, {len(cloze_cards)} cloze cards")
-            
+            logger.debug(
+                f"Generated: {len(regular_cards)} regular cards, {len(cloze_cards)} cloze cards"
+            )
+
             # Check for math content
-            math_cards = [c for c in response.cards if "$" in c.front.text or "$" in c.back.text]
+            math_cards = [
+                c for c in response.cards if "$" in c.front.text or "$" in c.back.text
+            ]
             logger.debug(f"Math cards: {len(math_cards)}")
-            
+
             # Check for references
-            ref_cards = [c for c in response.cards if any(ref in c.front.text.lower() or ref in c.back.text.lower() 
-                                                          for ref in ["ref.", "reference", "according to", "["])]
+            ref_cards = [
+                c
+                for c in response.cards
+                if any(
+                    ref in c.front.text.lower() or ref in c.back.text.lower()
+                    for ref in ["ref.", "reference", "according to", "["]
+                )
+            ]
             if ref_cards:
-                logger.debug(f"{len(ref_cards)} cards contain references that should have been removed")
-            
+                logger.debug(
+                    f"{len(ref_cards)} cards contain references that should have been removed"
+                )
+
             # Add the cards from the combined response
             all_cards.extend(response.cards)
 
@@ -1583,7 +1620,7 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
 
     def generate_image_cards(
         self,
-        markdown_files: List[Path],
+        markdown_files: list[Path],
         doc_summary: DocumentSummary,
         cards_per_image: int = 3,
         image_on_front: bool = True,
@@ -1591,8 +1628,8 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
         require_math: bool = False,
         placement_strategy: str = "smart",
         front_back_ratio: float = 0.5,
-        image_summaries: Optional[List[ImageSummary]] = None,
-    ) -> List[PlainCard]:
+        image_summaries: list[ImageSummary] | None = None,
+    ) -> list[PlainCard]:
         """Generate flashcards from document images.
 
         Creates cards that test understanding of visual content like
@@ -1618,12 +1655,12 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
         front_back_ratio : float, optional
             Ratio for random placement strategy (default is 0.5)
 
-        Returns
+        Returns:
         -------
         List[PlainCard]
             Generated image-based flashcards
 
-        Notes
+        Notes:
         -----
         Image placement strategies:
         - 'smart': Place on front if question references the image
@@ -1634,7 +1671,7 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
 
         Images are never placed on both sides of the same card.
 
-        Examples
+        Examples:
         --------
         >>> # Generate 2 cards per image, smart placement
         >>> image_cards = pipeline.generate_image_cards(
@@ -1657,7 +1694,9 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
                 if require_math and not detect_math_content(image_info["context"]):
                     continue
 
-                logger.debug(f"Generating {cards_per_image} cards for image: {image_info['path']}")
+                logger.debug(
+                    f"Generating {cards_per_image} cards for image: {image_info['path']}"
+                )
 
                 # Get surrounding content (more context around the image)
                 file_content = content
@@ -1674,25 +1713,34 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
                     # Try to match by URL/path
                     for img_summary in image_summaries:
                         # Check if paths match (handle different path formats)
-                        if (image_info['path'] in img_summary.image_url or 
-                            img_summary.image_url in image_info['path'] or
-                            Path(image_info['path']).name == Path(img_summary.image_url).name):
+                        if (
+                            image_info["path"] in img_summary.image_url
+                            or img_summary.image_url in image_info["path"]
+                            or Path(image_info["path"]).name
+                            == Path(img_summary.image_url).name
+                        ):
                             image_summary_text = img_summary.summary
-                            logger.debug(f"Found image summary for {image_info['path']}: {image_summary_text[:50]}...")
+                            logger.debug(
+                                f"Found image summary for {image_info['path']}: {image_summary_text[:50]}..."
+                            )
                             break
-                    
+
                     if not image_summary_text:
-                        logger.debug(f"No matching image summary found for {image_info['path']}")
-                        logger.debug(f"  Available summaries: {[img.image_url for img in image_summaries]}")
-                
+                        logger.debug(
+                            f"No matching image summary found for {image_info['path']}"
+                        )
+                        logger.debug(
+                            f"  Available summaries: {[img.image_url for img in image_summaries]}"
+                        )
+
                 # Create a specialized prompt for image cards
                 image_prompt = f"""Create {cards_per_image} educational flashcards based on this image and its context.
 
 Image Information:
-- Path: {image_info['path']}
-- Alt text: {image_info['alt']}
-- Context: {image_info['context']}
-{f'- Image Description: {image_summary_text}' if image_summary_text else ''}
+- Path: {image_info["path"]}
+- Alt text: {image_info["alt"]}
+- Context: {image_info["context"]}
+{f"- Image Description: {image_summary_text}" if image_summary_text else ""}
 
 Document Summary Context:
 - Title: {doc_summary.title}
@@ -1716,7 +1764,7 @@ Requirements:
 - Cards can reference specific parts of the image (e.g., "What does the upper pathway represent?")
 - Include mathematical notation if present in the image
 - Make questions test conceptual understanding, not just visual identification
-- {'Image can appear on front or back of card as appropriate' if image_on_front and image_on_back else 'Image should appear on front of card' if image_on_front else 'Image should appear on back of card' if image_on_back else 'No image placement preference'}
+- {"Image can appear on front or back of card as appropriate" if image_on_front and image_on_back else "Image should appear on front of card" if image_on_front else "Image should appear on back of card" if image_on_back else "No image placement preference"}
 
 FORMAT RULES:
 1. Use ## for the question (front of card) - NO IMAGE MARKDOWN
@@ -1755,13 +1803,19 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                     )
 
                     # Apply self-refine if enabled for image cards
-                    refinement_config = self.config.get("refinement", {}).get("refinement", {})
-                    if refinement_config.get("enabled", False) and "image" in refinement_config.get("content_types", ["regular", "cloze", "image"]):
-                        logger.info(f"Applying self-refine to image cards for {image_info['path']}...")
+                    refinement_config = self.config.get("refinement", {}).get(
+                        "refinement", {}
+                    )
+                    if refinement_config.get(
+                        "enabled", False
+                    ) and "image" in refinement_config.get(
+                        "content_types", ["regular", "cloze", "image"]
+                    ):
+                        logger.info(
+                            f"Applying self-refine to image cards for {image_info['path']}..."
+                        )
                         response = self._self_refine_cards(
-                            response,
-                            doc_summary,
-                            "image"
+                            response, doc_summary, "image"
                         )
 
                     # Add image paths to the generated cards
@@ -1769,24 +1823,33 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                         # Clean up any image markdown that might have slipped through
                         # Remove ![Image](...) patterns from both front and back text
                         import re
-                        image_pattern = r'!\[.*?\]\([^)]+\)'
-                        card.front.text = re.sub(image_pattern, '', card.front.text).strip()
-                        card.back.text = re.sub(image_pattern, '', card.back.text).strip()
-                        
+
+                        image_pattern = r"!\[.*?\]\([^)]+\)"
+                        card.front.text = re.sub(
+                            image_pattern, "", card.front.text
+                        ).strip()
+                        card.back.text = re.sub(
+                            image_pattern, "", card.back.text
+                        ).strip()
+
                         # Decide where to place the image based on config
                         if image_on_front and not image_on_back:
                             card.front.image_path = image_info["original_path"]
                             if image_summary_text:
                                 card.front.image_summary = image_summary_text
                             else:
-                                logger.error(f"No image summary found for {image_info['path']} - skipping this image card")
+                                logger.error(
+                                    f"No image summary found for {image_info['path']} - skipping this image card"
+                                )
                                 continue  # Skip this card entirely
                         elif image_on_back and not image_on_front:
                             card.back.image_path = image_info["original_path"]
                             if image_summary_text:
                                 card.back.image_summary = image_summary_text
                             else:
-                                logger.error(f"No image summary found for {image_info['path']} - skipping this image card")
+                                logger.error(
+                                    f"No image summary found for {image_info['path']} - skipping this image card"
+                                )
                                 continue  # Skip this card entirely
                         elif image_on_front and image_on_back:
                             # Both allowed, but NEVER put the same image on both sides
@@ -1825,7 +1888,9 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                                 if image_summary_text:
                                     card.front.image_summary = image_summary_text
                                 else:
-                                    logger.error(f"No image summary found for {image_info['path']} - skipping this image card")
+                                    logger.error(
+                                        f"No image summary found for {image_info['path']} - skipping this image card"
+                                    )
                                     continue  # Skip this card entirely
                                 # Explicitly ensure IMAGE is not on the back
                                 card.back.image_path = None
@@ -1834,7 +1899,9 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                                 if image_summary_text:
                                     card.back.image_summary = image_summary_text
                                 else:
-                                    logger.error(f"No image summary found for {image_info['path']} - skipping this image card")
+                                    logger.error(
+                                        f"No image summary found for {image_info['path']} - skipping this image card"
+                                    )
                                     continue  # Skip this card entirely
                                 # Explicitly ensure IMAGE is not on the front
                                 card.front.image_path = None
@@ -1848,26 +1915,35 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                     back_count = sum(
                         1 for card in response.cards if card.back.image_path
                     )
-                    logger.debug(f"Generated {len(response.cards)} cards for image {image_info['path']}")
-                    logger.debug(f"  Image placement - Front: {front_count}, Back: {back_count} (strategy: {placement_strategy})")
+                    logger.debug(
+                        f"Generated {len(response.cards)} cards for image {image_info['path']}"
+                    )
+                    logger.debug(
+                        f"  Image placement - Front: {front_count}, Back: {back_count} (strategy: {placement_strategy})"
+                    )
 
                 except Exception as e:
-                    logger.error(f"Error generating cards for image {image_info['path']}: {e}")
+                    logger.error(
+                        f"Error generating cards for image {image_info['path']}: {e}"
+                    )
                     continue
 
         return image_cards
 
     def estimate_card_count(
-        self, markdown_files: List[Path], image_summaries: List[ImageSummary], processing_config: Dict[str, Any]
+        self,
+        markdown_files: list[Path],
+        image_summaries: list[ImageSummary],
+        processing_config: dict[str, Any],
     ) -> int:
         """Estimate the total number of cards that will be generated.
-        
+
         Calculates expected card count based on:
         - Number of pages
         - Context radius for surrounding pages
         - Cards per page settings
         - Number of images and image card settings
-        
+
         Parameters
         ----------
         markdown_files : List[Path]
@@ -1876,68 +1952,72 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             List of image summaries
         processing_config : Dict[str, Any]
             Processing configuration
-            
-        Returns
+
+        Returns:
         -------
         int
             Estimated total number of cards
-            
-        Notes
+
+        Notes:
         -----
         This provides an estimate before actual card generation begins,
         helping users understand the expected output size.
         """
         num_pages = len(markdown_files)
         num_images = len(image_summaries)
-        
+
         # Get configuration values
         context_radius = processing_config.get("context_radius", 1)
         cards_per_page = processing_config.get("num_cards_per_page", 3)
         cloze_per_page = processing_config.get("cloze_cards_per_page", 2)
-        
+
         # Image card settings
         image_config = processing_config.get("image_cards", {})
         image_cards_enabled = image_config.get("enabled", True)
         cards_per_image = image_config.get("cards_per_image", 3)
-        
+
         # All pages are focal pages now (no skip)
         num_focal_pages = num_pages
-        
+
         # Calculate cards from text content (only from focal pages)
         cards_per_focal = cards_per_page + cloze_per_page
         text_cards = num_focal_pages * cards_per_focal
-        
+
         # Calculate cards from images
         image_cards = num_images * cards_per_image if image_cards_enabled else 0
-        
+
         # Total estimate
         total_estimated = text_cards + image_cards
-        
+
         # Log the estimation details
-        logger.info("="*50)
+        logger.info("=" * 50)
         logger.info("CARD ESTIMATION:")
         logger.info(f"  Pages: {num_pages}")
         logger.info(f"  Images: {num_images}")
-        logger.info(f"  Processing configuration:")
+        logger.info("  Processing configuration:")
         logger.info(f"    - Context radius: ±{context_radius} pages")
         logger.info(f"    - Focal pages to process: {num_focal_pages} (all pages)")
-        logger.info(f"  Cards per focal page:")
+        logger.info("  Cards per focal page:")
         logger.info(f"    - Regular cards: {cards_per_page}")
         logger.info(f"    - Cloze cards: {cloze_per_page}")
         logger.info(f"    - Total per page: {cards_per_focal}")
-        logger.info(f"  Estimated text cards: {num_focal_pages} pages × {cards_per_focal} cards = {text_cards}")
+        logger.info(
+            f"  Estimated text cards: {num_focal_pages} pages × {cards_per_focal} cards = {text_cards}"
+        )
         if image_cards_enabled:
-            logger.info(f"  Estimated image cards: {num_images} images × {cards_per_image} cards = {image_cards}")
+            logger.info(
+                f"  Estimated image cards: {num_images} images × {cards_per_image} cards = {image_cards}"
+            )
         else:
-            logger.info(f"  Image cards: disabled")
+            logger.info("  Image cards: disabled")
         logger.info(f"  TOTAL ESTIMATED CARDS: {total_estimated}")
-        logger.info("="*50)
-        
+        logger.info("=" * 50)
+
         return total_estimated
 
     def generate_outputs(
-        self, cards: List[PlainCard], summary: DocumentSummary, output_dir: Path
-    ) -> Dict[str, Path]:
+        self, cards: list[PlainCard], summary: DocumentSummary, output_dir: Path
+    ) -> dict[str, Path]:
         """Generate output files in configured formats.
 
         Creates various output files including plain cards, cards with
@@ -1952,7 +2032,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         output_dir : Path
             Directory for output files
 
-        Returns
+        Returns:
         -------
         Dict[str, Path]
             Mapping of output types to file paths:
@@ -1960,7 +2040,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             - 'cards_audio': Cards with audio (if enabled)
             - 'summary': Document summary
 
-        Notes
+        Notes:
         -----
         Audio card output is only generated if complementary audio
         generation is enabled in configuration.
@@ -1990,7 +2070,9 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             anki_config = self.config.get("anki", {}).get("anki", {})
             deck_template = anki_config.get("deck_name", "{deck_name}")
             deck_name_value = (
-                self.audio_prefix if hasattr(self, "audio_prefix") else self.citation_key
+                self.audio_prefix
+                if hasattr(self, "audio_prefix")
+                else self.citation_key
             )
             deck_name = self.format_deck_name(deck_template, deck_name_value)
             apkg_path = output_dir / f"{self.citation_key}.apkg"
@@ -2009,40 +2091,42 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             f.write(f"**Authors:** {', '.join(summary.authors)}\\n\\n")
             f.write(f"**Main Topic:** {summary.main_topic}\\n\\n")
             f.write(f"**Methodology:** {summary.methodology}\\n\\n")
-            
+
             # Learning objectives if present
             if summary.learning_objectives:
-                f.write(f"## Learning Objectives\\n\\n")
+                f.write("## Learning Objectives\\n\\n")
                 for objective in summary.learning_objectives:
                     f.write(f"- {objective}\\n")
                 f.write("\\n")
-            
+
             f.write(f"## Summary\\n\\n{summary.summary}\\n\\n")
-            
+
             # Key equations if present
             if summary.key_equations:
-                f.write(f"## Key Equations\\n\\n")
+                f.write("## Key Equations\\n\\n")
                 for equation in summary.key_equations:
                     f.write(f"- {equation}\\n")
                 f.write("\\n")
-            
+
             # Conceptual framework if present
             if summary.conceptual_framework:
-                f.write(f"## Conceptual Framework\\n\\n{summary.conceptual_framework}\\n\\n")
-            
-            f.write(f"## Key Contributions\\n\\n")
+                f.write(
+                    f"## Conceptual Framework\\n\\n{summary.conceptual_framework}\\n\\n"
+                )
+
+            f.write("## Key Contributions\\n\\n")
             for contrib in summary.key_contributions:
                 f.write(f"- {contrib}\\n")
-            
+
             # Acronyms
             if summary.acronyms:
-                f.write(f"\\n## Acronyms\\n\\n")
+                f.write("\\n## Acronyms\\n\\n")
                 for acronym, definition in summary.acronyms.items():
                     f.write(f"- **{acronym}**: {definition}\\n")
-            
+
             # Technical terms
             if summary.technical_terms:
-                f.write(f"\\n## Technical Terms\\n\\n")
+                f.write("\\n## Technical Terms\\n\\n")
                 for term, definition in summary.technical_terms.items():
                     f.write(f"- **{term}**: {definition}\\n")
         outputs["summary"] = summary_path
@@ -2051,11 +2135,11 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
     def generate_audio(
         self,
-        cards: List[PlainCard],
+        cards: list[PlainCard],
         summary: DocumentSummary,
-        outputs: Dict[str, Path],
-        cleaned_files: List[Path],
-        image_summaries: List[ImageSummary],
+        outputs: dict[str, Path],
+        cleaned_files: list[Path],
+        image_summaries: list[ImageSummary],
     ):
         """Generate audio files for various content types.
 
@@ -2075,12 +2159,12 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         image_summaries : List[ImageSummary]
             Image summaries for lecture content
 
-        Raises
+        Raises:
         ------
         RuntimeError
             If required API keys are not set in environment
 
-        Notes
+        Notes:
         -----
         Requires ELEVEN_LABS_API_KEY and OPENAI_API_KEY environment
         variables. Generates different audio types based on config:
@@ -2089,7 +2173,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         - Reading: Full document text-to-speech
         - Lecture: Educational presentation style
 
-        See Also
+        See Also:
         --------
         utils.audio : Audio generation utility functions
         """
@@ -2109,7 +2193,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         models_config = self.config.get("models", {}).get("models", {})
         llm_config = models_config.get("llm", {})
         model = llm_config.get("model", "gpt-5")
-        
+
         # Get voice_id from TTS config in models, not from audio config
         tts_config = models_config.get("tts", {})
         voice_id = tts_config.get("voice_id")
@@ -2123,12 +2207,14 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             for i, card in enumerate(cards):
                 # Use consistent card numbering instead of misleading page numbers
                 # This ensures audio files match the card order
-                card_base = f"card"
+                card_base = "card"
 
                 # Get complementary audio speed from config
                 complementary_speed = audio_config.get("complementary_speed", 1.0)
                 # Get force regenerate option from config
-                force_regenerate_citation = audio_config.get("force_regenerate_citation", False)
+                force_regenerate_citation = audio_config.get(
+                    "force_regenerate_citation", False
+                )
 
                 front_filename, back_filename = generate_card_audio(
                     card=card,
@@ -2143,25 +2229,27 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                     speed=complementary_speed,
                     force_regenerate_citation=force_regenerate_citation,
                 )
-                
+
                 # Set audio URIs on the card for robust pairing
                 if front_filename:
                     # Use relative path from output directory
-                    card.audio_front_uri = f"gen-md-complementary-audio/{front_filename}"
+                    card.audio_front_uri = (
+                        f"gen-md-complementary-audio/{front_filename}"
+                    )
                 if back_filename:
                     card.audio_back_uri = f"gen-md-complementary-audio/{back_filename}"
 
                 # Validate audio transcript matches card content
                 if not card.validate_audio_match():
-                    print(f"WARNING: Audio transcript mismatch for card {i+1}")
-                
+                    print(f"WARNING: Audio transcript mismatch for card {i + 1}")
+
                 if back_filename:
                     print(
-                        f"Generated audio for card {i+1}: {front_filename}, {back_filename}"
+                        f"Generated audio for card {i + 1}: {front_filename}, {back_filename}"
                     )
                 else:
                     print(
-                        f"Generated audio for card {i+1}: {front_filename} (front only)"
+                        f"Generated audio for card {i + 1}: {front_filename} (front only)"
                     )
 
         # Generate summary audio
@@ -2249,16 +2337,18 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 speed=lecture_speed,
             )
             print(f"Generated lecture audio: {lecture_audio_path.name}")
-        
+
         # After all audio generation is complete, write cards with audio links
         if audio_config.get("generate_complementary", False):
             # Get output config
             output_config = self.config.get("output", {}).get("output", {})
             formats = output_config.get("formats", {})
             tag_format = output_config.get("tag_format", "slugified")
-            
+
             # Write cards with audio using the URIs stored in each card
-            audio_path = self.output_base / formats.get("cards_audio", "cards-with-audio.md")
+            audio_path = self.output_base / formats.get(
+                "cards_audio", "cards-with-audio.md"
+            )
             with open(audio_path, "w") as f:
                 for card in cards:
                     f.write(
@@ -2270,7 +2360,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                     )
             outputs["cards_audio"] = audio_path
             logger.debug(f"Written cards with audio: {audio_path.name}")
-            
+
             # Create a summary of audio transcripts for debugging
             transcripts_dir = self.output_base / "audio-transcripts"
             if transcripts_dir.exists():
@@ -2278,37 +2368,52 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 with open(summary_path, "w") as f:
                     f.write("# Audio Transcript Summary\n\n")
                     f.write(f"Generated transcripts for {len(cards)} cards\n\n")
-                    
+
                     # Count cards with images
-                    cards_with_images = sum(1 for card in cards if card.front.image_path or card.back.image_path)
-                    cards_with_summaries = sum(1 for card in cards if card.front.image_summary or card.back.image_summary)
-                    
+                    cards_with_images = sum(
+                        1
+                        for card in cards
+                        if card.front.image_path or card.back.image_path
+                    )
+                    cards_with_summaries = sum(
+                        1
+                        for card in cards
+                        if card.front.image_summary or card.back.image_summary
+                    )
+
                     f.write(f"- Total cards: {len(cards)}\n")
                     f.write(f"- Cards with images: {cards_with_images}\n")
                     f.write(f"- Cards with image summaries: {cards_with_summaries}\n\n")
-                    
+
                     # List any cards missing summaries
                     missing_summaries = [
-                        card for card in cards 
-                        if (card.front.image_path or card.back.image_path) 
+                        card
+                        for card in cards
+                        if (card.front.image_path or card.back.image_path)
                         and not (card.front.image_summary or card.back.image_summary)
                     ]
-                    
+
                     if missing_summaries:
-                        f.write(f"## Cards Missing Image Summaries ({len(missing_summaries)} cards)\n\n")
+                        f.write(
+                            f"## Cards Missing Image Summaries ({len(missing_summaries)} cards)\n\n"
+                        )
                         for card in missing_summaries:
                             f.write(f"- Card ID: {card.card_id}\n")
                             f.write(f"  - Front image: {card.front.image_path}\n")
                             f.write(f"  - Back image: {card.back.image_path}\n")
-                            f.write(f"  - Front text preview: {card.front.text[:50]}...\n\n")
-                    
+                            f.write(
+                                f"  - Front text preview: {card.front.text[:50]}...\n\n"
+                            )
+
                     f.write("\n## Transcript Files Generated\n\n")
                     transcript_files = sorted(transcripts_dir.glob("*.md"))
                     # Exclude the summary file itself
-                    transcript_files = [f for f in transcript_files if f.name != "transcript-summary.md"]
+                    transcript_files = [
+                        f for f in transcript_files if f.name != "transcript-summary.md"
+                    ]
                     for tf in transcript_files:
                         f.write(f"- {tf.name}\n")
-                
+
                 print(f"Written transcript summary: {summary_path.name}")
 
     def format_deck_name(self, template: str, deck_name: str) -> str:
@@ -2323,12 +2428,12 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         deck_name : str
             Deck name to substitute (output_dir if specified, otherwise citation_key)
 
-        Returns
+        Returns:
         -------
         str
             Formatted deck name
 
-        Examples
+        Examples:
         --------
         >>> pipeline.format_deck_name("{deck_name}_2024", "Smith")
         'Smith_2024'
@@ -2349,7 +2454,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
     def prepare_anki_file(
         self,
-        cards: List[PlainCard],
+        cards: list[PlainCard],
         deck_name: str,
         output_path: Path,
         include_audio: bool = True,
@@ -2370,12 +2475,12 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         include_audio : bool, optional
             Whether to include audio links (default is True)
 
-        Returns
+        Returns:
         -------
         Path
             Path to prepared Anki file
 
-        Notes
+        Notes:
         -----
         Adds '# DeckName' header required by md_to_anki.py.
         Preserves exact card formatting from original output.
@@ -2384,7 +2489,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
         # First, read the existing output file to use its exact format
         # This ensures we preserve the exact card format that was generated
-        with open(output_path, "r") as f:
+        with open(output_path) as f:
             content = f.read()
 
         with open(anki_file, "w") as f:
@@ -2399,9 +2504,9 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
     def send_to_anki(
         self,
-        cards: List[PlainCard],
-        outputs: Dict[str, Path],
-        anki_config: Dict[str, Any],
+        cards: list[PlainCard],
+        outputs: dict[str, Path],
+        anki_config: dict[str, Any],
     ):
         """Send generated cards to Anki via AnkiConnect.
 
@@ -2424,18 +2529,18 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             - host: AnkiConnect host
             - port: AnkiConnect port
 
-        Raises
+        Raises:
         ------
         Exception
             If connection to Anki fails or upload errors occur
 
-        Notes
+        Notes:
         -----
         Requires Anki to be running with AnkiConnect addon installed.
         Creates deck if it doesn't exist. Handles both new cards and
         updates to existing cards based on configuration.
 
-        See Also
+        See Also:
         --------
         AnkiProcessor : Handles AnkiConnect communication
         """
@@ -2495,13 +2600,13 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         self,
         response: CardGenerationResponse,
         doc_summary: DocumentSummary,
-        card_type: str
+        card_type: str,
     ) -> CardGenerationResponse:
         """Apply self-refine pattern to improve card quality.
-        
+
         Iteratively generates feedback and refines cards until they meet
         quality standards or reach maximum iterations.
-        
+
         Parameters
         ----------
         response : CardGenerationResponse
@@ -2510,70 +2615,68 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             Document summary for context
         card_type : str
             Type of cards ('regular', 'cloze', or 'image')
-            
-        Returns
+
+        Returns:
         -------
         CardGenerationResponse
             Refined cards response
         """
         refinement_config = self.config.get("refinement", {}).get("refinement", {})
         max_iterations = refinement_config.get("max_iterations", 3)
-        
+
         # Track refinement history
         history = RefinementHistory()
-        
+
         for iteration in range(max_iterations):
             try:
                 # Generate feedback
                 feedback = self._generate_card_feedback(
-                    response.cards,
-                    doc_summary,
-                    card_type
+                    response.cards, doc_summary, card_type
                 )
-                
+
                 # Check if cards are good enough
                 if feedback.done:
-                    logger.info(f"{card_type.capitalize()} cards passed quality check after {iteration} iterations")
+                    logger.info(
+                        f"{card_type.capitalize()} cards passed quality check after {iteration} iterations"
+                    )
                     break
-                
+
                 # Log feedback
-                logger.info(f"Iteration {iteration + 1} feedback for {card_type} cards:")
+                logger.info(
+                    f"Iteration {iteration + 1} feedback for {card_type} cards:"
+                )
                 for issue in feedback.feedback:
                     logger.info(f"  - {issue}")
-                
+
                 # Refine cards based on feedback
                 refined_response = self._refine_cards(
-                    response,
-                    feedback,
-                    doc_summary,
-                    card_type
+                    response, feedback, doc_summary, card_type
                 )
-                
+
                 # Save to history
                 history.add_iteration(response.cards, feedback, refined_response.cards)
-                
+
                 # Update response for next iteration
                 response = refined_response
-                
+
             except ValidationError as e:
-                logger.warning(f"Validation error during refinement iteration {iteration + 1}: {e}")
+                logger.warning(
+                    f"Validation error during refinement iteration {iteration + 1}: {e}"
+                )
                 logger.info(f"Continuing with current cards for {card_type} type")
                 # Don't update response, keep current version
                 break
             except Exception as e:
                 logger.error(f"Unexpected error during refinement: {e}")
                 break
-            
+
         return response
-    
+
     def _generate_card_feedback(
-        self,
-        cards: List[PlainCard],
-        doc_summary: DocumentSummary,
-        card_type: str
+        self, cards: list[PlainCard], doc_summary: DocumentSummary, card_type: str
     ) -> CardFeedback:
         """Generate quality feedback for cards.
-        
+
         Parameters
         ----------
         cards : List[PlainCard]
@@ -2582,25 +2685,25 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             Document context
         card_type : str
             Type of cards being evaluated
-            
-        Returns
+
+        Returns:
         -------
         CardFeedback
             Structured feedback about card quality
         """
         refinement_config = self.config.get("refinement", {}).get("refinement", {})
         feedback_prompts = refinement_config.get("feedback_prompts", {})
-        
+
         # Format cards for evaluation
         cards_text = self._format_cards_for_feedback(cards)
-        
+
         # Get appropriate feedback prompt
         feedback_prompt = feedback_prompts.get(f"{card_type}_cards", "")
-        
+
         # Get LLM config
         models_config = self.config.get("models", {}).get("models", {})
         llm_config = models_config.get("llm", {})
-        
+
         system_prompt = f"""You are an expert teacher evaluating flashcards for educational value.
 Your goal is to ensure cards help students learn KEY CONCEPTS from the document.
 
@@ -2645,15 +2748,12 @@ Check for these issues in {card_type} cards:
 
 If ALL cards are high quality AND educationally valuable, set done=True.
 Otherwise provide specific, actionable feedback focused on what matters for learning."""
-        
+
         return self.instructor.chat.completions.create(
             model=llm_config.get("model", "gpt-4"),
             response_model=CardFeedback,
             messages=[
-                {
-                    "role": "system",
-                    "content": system_prompt
-                },
+                {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
                     "content": f"""
@@ -2670,24 +2770,24 @@ Use the document summary to understand what KEY CONCEPTS students should learn.
 Cards should focus on these fundamental ideas, not trivial notation or random details.
 
 {feedback_prompt}
-"""
-                }
+""",
+                },
             ],
             max_retries=Retrying(
                 stop=stop_after_attempt(2),
-                wait=wait_exponential(multiplier=1, min=2, max=5)
-            )
+                wait=wait_exponential(multiplier=1, min=2, max=5),
+            ),
         )
-    
+
     def _refine_cards(
         self,
         response: CardGenerationResponse,
         feedback: CardFeedback,
         doc_summary: DocumentSummary,
-        card_type: str
+        card_type: str,
     ) -> CardGenerationResponse:
         """Refine cards based on feedback.
-        
+
         Parameters
         ----------
         response : CardGenerationResponse
@@ -2698,22 +2798,22 @@ Cards should focus on these fundamental ideas, not trivial notation or random de
             Document context
         card_type : str
             Type of cards
-            
-        Returns
+
+        Returns:
         -------
         CardGenerationResponse
             Refined cards
         """
         refinement_config = self.config.get("refinement", {}).get("refinement", {})
         refinement_prompts = refinement_config.get("refinement_prompts", {})
-        
+
         # Format cards and feedback
         cards_text = self._format_cards_for_feedback(response.cards)
         feedback_text = "\n".join([f"- {f}" for f in feedback.feedback])
-        
+
         # Get refinement prompt
         refinement_prompt = refinement_prompts.get(f"{card_type}_cards", "")
-        
+
         # Add specific guidance for cloze cards with math
         if card_type == "cloze":
             refinement_prompt += """
@@ -2724,9 +2824,14 @@ IMPORTANT for cloze cards with math:
 - Example with multiple parts: "In {{c1::\\alpha = 0.1}}, the learning rate is {{c2::0.1}}"
 - Example with full equation: "The equation {{c1::\\(E = mc^2\\)}} relates energy to mass"
 """
-        
+
         # Add specific guidance for meta-content issues
-        if any("focal page" in f.lower() or "surrounding pages" in f.lower() or "meta-content" in f.lower() for f in feedback.feedback):
+        if any(
+            "focal page" in f.lower()
+            or "surrounding pages" in f.lower()
+            or "meta-content" in f.lower()
+            for f in feedback.feedback
+        ):
             refinement_prompt += """
 
 CRITICAL META-CONTENT FIX REQUIRED:
@@ -2743,11 +2848,11 @@ Example fixes:
 - BAD: "According to the focal page, what is the error function?"
 - GOOD: "What is the error function E(w) in terms of network output and target values?"
 """
-        
+
         # Get LLM config
         models_config = self.config.get("models", {}).get("models", {})
         llm_config = models_config.get("llm", {})
-        
+
         try:
             return self.instructor.chat.completions.create(
                 model=llm_config.get("model", "gpt-4"),
@@ -2771,7 +2876,7 @@ WRITING STYLE IMPROVEMENTS:
 3. Avoid choppy, terse statements
 4. Minimize parenthetical phrases - integrate information naturally
 5. Ensure content sounds good when read aloud
-6. Use varied sentence structure for better engagement"""
+6. Use varied sentence structure for better engagement""",
                     },
                     {
                         "role": "user",
@@ -2790,30 +2895,32 @@ Technical terms: {doc_summary.technical_terms}
 {refinement_prompt}
 
 Generate {len(response.cards)} improved {card_type} cards addressing all feedback.
-"""
-                    }
+""",
+                    },
                 ],
                 max_retries=Retrying(
                     stop=stop_after_attempt(2),
                     wait=wait_exponential(multiplier=1, min=2, max=5),
-                    retry=retry_if_exception_type(ValidationError)
-                )
+                    retry=retry_if_exception_type(ValidationError),
+                ),
             )
         except ValidationError as e:
             # If validation still fails, log the error and return original
             logger.error(f"Validation error during refinement: {e}")
-            logger.warning("Returning original cards due to refinement validation error")
+            logger.warning(
+                "Returning original cards due to refinement validation error"
+            )
             return response
-    
-    def _format_cards_for_feedback(self, cards: List[PlainCard]) -> str:
+
+    def _format_cards_for_feedback(self, cards: list[PlainCard]) -> str:
         """Format cards for feedback evaluation.
-        
+
         Parameters
         ----------
         cards : List[PlainCard]
             Cards to format
-            
-        Returns
+
+        Returns:
         -------
         str
             Formatted card text
@@ -2822,21 +2929,18 @@ Generate {len(response.cards)} improved {card_type} cards addressing all feedbac
         for i, card in enumerate(cards):
             formatted.append(f"Card {i + 1}:")
             formatted.append(f"Front: {card.front.text}")
-            if not ("{{c" in card.front.text):  # Regular card
+            if "{{c" not in card.front.text:  # Regular card
                 formatted.append(f"Back: {card.back.text}")
             formatted.append(f"Tags: {', '.join(card.tags)}")
             formatted.append("")  # Empty line between cards
-        
+
         return "\n".join(formatted)
-    
+
     def _self_refine_audio_transcript(
-        self,
-        transcript: str,
-        card_type: str,
-        doc_summary: DocumentSummary
+        self, transcript: str, card_type: str, doc_summary: DocumentSummary
     ) -> str:
         """Apply self-refine to audio transcripts.
-        
+
         Parameters
         ----------
         transcript : str
@@ -2845,45 +2949,41 @@ Generate {len(response.cards)} improved {card_type} cards addressing all feedbac
             Type of card ('regular', 'cloze', etc.)
         doc_summary : DocumentSummary
             Document context
-            
-        Returns
+
+        Returns:
         -------
         str
             Refined transcript suitable for TTS
         """
         refinement_config = self.config.get("refinement", {}).get("refinement", {})
-        
+
         if not refinement_config.get("include_audio", False):
             return transcript
-        
+
         max_iterations = refinement_config.get("max_iterations", 3)
-        
+
         for iteration in range(max_iterations):
             # Generate feedback for transcript
             feedback = self._generate_audio_feedback(transcript, card_type, doc_summary)
-            
+
             if feedback.done:
-                logger.info(f"Audio transcript passed quality check after {iteration} iterations")
+                logger.info(
+                    f"Audio transcript passed quality check after {iteration} iterations"
+                )
                 break
-            
+
             # Refine transcript
             transcript = self._refine_audio_transcript(
-                transcript,
-                feedback,
-                card_type,
-                doc_summary
+                transcript, feedback, card_type, doc_summary
             )
-        
+
         return transcript
-    
+
     def _generate_audio_feedback(
-        self,
-        transcript: str,
-        card_type: str,
-        doc_summary: DocumentSummary
+        self, transcript: str, card_type: str, doc_summary: DocumentSummary
     ) -> AudioTranscriptFeedback:
         """Generate feedback for audio transcript.
-        
+
         Parameters
         ----------
         transcript : str
@@ -2892,26 +2992,26 @@ Generate {len(response.cards)} improved {card_type} cards addressing all feedbac
             Type of content
         doc_summary : DocumentSummary
             Document context
-            
-        Returns
+
+        Returns:
         -------
         AudioTranscriptFeedback
             Feedback about transcript quality
         """
         refinement_config = self.config.get("refinement", {}).get("refinement", {})
         feedback_prompts = refinement_config.get("feedback_prompts", {})
-        
+
         # Get LLM config
         models_config = self.config.get("models", {}).get("models", {})
         llm_config = models_config.get("llm", {})
-        
+
         return self.instructor.chat.completions.create(
             model=llm_config.get("model", "gpt-4"),
             response_model=AudioTranscriptFeedback,
             messages=[
                 {
                     "role": "system",
-                    "content": "You are an expert in audio transcript quality for text-to-speech."
+                    "content": "You are an expert in audio transcript quality for text-to-speech.",
                 },
                 {
                     "role": "user",
@@ -2920,24 +3020,24 @@ Transcript to evaluate:
 {transcript}
 
 Card type: {card_type}
-Citation key: {doc_summary.citation_key if hasattr(doc_summary, 'citation_key') else 'Unknown'}
+Citation key: {doc_summary.citation_key if hasattr(doc_summary, "citation_key") else "Unknown"}
 Acronyms in document: {doc_summary.acronyms}
 
-{feedback_prompts.get(f'{card_type}_audio', feedback_prompts.get('audio_transcript', ''))}
-"""
-                }
-            ]
+{feedback_prompts.get(f"{card_type}_audio", feedback_prompts.get("audio_transcript", ""))}
+""",
+                },
+            ],
         )
-    
+
     def _refine_audio_transcript(
         self,
         transcript: str,
         feedback: AudioTranscriptFeedback,
         card_type: str,
-        doc_summary: DocumentSummary
+        doc_summary: DocumentSummary,
     ) -> str:
         """Refine audio transcript based on feedback.
-        
+
         Parameters
         ----------
         transcript : str
@@ -2948,25 +3048,25 @@ Acronyms in document: {doc_summary.acronyms}
             Type of content
         doc_summary : DocumentSummary
             Document context
-            
-        Returns
+
+        Returns:
         -------
         str
             Refined transcript
         """
         refinement_config = self.config.get("refinement", {}).get("refinement", {})
         refinement_prompts = refinement_config.get("refinement_prompts", {})
-        
+
         # Get LLM config
         models_config = self.config.get("models", {}).get("models", {})
         llm_config = models_config.get("llm", {})
-        
+
         feedback_text = "\n".join([f"- {f}" for f in feedback.feedback])
-        
+
         messages = [
             {
                 "role": "system",
-                "content": "You are an expert at creating clear audio transcripts for text-to-speech."
+                "content": "You are an expert at creating clear audio transcripts for text-to-speech.",
             },
             {
                 "role": "user",
@@ -2981,17 +3081,17 @@ Context:
 - Card type: {card_type}
 - Document acronyms: {doc_summary.acronyms}
 
-{refinement_prompts.get(f'{card_type}_audio', refinement_prompts.get('audio_transcript', ''))}
+{refinement_prompts.get(f"{card_type}_audio", refinement_prompts.get("audio_transcript", ""))}
 
 Rewrite the transcript addressing all issues.
-"""
-            }
+""",
+            },
         ]
-        
+
         response = self.instructor.chat.completions.create(
             model=llm_config.get("model", "gpt-4"),
             messages=messages,
-            response_model=None  # Just get raw text response
+            response_model=None,  # Just get raw text response
         )
-        
+
         return response.choices[0].message.content

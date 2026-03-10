@@ -1,29 +1,24 @@
-"""Direct .apkg file exporter for Swanki.
+"""
+swanki/processing/apkg_exporter.py
+[[swanki.processing.apkg_exporter]]
+https://github.com/Mjvolk3/Swanki/tree/main/swanki/processing/apkg_exporter.py
+Test file: tests/test_apkg_exporter.py
 
-Creates portable Anki packages using only Python stdlib (sqlite3, zipfile).
-No dependency on genanki or a running Anki instance.
-
-Classes
--------
-ApkgExporter
-    Export flashcards to .apkg files
+Direct .apkg file exporter using only stdlib (sqlite3, zipfile).
 """
 
 import hashlib
 import json
 import logging
-import os
 import re
 import sqlite3
 import tempfile
 import time
 import zipfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from .anki_processor import (
-    AUDIO_LINK_RE,
-    IMAGE_RE,
     extract_cards,
     prepare_for_anki,
     validate_and_fix_cloze_format,
@@ -83,6 +78,7 @@ class ApkgExporter:
     CLOZE_MODEL_SEED = "swanki-cloze-v1"
 
     def __init__(self, deck_name: str):
+        """Initialize exporter with a deck name."""
         self.deck_name = deck_name
         self.deck_id = _stable_id(f"swanki-deck::{deck_name}")
         self.basic_model_id = _stable_id(self.BASIC_MODEL_SEED)
@@ -91,7 +87,7 @@ class ApkgExporter:
     # ── public API ──────────────────────────────────────────────────────
 
     def export_from_file(
-        self, md_path: Path, output_path: Path, base_dir: Optional[Path] = None
+        self, md_path: Path, output_path: Path, base_dir: Path | None = None
     ) -> Path:
         """Export cards from a markdown file to .apkg.
 
@@ -104,7 +100,7 @@ class ApkgExporter:
         base_dir : Path, optional
             Directory to resolve media paths against (defaults to md_path.parent)
 
-        Returns
+        Returns:
         -------
         Path
             The written .apkg file path
@@ -112,7 +108,7 @@ class ApkgExporter:
         if base_dir is None:
             base_dir = md_path.parent
 
-        with open(md_path, "r", encoding="utf-8") as f:
+        with open(md_path, encoding="utf-8") as f:
             lines = [line.rstrip("\n") for line in f]
 
         raw_cards = extract_cards(lines)
@@ -122,7 +118,7 @@ class ApkgExporter:
 
     def export_from_cards(
         self,
-        card_dicts: List[Dict[str, Any]],
+        card_dicts: list[dict[str, Any]],
         output_path: Path,
         base_dir: Path,
     ) -> Path:
@@ -137,7 +133,7 @@ class ApkgExporter:
         base_dir : Path
             Directory to resolve relative media paths against
 
-        Returns
+        Returns:
         -------
         Path
             The written .apkg file path
@@ -147,7 +143,7 @@ class ApkgExporter:
             validate_and_fix_cloze_format(card)
 
         # Prepare fields for Anki
-        processed: List[Dict[str, Any]] = []
+        processed: list[dict[str, Any]] = []
         for card in card_dicts:
             is_cloze = "{{c" in card["front"]
             front_content = prepare_for_anki(card["front"])
@@ -175,17 +171,19 @@ class ApkgExporter:
         # Package
         self._build_package(db_path, media_files, output_path)
 
-        logger.info(f"Wrote {output_path} ({len(processed)} notes, {len(media_files)} media files)")
+        logger.info(
+            f"Wrote {output_path} ({len(processed)} notes, {len(media_files)} media files)"
+        )
         return output_path
 
     # ── internals ───────────────────────────────────────────────────────
 
     def _collect_media(
-        self, processed_cards: List[Dict[str, Any]], base_dir: Path
-    ) -> List[Path]:
+        self, processed_cards: list[dict[str, Any]], base_dir: Path
+    ) -> list[Path]:
         """Collect referenced media files from processed card content."""
-        seen: Set[str] = set()
-        media: List[Path] = []
+        seen: set[str] = set()
+        media: list[Path] = []
 
         for card in processed_cards:
             for field_value in card["fields"].values():
@@ -210,7 +208,7 @@ class ApkgExporter:
         return media
 
     @staticmethod
-    def _find_media(filename: str, base_dir: Path) -> Optional[Path]:
+    def _find_media(filename: str, base_dir: Path) -> Path | None:
         """Resolve a media filename to an existing file path."""
         # Try base_dir directly
         candidate = base_dir / filename
@@ -228,7 +226,7 @@ class ApkgExporter:
         logger.debug(f"Media file not found: {filename} (searched from {base_dir})")
         return None
 
-    def _build_database(self, processed_cards: List[Dict[str, Any]]) -> Path:
+    def _build_database(self, processed_cards: list[dict[str, Any]]) -> Path:
         """Create a temporary SQLite database with Anki schema."""
         tmp = tempfile.NamedTemporaryFile(suffix=".anki2", delete=False)
         tmp.close()
@@ -313,7 +311,10 @@ class ApkgExporter:
         # Models JSON
         basic_model = self._basic_model_json(now_s)
         cloze_model = self._cloze_model_json(now_s)
-        models = {str(self.basic_model_id): basic_model, str(self.cloze_model_id): cloze_model}
+        models = {
+            str(self.basic_model_id): basic_model,
+            str(self.cloze_model_id): cloze_model,
+        }
 
         # Deck JSON
         deck = {
@@ -449,7 +450,19 @@ class ApkgExporter:
             note_id = note_id_counter + idx
             c.execute(
                 "INSERT INTO notes VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                (note_id, guid, mid, now_s, -1, tags_str, flds, first_field, csum, 0, ""),
+                (
+                    note_id,
+                    guid,
+                    mid,
+                    now_s,
+                    -1,
+                    tags_str,
+                    flds,
+                    first_field,
+                    csum,
+                    0,
+                    "",
+                ),
             )
 
             # Cards
@@ -471,8 +484,8 @@ class ApkgExporter:
                             cn - 1,  # ord is 0-indexed
                             now_s,
                             -1,
-                            0,  # type: new
-                            0,  # queue: new
+                            0,  # card type: new
+                            0,  # queue status: new
                             0,  # due
                             0,  # ivl
                             0,  # factor
@@ -516,7 +529,7 @@ class ApkgExporter:
         return db_path
 
     def _build_package(
-        self, db_path: Path, media_files: List[Path], output_path: Path
+        self, db_path: Path, media_files: list[Path], output_path: Path
     ) -> None:
         """Zip the database and media into an .apkg."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -524,7 +537,7 @@ class ApkgExporter:
         with zipfile.ZipFile(str(output_path), "w", zipfile.ZIP_DEFLATED) as zf:
             zf.write(str(db_path), "collection.anki2")
 
-            media_json: Dict[str, str] = {}
+            media_json: dict[str, str] = {}
             for i, media_path in enumerate(media_files):
                 idx = str(i)
                 media_json[idx] = media_path.name
@@ -537,7 +550,7 @@ class ApkgExporter:
 
     # ── model definitions ───────────────────────────────────────────────
 
-    def _basic_model_json(self, mod: int) -> Dict[str, Any]:
+    def _basic_model_json(self, mod: int) -> dict[str, Any]:
         return {
             "id": self.basic_model_id,
             "name": "Basic",
@@ -586,7 +599,7 @@ class ApkgExporter:
             "vers": [],
         }
 
-    def _cloze_model_json(self, mod: int) -> Dict[str, Any]:
+    def _cloze_model_json(self, mod: int) -> dict[str, Any]:
         return {
             "id": self.cloze_model_id,
             "name": "Cloze",

@@ -12,6 +12,23 @@ Example
 - Don't be superfluous
 - Don't use try except blocks - fail fast minimize other types of exception coding like by using excessive conditionals
 
+## Python File Format
+
+Every `.py` file starts with a single frontmatter docstring. The module description (if any) goes in the same block -- never a separate docstring.
+
+```python
+"""
+swanki/audio/card.py
+[[swanki.audio.card]]
+https://github.com/Mjvolk3/Swanki/tree/main/swanki/audio/card.py
+Test file: tests/test_audio_card.py
+
+Flashcard audio generation with cloze handling and citation prefixing.
+"""
+```
+
+Use **Google-style docstrings** for functions and classes (`Args:`, `Returns:`, `Raises:`). Ruff enforces `convention = "google"`. Keep docstrings concise -- no verbose parameter descriptions that duplicate type annotations. Pydantic models use `Field(description="...")` instead of docstrings for fields.
+
 ## Pydantic Models
 
 - We want to use pydantic models to structure output as much as possible as opposed to controlling output by changing prompts.
