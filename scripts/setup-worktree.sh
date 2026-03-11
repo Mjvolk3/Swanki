@@ -119,7 +119,22 @@ else
     echo "  ✓ Created symlink: memory/ → $MAIN_MEMORY"
 fi
 
-echo -e "\n${BLUE}5. Installing pre-commit hooks...${NC}"
+echo -e "\n${BLUE}5. Copying Claude Code local settings to worktree...${NC}"
+WORKTREE_CLAUDE_DIR="$WORKTREE_DIR/.claude"
+MAIN_LOCAL_SETTINGS="$MAIN_REPO/.claude/settings.local.json"
+WT_LOCAL_SETTINGS="$WORKTREE_CLAUDE_DIR/settings.local.json"
+
+if [ -f "$WT_LOCAL_SETTINGS" ]; then
+    echo "  ✓ settings.local.json already exists"
+elif [ -f "$MAIN_LOCAL_SETTINGS" ]; then
+    mkdir -p "$WORKTREE_CLAUDE_DIR"
+    cp "$MAIN_LOCAL_SETTINGS" "$WT_LOCAL_SETTINGS"
+    echo "  ✓ Copied settings.local.json from main repo"
+else
+    echo "  ℹ No settings.local.json in main repo (skipping)"
+fi
+
+echo -e "\n${BLUE}6. Installing pre-commit hooks...${NC}"
 if command -v pre-commit &> /dev/null; then
     pre-commit install
     echo "  ✓ pre-commit hooks installed"

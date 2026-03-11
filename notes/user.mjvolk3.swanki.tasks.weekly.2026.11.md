@@ -25,6 +25,7 @@ created: 1773142434234
 - [x] Created fine-grained WIP scratchpad with full call site inventory (21 LLM calls across 7 files) and per-phase checklists for the pydanticAI migration. [[plan.instructor-to-pydanticAI.wip]]
 - [x] Added `setup: worktree` VS Code task and fixed executable permission on `scripts/setup-worktree.sh`
 - [x] Added README badges (CI status, Codecov coverage, Ruff, mypy strict, Python 3.13, MIT license) and Codecov integration to CI workflow
+- [x] Added `settings.local.json` copy step to `setup-worktree.sh` so new worktrees inherit `Bash(*)` permissions automatically [[scripts.setup-worktree]]
 
 ***
 
