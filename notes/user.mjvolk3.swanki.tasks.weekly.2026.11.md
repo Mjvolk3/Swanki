@@ -42,6 +42,7 @@ created: 1773142434234
 ## 2026.03.15
 
 - [ ] Planned Reveal.js presentation generation feature for creating academic slide decks from Swanki-processed paper data with LLM-driven content, figure extraction, and mermaid diagram support [[plan.presentation-generation-revealjs]]
+- [x] Implemented Step 1 (audio decoupling) of major refactor: added `mode=audio_only` config to skip card generation, `lecture_only` audio preset, cards guard in `generate_audio()`, and 6 unit tests [[plan.audio-decoupling-from-cards.plan-0]] [[swanki.pipeline.pipeline]] [[tests.test_pipeline_mode]]
 
 ***
 

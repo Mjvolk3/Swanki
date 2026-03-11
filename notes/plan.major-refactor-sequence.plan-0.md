@@ -145,13 +145,13 @@ Every step must satisfy all of the following before committing:
 
 ### Step 1: Audio Decoupling [[plan.audio-decoupling-from-cards.plan-0]]
 
-- [ ] Add `mode: full` to `.swanki_config/config.yaml`
-- [ ] Add `mode` branching in `process_full()`
-- [ ] Add cards guard in `generate_audio()`
-- [ ] Create `lecture_only.yaml` audio preset
-- [ ] Update `__main__.py` help text
-- [ ] Write unit tests for audio_only branch
-- [ ] Quality gates pass
+- [x] Add `mode: full` to `.swanki_config/config.yaml`
+- [x] Add `mode` branching in `process_full()`
+- [x] Add cards guard in `generate_audio()`
+- [x] Create `lecture_only.yaml` audio preset
+- [x] Update `__main__.py` help text
+- [x] Write unit tests for audio_only branch
+- [x] Quality gates pass
 - [ ] Commit: "Add audio_only mode to skip card generation"
 
 ### Step 2: Config Refactor [[plan.config-refactor-less-clunky.plan-0]]

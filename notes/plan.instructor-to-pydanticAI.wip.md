@@ -11,7 +11,7 @@ Scratchpad for tracking fine-grained progress on [[plan.instructor-to-pydanticAI
 
 ## Prerequisites (Steps 1-4)
 
-- [ ] Step 1: Audio decoupling complete
+- [x] Step 1: Audio decoupling complete
 - [ ] Step 2: Config refactor complete
 - [ ] Step 3: Character segmentation complete
 - [ ] Step 4: Lecture transcript refactor complete

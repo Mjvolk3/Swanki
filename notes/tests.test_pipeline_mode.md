@@ -1,0 +1,11 @@
+---
+id: 0zsp6pl5ue3ndhnkdt6cqj0
+title: Test_pipeline_mode
+desc: ''
+updated: 1773243583496
+created: 1773243583496
+---
+
+## 2026.03.11 - Initial test suite for audio_only pipeline mode
+
+Six unit tests covering the `mode=audio_only` branch in `process_full()` and the cards guard in `generate_audio()`. Tests mock all heavy pipeline methods (LLM calls, PDF split, markdown conversion) and verify that card generation stages are skipped while shared stages still run.

@@ -1,39 +1,16 @@
-"""Configuration generator for Swanki's Hydra-based config system.
+"""
+swanki/config/generator.py
+[[swanki.config.generator]]
+https://github.com/Mjvolk3/Swanki/tree/main/swanki/config/generator.py
+Test file: tests/swanki/test_config_generator.py
 
-This module provides the ConfigGenerator class which automatically creates
-default configuration files for the Swanki pipeline. It generates a complete
-set of Hydra configs covering all aspects of the processing pipeline.
-
-Classes
--------
-ConfigGenerator
-    Auto-generates default Hydra configs if not present
-
-Examples
---------
->>> from swanki.config import ConfigGenerator
->>>
->>> # Ensure configs exist (called automatically by CLI)
->>> config_dir = ConfigGenerator.ensure_configs()
->>> print(f"Configs available at: {config_dir}")
-Configs available at: /path/to/project/.swanki_config
-
-Notes
------
-Configuration structure:
-- Main config.yaml with defaults list
-- Subdirectories for each config group:
-  - pipeline/: Processing settings
-  - prompts/: AI prompt templates
-  - models/: LLM and TTS settings
-  - audio/: Audio generation options
-  - output/: Output format settings
-  - anki/: Anki integration settings
+Auto-generates default Hydra configuration files for the Swanki pipeline.
 """
 
 from pathlib import Path
+from typing import Any
+
 import yaml
-from typing import Dict, Any
 
 
 class ConfigGenerator:
@@ -43,17 +20,17 @@ class ConfigGenerator:
     defaults. Configs are created in a .swanki_config directory in the
     current working directory.
 
-    Attributes
+    Attributes:
     ----------
     DEFAULT_CONFIG_DIR : Path
         Default directory name for configs (.swanki_config)
 
-    Methods
+    Methods:
     -------
     ensure_configs()
         Ensure config directory exists with all defaults
 
-    Examples
+    Examples:
     --------
     >>> # Automatically called by CLI
     >>> config_dir = ConfigGenerator.ensure_configs()
@@ -77,12 +54,12 @@ class ConfigGenerator:
         interactive : bool, optional
             Whether to prompt user when creating configs (default is True)
 
-        Returns
+        Returns:
         -------
         Path
             Path to the configuration directory
 
-        Notes
+        Notes:
         -----
         - Only creates configs if directory doesn't exist
         - Won't overwrite existing user modifications
@@ -91,10 +68,10 @@ class ConfigGenerator:
         config_dir = Path.cwd() / cls.DEFAULT_CONFIG_DIR
 
         if not config_dir.exists():
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print("FIRST TIME SETUP: No configuration found")
-            print(f"{'='*60}")
-            print(f"\nSwanki will create default configuration files at:")
+            print(f"{'=' * 60}")
+            print("\nSwanki will create default configuration files at:")
             print(f"  {config_dir}")
             print("\nThese configs control:")
             print("  - Number of cards generated per page")
@@ -104,7 +81,7 @@ class ConfigGenerator:
             print("  - Output formats and organization")
 
             if interactive:
-                print(f"\n{'='*60}")
+                print(f"\n{'=' * 60}")
                 response = (
                     input("\nCreate configs with defaults? [Y/n]: ").strip().lower()
                 )
@@ -119,23 +96,23 @@ class ConfigGenerator:
 
                     sys.exit(0)
 
-            print(f"\nCreating default configurations...")
+            print("\nCreating default configurations...")
             config_dir.mkdir(parents=True, exist_ok=True)
             cls._generate_all_defaults(config_dir)
 
-            print(f"\n✓ Configurations created!")
+            print("\n✓ Configurations created!")
             print(f"\nTo customize settings, edit files in: {config_dir}/")
             print(
-                f"Key files: pipeline/default.yaml, prompts/default.yaml, audio/default.yaml"
+                "Key files: pipeline/default.yaml, prompts/default.yaml, audio/default.yaml"
             )
 
             # Add second prompt to allow user to halt and edit configs
             if interactive:
-                print(f"\n{'='*60}")
+                print(f"\n{'=' * 60}")
                 print("\nWould you like to:")
                 print("  1. Continue processing with default settings")
                 print("  2. Halt to edit configuration files first")
-                print(f"{'='*60}")
+                print(f"{'=' * 60}")
 
                 response = input("\nContinue with defaults? [Y/n]: ").strip().lower()
 
@@ -152,14 +129,14 @@ class ConfigGenerator:
 
                     sys.exit(0)
 
-                print(f"\nContinuing with default settings...")
+                print("\nContinuing with default settings...")
 
-            print(f"\n{'='*60}\n")
+            print(f"\n{'=' * 60}\n")
 
         return config_dir
 
     @classmethod
-    def _generate_all_defaults(cls, config_dir: Path):
+    def _generate_all_defaults(cls, config_dir: Path) -> None:
         """Generate all default configuration files.
 
         Creates the complete configuration structure with all config
@@ -170,7 +147,7 @@ class ConfigGenerator:
         config_dir : Path
             Root configuration directory
 
-        Notes
+        Notes:
         -----
         Config groups created:
         - pipeline: Processing parameters (default, comprehensive, fast)
@@ -180,7 +157,6 @@ class ConfigGenerator:
         - output: Output formats (default)
         - anki: Anki integration (default, auto_send, custom_deck)
         """
-
         # Main config
         cls._write_yaml(
             config_dir / "config.yaml",
@@ -197,6 +173,7 @@ class ConfigGenerator:
                 ],
                 "pdf_path": None,  # Will be provided by user
                 "citation_key": None,  # Will be provided by user
+                "mode": "full",  # "full" or "audio_only"
                 # Add placeholder keys so Hydra knows about them
                 "pipeline": None,  # Will be overridden by defaults
                 "prompts": None,  # Will be overridden by defaults
@@ -954,6 +931,22 @@ CRITICAL OUTPUT RULES:
             },
         )
 
+        # Lecture only - just lecture audio, no cards needed
+        cls._write_yaml(
+            audio_dir / "lecture_only.yaml",
+            {
+                "audio": {
+                    "generate_complementary": False,
+                    "generate_summary": False,
+                    "generate_reading": False,
+                    "generate_lecture": True,
+                    "lecture_speed": 1.1,
+                    "format": "mp3",
+                    "quality": "high",
+                }
+            },
+        )
+
         # Output configs
         output_dir = config_dir / "output"
         output_dir.mkdir(exist_ok=True)
@@ -1331,7 +1324,7 @@ BACK: Read COMPLETE text with cloze content revealed
         )
 
     @staticmethod
-    def _write_yaml(path: Path, data: Dict[str, Any]):
+    def _write_yaml(path: Path, data: dict[str, Any]) -> None:
         """Write YAML file with nice formatting.
 
         Parameters
@@ -1341,20 +1334,21 @@ BACK: Read COMPLETE text with cloze content revealed
         data : Dict[str, Any]
             Configuration data to write
 
-        Notes
+        Notes:
         -----
         - Uses default_flow_style=False for readable output
         - Preserves key order with sort_keys=False
         - Multiline strings use literal style (|) for readability
         """
+
         # Custom representer for multiline strings
-        def str_representer(dumper, data):
-            if '\n' in data:
+        def str_representer(dumper: yaml.Dumper, data: str) -> yaml.ScalarNode:
+            if "\n" in data:
                 # Use literal style for multiline strings
-                return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
-            return dumper.represent_scalar('tag:yaml.org,2002:str', data)
-        
+                return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+            return dumper.represent_scalar("tag:yaml.org,2002:str", data)
+
         yaml.add_representer(str, str_representer)
-        
+
         with open(path, "w") as f:
             yaml.dump(data, f, default_flow_style=False, sort_keys=False, width=120)

@@ -150,13 +150,14 @@ class Pipeline:
         self.data_dir = Path(os.getenv("SWANKI_DATA", "swanki-out"))
 
     def process_full(
-        self, pdf_path: Path, citation_key: str, output_dir: str = None
+        self, pdf_path: Path, citation_key: str, output_dir: str | None = None
     ) -> dict[str, Path]:
         """Process PDF through the complete pipeline.
 
-        Executes all processing steps from PDF to final outputs, including
-        splitting, conversion, cleaning, card generation, audio creation,
-        and optional Anki integration.
+        Executes all processing steps from PDF to final outputs. When
+        ``config["mode"]`` is ``"audio_only"``, card generation, output
+        writing, APKG export, and Anki sending are skipped — only shared
+        stages (PDF split, markdown, images, summary) and audio run.
 
         Parameters
         ----------
@@ -253,88 +254,105 @@ class Pipeline:
         doc_summary = self.generate_document_summary(cleaned_files, image_summaries)
         self.state.document_summary = doc_summary
 
-        # 5.5. Estimate card count
-        pipeline_config = self.config.get("pipeline", {})
-        processing_config = pipeline_config.get("processing", {})
-        estimated_cards = self.estimate_card_count(
-            cleaned_files, image_summaries, processing_config
-        )
+        # Branch based on mode
+        mode = self.config.get("mode", "full")
 
-        # Check if user confirmation is required
-        confirm_required = processing_config.get("confirm_before_generation", True)
-        if confirm_required:
-            logger.info(
-                f"Proceeding with card generation (estimated: {estimated_cards} cards)"
-            )
-            response = (
-                input(
-                    f"\nContinue with card generation? ({estimated_cards} cards estimated) [Y/n]: "
-                )
-                .strip()
-                .lower()
-            )
-            if response and response not in ["y", "yes", ""]:
-                logger.info("Card generation cancelled by user")
-                raise KeyboardInterrupt("User cancelled card generation")
+        if mode == "audio_only":
+            # Skip card generation stages (5.5-8)
+            logger.info("Running in audio_only mode — skipping card generation")
+            all_cards: list[PlainCard] = []
+            outputs: dict[str, Path] = {}
+            self.citation_key = citation_key
         else:
-            logger.info(
-                f"Proceeding with card generation (estimated: {estimated_cards} cards)"
+            # 5.5. Estimate card count
+            pipeline_config = self.config.get("pipeline", {})
+            processing_config = pipeline_config.get("processing", {})
+            estimated_cards = self.estimate_card_count(
+                cleaned_files, image_summaries, processing_config
             )
 
-        # 6. Generate cards with sliding window - now interleaved with image cards
-        self.state.current_stage = "card_generation"
-        all_cards = []
-
-        # Get image card config
-        image_config = processing_config.get("image_cards", {})
-        image_cards_enabled = image_config.get("enabled", True)
-
-        # Process each page to generate cards in document order
-        for page_idx, markdown_file in enumerate(cleaned_files):
-            # Generate text cards for this page with context
-            page_cards = self._generate_cards_for_page_with_context(
-                page_idx,
-                cleaned_files,
-                doc_summary,
-                context_radius=processing_config.get("context_radius", 1),
-                num_cards=processing_config.get("num_cards_per_page", 3),
-            )
-            all_cards.extend(page_cards)
-
-            # Generate image cards for this page if enabled
-            if image_cards_enabled:
-                page_image_cards = self._generate_image_cards_for_page(
-                    markdown_file,
-                    doc_summary,
-                    image_summaries,
-                    cards_per_image=image_config.get("cards_per_image", 3),
-                    image_on_front=image_config.get("image_on_front", True),
-                    image_on_back=image_config.get("image_on_back", True),
-                    require_math=image_config.get("require_math_content", False),
-                    placement_strategy=image_config.get("placement_strategy", "smart"),
-                    front_back_ratio=image_config.get("front_back_ratio", 0.5),
+            # Check if user confirmation is required
+            confirm_required = processing_config.get("confirm_before_generation", True)
+            if confirm_required:
+                logger.info(
+                    f"Proceeding with card generation (estimated: {estimated_cards} cards)"
                 )
-                all_cards.extend(page_image_cards)
+                response = (
+                    input(
+                        f"\nContinue with card generation? ({estimated_cards} cards estimated) [Y/n]: "
+                    )
+                    .strip()
+                    .lower()
+                )
+                if response and response not in ["y", "yes", ""]:
+                    logger.info("Card generation cancelled by user")
+                    raise KeyboardInterrupt("User cancelled card generation")
+            else:
+                logger.info(
+                    f"Proceeding with card generation (estimated: {estimated_cards} cards)"
+                )
 
-        # 7. Store citation key for later use
-        self.citation_key = citation_key
+            # 6. Generate cards with sliding window - now interleaved with image cards
+            self.state.current_stage = "card_generation"
+            all_cards = []
 
-        self.state.cards_generated = len(all_cards)
+            # Get image card config
+            image_config = processing_config.get("image_cards", {})
+            image_cards_enabled = image_config.get("enabled", True)
 
-        # 8. Generate outputs based on config
-        self.state.current_stage = "output_generation"
-        outputs = self.generate_outputs(all_cards, doc_summary, self.output_base)
+            # Process each page to generate cards in document order
+            for page_idx, markdown_file in enumerate(cleaned_files):
+                # Generate text cards for this page with context
+                page_cards = self._generate_cards_for_page_with_context(
+                    page_idx,
+                    cleaned_files,
+                    doc_summary,
+                    context_radius=processing_config.get("context_radius", 1),
+                    num_cards=processing_config.get("num_cards_per_page", 3),
+                )
+                all_cards.extend(page_cards)
+
+                # Generate image cards for this page if enabled
+                if image_cards_enabled:
+                    page_image_cards = self._generate_image_cards_for_page(
+                        markdown_file,
+                        doc_summary,
+                        image_summaries,
+                        cards_per_image=image_config.get("cards_per_image", 3),
+                        image_on_front=image_config.get("image_on_front", True),
+                        image_on_back=image_config.get("image_on_back", True),
+                        require_math=image_config.get("require_math_content", False),
+                        placement_strategy=image_config.get(
+                            "placement_strategy", "smart"
+                        ),
+                        front_back_ratio=image_config.get("front_back_ratio", 0.5),
+                    )
+                    all_cards.extend(page_image_cards)
+
+            # 7. Store citation key for later use
+            self.citation_key = citation_key
+
+            self.state.cards_generated = len(all_cards)
+
+            # 8. Generate outputs based on config
+            self.state.current_stage = "output_generation"
+            outputs = self.generate_outputs(all_cards, doc_summary, self.output_base)
 
         # 9. Generate audio if configured
         audio_config = self.config.get("audio", {}).get("audio", {})
-        if any(
+        any_audio = any(
             [
                 audio_config.get("generate_complementary", False),
                 audio_config.get("generate_summary", False),
                 audio_config.get("generate_reading", False),
                 audio_config.get("generate_lecture", False),
             ]
-        ):
+        )
+        if mode == "audio_only" and not any_audio:
+            logger.warning(
+                "audio_only mode with no audio types enabled produces no output."
+            )
+        if any_audio:
             self.state.current_stage = "audio_generation"
             self.generate_audio(
                 all_cards, doc_summary, outputs, cleaned_files, image_summaries
@@ -2200,57 +2218,64 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
         # Generate complementary audio (card audio)
         if audio_config.get("generate_complementary", False):
-            logger.info("Generating complementary audio...")
-            audio_dir = self.output_base / "gen-md-complementary-audio"
-            audio_dir.mkdir(exist_ok=True)
-
-            for i, card in enumerate(cards):
-                # Use consistent card numbering instead of misleading page numbers
-                # This ensures audio files match the card order
-                card_base = "card"
-
-                # Get complementary audio speed from config
-                complementary_speed = audio_config.get("complementary_speed", 1.0)
-                # Get force regenerate option from config
-                force_regenerate_citation = audio_config.get(
-                    "force_regenerate_citation", False
+            if not cards:
+                logger.warning(
+                    "Complementary audio requires cards. Skipping in audio_only mode."
                 )
+            else:
+                logger.info("Generating complementary audio...")
+                audio_dir = self.output_base / "gen-md-complementary-audio"
+                audio_dir.mkdir(exist_ok=True)
 
-                front_filename, back_filename = generate_card_audio(
-                    card=card,
-                    card_index=i + 1,
-                    page_base=card_base,
-                    audio_dir=audio_dir,
-                    openai_client=openai_client,
-                    elevenlabs_api_key=elevenlabs_api_key,
-                    voice_id=voice_id,
-                    model=model,
-                    citation_key=self.citation_key,
-                    speed=complementary_speed,
-                    force_regenerate_citation=force_regenerate_citation,
-                )
+                for i, card in enumerate(cards):
+                    # Use consistent card numbering instead of misleading page numbers
+                    # This ensures audio files match the card order
+                    card_base = "card"
 
-                # Set audio URIs on the card for robust pairing
-                if front_filename:
-                    # Use relative path from output directory
-                    card.audio_front_uri = (
-                        f"gen-md-complementary-audio/{front_filename}"
+                    # Get complementary audio speed from config
+                    complementary_speed = audio_config.get("complementary_speed", 1.0)
+                    # Get force regenerate option from config
+                    force_regenerate_citation = audio_config.get(
+                        "force_regenerate_citation", False
                     )
-                if back_filename:
-                    card.audio_back_uri = f"gen-md-complementary-audio/{back_filename}"
 
-                # Validate audio transcript matches card content
-                if not card.validate_audio_match():
-                    print(f"WARNING: Audio transcript mismatch for card {i + 1}")
+                    front_filename, back_filename = generate_card_audio(
+                        card=card,
+                        card_index=i + 1,
+                        page_base=card_base,
+                        audio_dir=audio_dir,
+                        openai_client=openai_client,
+                        elevenlabs_api_key=elevenlabs_api_key,
+                        voice_id=voice_id,
+                        model=model,
+                        citation_key=self.citation_key,
+                        speed=complementary_speed,
+                        force_regenerate_citation=force_regenerate_citation,
+                    )
 
-                if back_filename:
-                    print(
-                        f"Generated audio for card {i + 1}: {front_filename}, {back_filename}"
-                    )
-                else:
-                    print(
-                        f"Generated audio for card {i + 1}: {front_filename} (front only)"
-                    )
+                    # Set audio URIs on the card for robust pairing
+                    if front_filename:
+                        # Use relative path from output directory
+                        card.audio_front_uri = (
+                            f"gen-md-complementary-audio/{front_filename}"
+                        )
+                    if back_filename:
+                        card.audio_back_uri = (
+                            f"gen-md-complementary-audio/{back_filename}"
+                        )
+
+                    # Validate audio transcript matches card content
+                    if not card.validate_audio_match():
+                        print(f"WARNING: Audio transcript mismatch for card {i + 1}")
+
+                    if back_filename:
+                        print(
+                            f"Generated audio for card {i + 1}: {front_filename}, {back_filename}"
+                        )
+                    else:
+                        print(
+                            f"Generated audio for card {i + 1}: {front_filename} (front only)"
+                        )
 
         # Generate summary audio
         if audio_config.get("generate_summary", False):
@@ -2339,7 +2364,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             print(f"Generated lecture audio: {lecture_audio_path.name}")
 
         # After all audio generation is complete, write cards with audio links
-        if audio_config.get("generate_complementary", False):
+        if audio_config.get("generate_complementary", False) and cards:
             # Get output config
             output_config = self.config.get("output", {}).get("output", {})
             formats = output_config.get("formats", {})
