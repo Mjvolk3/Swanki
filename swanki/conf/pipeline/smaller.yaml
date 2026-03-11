@@ -1,8 +1,7 @@
 processing:
+  segmentation: page
   context_radius: 0
-  num_cards_per_page: 2
-  cloze_cards_per_page: 1
-  chunk_size: 800
-  overlap: 100
+  cards_per_segment: 2
+  cloze_per_segment: 1
   blocking_audio: false
   confirm_before_generation: false

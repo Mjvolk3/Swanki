@@ -40,7 +40,7 @@ def mock_pipeline(base_config):
     p.process_images = MagicMock(return_value=[])
     p.generate_document_summary = MagicMock()
     p.estimate_card_count = MagicMock(return_value=10)
-    p._generate_cards_for_page_with_context = MagicMock(return_value=[])
+    p._generate_cards_for_segment = MagicMock(return_value=[])
     p._generate_image_cards_for_page = MagicMock(return_value=[])
     p.generate_outputs = MagicMock(return_value={})
     p.generate_audio = MagicMock()
@@ -63,7 +63,7 @@ class TestAudioOnlyMode:
         mock_pipeline.process_full(Path("/tmp/test.pdf"), "test2023")
 
         mock_pipeline.estimate_card_count.assert_not_called()
-        mock_pipeline._generate_cards_for_page_with_context.assert_not_called()
+        mock_pipeline._generate_cards_for_segment.assert_not_called()
         mock_pipeline.generate_outputs.assert_not_called()
 
     def test_audio_only_still_runs_shared_stages(

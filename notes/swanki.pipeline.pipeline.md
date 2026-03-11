@@ -22,3 +22,14 @@ Enable users to produce audio outputs (lecture, summary, reading) without runnin
 - `generate_audio()` guards complementary audio with `if not cards:` -- logs a warning and skips since complementary audio requires cards.
 - The "write cards with audio" block at the end of `generate_audio()` also checks `and cards` to avoid writing an empty file.
 - A warning is logged when `mode=audio_only` with no audio types enabled.
+
+## 2026.03.11 - Add character-based segmentation mode for card generation
+
+Introduce a unified "segment" abstraction so card generation operates on segments rather than pages. This is Step 3 of the major refactor sequence ([[plan.major-refactor-sequence.plan-0]]).
+
+- New segmentation stage in `process_full()` inside the `mode == "full"` branch. When `segmentation: char`, pages are recombined and re-split into uniform character-length segments; when `segmentation: page` (default), behavior is unchanged.
+- Card generation loop rewritten for document-order interleaving: text cards per segment, then image cards for the pages covered by that segment, with dedup via `last_image_page` tracking.
+- Renamed `_generate_cards_for_page_with_context` to `_generate_cards_for_segment` to reflect the unified concept.
+- Deleted `generate_cards_with_context()` (~333 lines of dead code never called by `process_full()`).
+- Config key renames: `num_cards_per_page` to `cards_per_segment`, `cloze_cards_per_page` to `cloze_per_segment`. Dead `chunk_size`/`overlap` params removed.
+- `estimate_card_count` updated to accept segment files and use segment terminology.
