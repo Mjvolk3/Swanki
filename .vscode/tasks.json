@@ -2,6 +2,17 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "setup: worktree",
+            "type": "shell",
+            "command": "./scripts/setup-worktree.sh",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "focus": true
+            }
+        },
+        {
             "label": "ruff: format file",
             "type": "shell",
             "command": "ruff",
