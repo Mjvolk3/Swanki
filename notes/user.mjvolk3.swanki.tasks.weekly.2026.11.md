@@ -26,6 +26,7 @@ created: 1773142434234
 - [x] Added `setup: worktree` VS Code task and fixed executable permission on `scripts/setup-worktree.sh`
 - [x] Added README badges (CI status, Codecov coverage, Ruff, mypy strict, Python 3.13, MIT license) and Codecov integration to CI workflow
 - [x] Added `settings.local.json` copy step to `setup-worktree.sh` so new worktrees inherit `Bash(*)` permissions automatically [[scripts.setup-worktree]]
+- [x] Added "Finding Rationale for Changes" section to CLAUDE.md pointing to dendron module notes as the primary source of decision history
 
 ***
 

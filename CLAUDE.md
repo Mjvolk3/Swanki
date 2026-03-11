@@ -74,6 +74,10 @@ gh api repos/Mjvolk3/Swanki/git/refs/heads/<branch> --method DELETE
 
 **Other conflict files** (e.g. `__init__.py`): resolve manually -- all additions are additive, so keep both sides.
 
+## Finding Rationale for Changes
+
+To understand why a code change was made, check the dendron module note (`notes/swanki.<module>.md`). Each dated section documents what changed and why. This is the primary source of decision history for the codebase.
+
 ## Change Log
 
 - This is automatically updated. Don't edit it directly.
