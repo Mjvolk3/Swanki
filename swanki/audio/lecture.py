@@ -8,6 +8,7 @@ and iterative self-refinement.
 """
 
 import logging
+import re
 import time
 from pathlib import Path
 from string import Template
@@ -118,8 +119,6 @@ def chunk_by_headers(
     Returns:
         List of (section_title, section_content, token_count) tuples.
     """
-    import re
-
     enc = tiktoken.get_encoding("cl100k_base")
     numbered_pattern = r"^(#{2,})\s+([0-9.]+)(?:\s*\\\\)?\s*(.*)$"
     unnumbered_pattern = r"^(#{2,})\s+([A-Z][A-Za-z\s,]+)$"
@@ -353,11 +352,9 @@ def generate_lecture_audio(
     citation_key: str | None = None,
     lecture_prompt_config: dict | None = None,
     speed: float = 1.0,
+    si_start_page: int | None = None,
 ) -> str:
     """Generate an educational lecture from document content.
-
-    Creates an engaging audio lecture with semantic chunking, per-section
-    validation, and iterative refinement. Targets 50% of source length.
 
     Args:
         markdown_files: Cleaned markdown file paths in order.
@@ -371,63 +368,97 @@ def generate_lecture_audio(
         lecture_prompt_config: Custom prompt config with 'lecture_system'
             and 'lecture_prefix' keys.
         speed: Audio playback speed multiplier.
+        si_start_page: Page index where SI begins in markdown_files.
+            When set, main paper and SI are processed separately.
 
     Returns:
         Filename of the generated audio file.
     """
     voice_id = voice_id or DEFAULT_VOICE_ID
 
+    # Guard: si_start_page out of bounds
+    if si_start_page is not None and si_start_page >= len(markdown_files):
+        logger.warning(
+            f"si_start_page={si_start_page} >= {len(markdown_files)} files, "
+            "falling back to no-SI mode"
+        )
+        si_start_page = None
+
+    # Split files into main and SI when boundary is known
+    if si_start_page is not None:
+        main_files = markdown_files[:si_start_page]
+        si_files = markdown_files[si_start_page:]
+        logger.info(f"SI split: {len(main_files)} main pages, {len(si_files)} SI pages")
+    else:
+        main_files = markdown_files
+        si_files = []
+
     # Prepare content with embedded image summaries
-    full_content = ""
     image_idx = 0
 
-    for md_file in markdown_files:
-        content = md_file.read_text()
-
-        while "![" in content and image_idx < len(image_summaries):
-            img_start = content.find("![")
-            img_end = content.find(")", img_start)
-            if img_end > img_start:
-                alt_start = content.find("[", img_start) + 1
-                alt_end = content.find("]", alt_start)
-                alt_text = content[alt_start:alt_end] if alt_end > alt_start else ""
-
-                summary = image_summaries[image_idx]
-
-                if alt_text:
-                    integrated_summary = f"Looking at {alt_text.lower()}, we can see {summary[0].lower()}{summary[1:]}"
+    def _embed_images(files: list[Path]) -> str:
+        nonlocal image_idx
+        result = ""
+        for md_file in files:
+            content = md_file.read_text()
+            while "![" in content and image_idx < len(image_summaries):
+                img_start = content.find("![")
+                img_end = content.find(")", img_start)
+                if img_end > img_start:
+                    alt_start = content.find("[", img_start) + 1
+                    alt_end = content.find("]", alt_start)
+                    alt_text = content[alt_start:alt_end] if alt_end > alt_start else ""
+                    summary = image_summaries[image_idx]
+                    if alt_text:
+                        integrated_summary = f"Looking at {alt_text.lower()}, we can see {summary[0].lower()}{summary[1:]}"
+                    else:
+                        integrated_summary = (
+                            f"The visual here shows {summary[0].lower()}{summary[1:]}"
+                        )
+                    before = content[:img_start]
+                    after = content[img_end + 1 :]
+                    content = f"{before}{integrated_summary}{after}"
+                    image_idx += 1
                 else:
-                    integrated_summary = (
-                        f"The visual here shows {summary[0].lower()}{summary[1:]}"
-                    )
+                    break
+            result += content + "\n\n"
+        return result
 
-                before = content[:img_start]
-                after = content[img_end + 1 :]
-                content = f"{before}{integrated_summary}{after}"
-                image_idx += 1
-            else:
-                break
+    main_content = _embed_images(main_files)
+    si_content = _embed_images(si_files) if si_files else ""
 
-        full_content += content + "\n\n"
-
-    cleaned_content = full_content
-    logger.info(f"Content length: {len(full_content)} characters")
+    cleaned_content = main_content
+    logger.info(f"Main content length: {len(main_content)} characters")
+    if si_content:
+        logger.info(f"SI content length: {len(si_content)} characters")
 
     # Get instructions
     if lecture_prompt_config:
         system_instructions = lecture_prompt_config.get("lecture_system", "")
         content_prefix = lecture_prompt_config.get("lecture_prefix", "")
+        si_instructions = lecture_prompt_config.get("lecture_si_instructions", "")
     else:
         system_instructions = _DEFAULT_LECTURE_SYSTEM_PROMPT
         content_prefix = "Begin your lecture on"
+        si_instructions = ""
 
     humanized_key = (
         humanize_citation_key(citation_key) if citation_key else "this academic work"
     )
     full_system_prompt = f"{system_instructions}\n\nCitation: {humanized_key}"
 
-    # Chunk by semantic structure
+    # Append SI instructions when SI is present
+    if si_start_page is not None:
+        si_prompt = si_instructions or _DEFAULT_LECTURE_SI_INSTRUCTIONS
+        full_system_prompt += f"\n\n{si_prompt}"
+
+    # Chunk main content only by semantic structure
     semantic_chunks = chunk_by_headers(cleaned_content, max_tokens_per_chunk=15000)
+
+    # Build SI index once (empty if no SI)
+    si_index = build_si_index(si_content) if si_content else {}
+    if si_index:
+        logger.info(f"SI index: {len(si_index)} entries: {list(si_index.keys())}")
 
     logger.info(f"Split content into {len(semantic_chunks)} semantic sections")
     for i, (title, _, tokens) in enumerate(semantic_chunks):
@@ -445,6 +476,12 @@ def generate_lecture_audio(
         user_message = (
             f"{content_prefix}: {humanized_key}\n\nContent:\n{section_content}"
         )
+        if si_content:
+            user_message += (
+                "\n\n---\nSUPPLEMENTARY INFORMATION (use to enrich, "
+                "but keep main paper as primary focus):\n"
+                f"{si_content[:3000]}"
+            )
 
         lecture_transcript = None
         for attempt in range(max_retries):
@@ -518,6 +555,10 @@ def generate_lecture_audio(
                 else ""
             )
 
+            si_ref = (
+                extract_relevant_si(section_content, si_index) if si_index else None
+            )
+
             chunk_transcript = generate_and_validate_chunk(
                 content_chunk=section_content,
                 section_title=section_title,
@@ -528,6 +569,7 @@ def generate_lecture_audio(
                 instructor_client=instructor_client,
                 model=model,
                 max_retries=2,
+                si_reference_content=si_ref,
             )
 
             section_actual_words = len(chunk_transcript.split())
@@ -703,6 +745,118 @@ def _extract_context(transcript: str, max_tokens: int = 300) -> str:
         return transcript
 
     return enc.decode(tokens[-max_tokens:]).strip()
+
+
+_SI_MARKER_PATTERNS = [
+    r"Extended Data Fig(?:ure)?\.?\s*\d+",
+    r"Supplementary Fig(?:ure)?\.?\s*S?\d+",
+    r"Figure S\d+",
+    r"Table S\d+",
+    r"Supplementary Table\s*S?\d+",
+    r"#{2,}\s+(?:Methods|Data|Statistical Analysis|Experimental Procedures)",
+]
+_SI_MARKER_RE = re.compile(
+    "|".join(f"({p})" for p in _SI_MARKER_PATTERNS), re.IGNORECASE
+)
+
+_SI_REF_PATTERNS = re.compile(
+    r"(?:"
+    r"Extended Data Fig(?:ure)?\.?\s*\d+"
+    r"|Supplementary Fig(?:ure)?\.?\s*S?\d+"
+    r"|Figure S\d+"
+    r"|Table S\d+"
+    r"|Supplementary Table\s*S?\d+"
+    r")",
+    re.IGNORECASE,
+)
+
+_DEFAULT_LECTURE_SI_INSTRUCTIONS = """\
+SUPPLEMENTARY INFORMATION HANDLING:
+- SI data enriches the main paper but should NOT dominate the lecture.
+- Weave SI details naturally into the narrative where they add depth.
+- At least 50% of each section must cover the main paper content.
+- Reference SI as "additional experiments show..." or "further data confirms..." — avoid "Supplementary Figure S3" labels."""
+
+
+def build_si_index(si_content: str) -> dict[str, str]:
+    """Index SI content by marker (Extended Data Fig 1, Table S2, etc.).
+
+    Args:
+        si_content: Full SI markdown text.
+
+    Returns:
+        Dict mapping normalized marker key to the content following that marker
+        until the next marker (or end of text).
+    """
+    if not si_content.strip():
+        return {}
+
+    splits: list[tuple[str, int]] = []
+    for m in _SI_MARKER_RE.finditer(si_content):
+        key = _normalize_si_key(m.group(0))
+        splits.append((key, m.start()))
+
+    if not splits:
+        return {}
+
+    index: dict[str, str] = {}
+    for i, (key, start) in enumerate(splits):
+        end = splits[i + 1][1] if i + 1 < len(splits) else len(si_content)
+        index[key] = si_content[start:end]
+
+    return index
+
+
+def extract_relevant_si(
+    section_content: str,
+    si_index: dict[str, str],
+    context_chars: int = 500,
+) -> str | None:
+    """Find SI references in a section and return matching SI snippets.
+
+    Args:
+        section_content: Main paper section text.
+        si_index: Index built by build_si_index().
+        context_chars: Max chars per matched snippet.
+
+    Returns:
+        Concatenated relevant SI snippets, or None if no references found.
+    """
+    if not si_index:
+        return None
+
+    refs = _SI_REF_PATTERNS.findall(section_content)
+    if not refs:
+        return None
+
+    matched_snippets: list[str] = []
+    seen_keys: set[str] = set()
+
+    for ref in refs:
+        norm = _normalize_si_key(ref)
+        # Fuzzy match against index keys
+        for key, content in si_index.items():
+            if key in seen_keys:
+                continue
+            if _si_keys_match(norm, key):
+                matched_snippets.append(content[:context_chars])
+                seen_keys.add(key)
+
+    return "\n\n".join(matched_snippets) if matched_snippets else None
+
+
+def _normalize_si_key(raw: str) -> str:
+    """Normalize SI marker to a canonical form for matching."""
+    s = raw.strip()
+    s = re.sub(r"Fig(?:ure)?\.?", "Figure", s, flags=re.IGNORECASE)
+    s = re.sub(r"\s+", " ", s)
+    s = s.rstrip(".:;,")
+    return s.lower()
+
+
+def _si_keys_match(a: str, b: str) -> bool:
+    """Fuzzy match two normalized SI keys."""
+    return a == b or a in b or b in a
 
 
 _CRITIQUE_PROMPT = """Review this section of a lecture transcript for quality issues:

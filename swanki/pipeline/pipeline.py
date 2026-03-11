@@ -2035,6 +2035,15 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 "lecture_speed", audio_config.get("summary_speed", 1.0)
             )
 
+            # Read SI boundary from _meta.json if available
+            meta_path = self.state.pdf_path.parent / f"{self.citation_key}_meta.json"
+            si_start_page = None
+            if meta_path.exists():
+                import json
+
+                meta = json.loads(meta_path.read_text())
+                si_start_page = meta.get("si_start_page")
+
             generate_lecture_audio(
                 markdown_files=cleaned_files,
                 image_summaries=image_summary_strings,
@@ -2046,6 +2055,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 citation_key=self.citation_key,
                 lecture_prompt_config=lecture_prompt_config,
                 speed=lecture_speed,
+                si_start_page=si_start_page,
             )
             print(f"Generated lecture audio: {lecture_audio_path.name}")
 

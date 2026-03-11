@@ -15,7 +15,9 @@ from swanki.audio.lecture import (
     _extract_context,
     _refine_transcript,
     _split_large_section,
+    build_si_index,
     chunk_by_headers,
+    extract_relevant_si,
     generate_and_validate_chunk,
     generate_lecture_audio,
 )
@@ -232,3 +234,73 @@ def test_refine_transcript_length_enforcement(tmp_path, mock_openai_client):
         )
 
     assert isinstance(result, str)
+
+
+# ---------------------------------------------------------------------------
+# build_si_index
+# ---------------------------------------------------------------------------
+
+
+def test_build_si_index_extended_data_figs():
+    si = (
+        "Some preamble.\n\n"
+        "Extended Data Figure 1\nContent about figure 1.\n\n"
+        "Extended Data Figure 2\nContent about figure 2.\n"
+    )
+    index = build_si_index(si)
+    assert len(index) == 2
+    assert any("extended data figure 1" in k for k in index)
+    assert any("extended data figure 2" in k for k in index)
+
+
+def test_build_si_index_supplementary_figs():
+    si = "Supplementary Figure S1\nSF1 content.\n\nTable S1\nTable content.\n"
+    index = build_si_index(si)
+    assert len(index) == 2
+
+
+def test_build_si_index_methods():
+    si = "## Methods\n\nDetailed methods text.\n\n## Data\n\nData details."
+    index = build_si_index(si)
+    assert len(index) >= 1
+
+
+def test_build_si_index_empty():
+    assert build_si_index("") == {}
+    assert build_si_index("  \n  ") == {}
+
+
+# ---------------------------------------------------------------------------
+# extract_relevant_si
+# ---------------------------------------------------------------------------
+
+
+def test_extract_relevant_si_finds_reference():
+    si_index = {
+        "extended data figure 1": "Extended Data Figure 1\nDetailed analysis...",
+        "table s1": "Table S1\nSupplementary data...",
+    }
+    section = "As shown in Extended Data Figure 1, the results demonstrate..."
+    result = extract_relevant_si(section, si_index)
+    assert result is not None
+    assert "Detailed analysis" in result
+
+
+def test_extract_relevant_si_no_references():
+    si_index = {
+        "extended data figure 1": "Extended Data Figure 1\nContent...",
+    }
+    section = "This section discusses the main results without any SI references."
+    result = extract_relevant_si(section, si_index)
+    assert result is None
+
+
+def test_extract_relevant_si_fuzzy_match():
+    si_index = {
+        "supplementary figure s1": "Supplementary Figure S1\nSF1 content...",
+    }
+    # Reference uses abbreviated form
+    section = "See Supplementary Fig. S1 for additional data."
+    result = extract_relevant_si(section, si_index)
+    assert result is not None
+    assert "SF1 content" in result

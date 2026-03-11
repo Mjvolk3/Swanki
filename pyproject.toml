@@ -133,7 +133,7 @@ module = ["pydub", "pydub.*", "tiktoken", "tiktoken.*", "elevenlabs", "elevenlab
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["swanki.audio.*", "swanki.pipeline.*", "swanki.presentation.*"]
+module = ["swanki.audio.*", "swanki.pipeline.*", "swanki.presentation.*", "swanki.models.*"]
 disallow_untyped_calls = false
 disable_error_code = ["arg-type", "call-arg", "call-overload", "var-annotated", "type-arg", "unused-ignore", "assignment", "attr-defined", "no-any-return", "no-untyped-def"]
 

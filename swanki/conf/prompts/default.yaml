@@ -299,3 +299,9 @@ prompts:
     lecture_prefix: Begin your lecture on
     lecture_max_section_tokens: 15000
     lecture_context_tokens: 300
+    lecture_si_instructions: |-
+      SUPPLEMENTARY INFORMATION HANDLING:
+      - SI data enriches the main paper but should NOT dominate the lecture.
+      - Weave SI details naturally into the narrative where they add depth.
+      - At least 50% of each section must cover the main paper content.
+      - Reference SI as "additional experiments show..." or "further data confirms..." — avoid "Supplementary Figure S3" labels.
