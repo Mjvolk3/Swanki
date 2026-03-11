@@ -1,6 +1,6 @@
 ---
 id: u3azhzn887jolwka91ou2vf
-title: instructor-to-pydanticAI
+title: plan-0
 desc: ''
 updated: 1773196349067
 created: 1773153018677
@@ -105,6 +105,24 @@ def create_instructor_client(provider: str, api_key: str) -> instructor.Instruct
 ## Decision: Migrate to pydanticAI (Option B)
 
 We are familiar with pydanticAI and want multi-provider support (Anthropic Claude, etc.). The agent-oriented design concerns are manageable — pydanticAI agents can be used as lightweight structured-output extractors without full agent workflows.
+
+## Migration Risk: Self-Critic and Retry Mechanisms
+
+The highest-risk area of this migration is faithfully replicating instructor's self-critic/refinement patterns in pydanticAI. Swanki relies heavily on these — card feedback loops, lecture transcript critique, audio transcript validation — and subtle behavioral differences could degrade output quality silently.
+
+To mitigate this, we have cloned both libraries locally as reference:
+
+- **instructor**: `/Users/michaelvolk/Documents/projects/instructor`
+- **pydantic-ai**: `/Users/michaelvolk/Documents/projects/pydantic-ai`
+
+During migration, consult these repos directly to understand:
+
+1. **Retry + validation loops** — how instructor's `max_retries` with `response_model` validation triggers re-prompting vs how pydanticAI's `retries` param and `output_validator` decorator work. Instructor re-sends the validation error as a follow-up message; confirm pydanticAI does the same.
+2. **Self-critique pattern** — instructor's `response_model` validation errors become part of the conversation context for the retry. In pydanticAI, use `@agent.output_validator` to replicate this. Read `pydantic_ai_slim/pydantic_ai/agent.py` and `pydantic_ai_slim/pydantic_ai/result.py` for the retry mechanics.
+3. **Structured output enforcement** — instructor patches the OpenAI client to inject JSON schema into the API call. PydanticAI uses its own output parsing. Compare failure modes (malformed JSON, partial responses, schema violations).
+4. **Tenacity integration** — some Swanki calls wrap instructor calls in tenacity `Retrying` objects with custom wait/stop strategies. PydanticAI only supports integer retries natively. Determine which calls need external tenacity wrapping preserved.
+
+For each migrated call site, verify that the retry/validation behavior matches by comparing outputs on the same input before and after migration.
 
 ## Addressing the Cons
 
@@ -225,6 +243,33 @@ result = card_gen_agent.run_sync(
     model="anthropic:claude-sonnet-4-20250514",
 )
 ```
+
+## Sequencing Note (see [[plan.major-refactor-sequence.plan-0]])
+
+This is **step 5** (final) of the major refactor sequence.
+
+### Adjustments from prior steps
+
+- All `.swanki_config/` references become `swanki/conf/` (config refactor completed in step 2)
+- `swanki/conf/models/default.yaml` is where `provider: openai` gets added (Phase 0)
+- Anthropic model preset goes to `swanki/conf/models/anthropic.yaml`
+- Card generation method is now `_generate_cards_for_segment()` (renamed in step 3) — agent calls must use this name
+- `lecture.py` now has additional functions from step 4: `build_si_index()`, `extract_relevant_si()`, `generate_and_validate_chunk()` has `si_reference_content` param — all LLM calls in these functions must also be migrated
+- `LectureTranscriptFeedback` now has `si_balance` field (added in step 4) — the lecture critic agent must handle it
+- Phase 2 agent count increases: lecture module now has 2 generation agents + 1 critic (was 1+1), plus the new SI-aware prompt patterns
+
+### Quality gates for this step
+
+- All new/modified code must pass `mypy --strict` on touched files
+- Google-style docstrings on all functions in `swanki/llm/agents.py`, `swanki/llm/client.py`
+- Frontmatter header blocks on new files per project conventions
+- Frontmatter updated via `/update-py-notes` for all touched `.py` files
+- Unit tests for agent registry (mock pydanticAI agents, verify correct output types)
+- Unit tests for client factory (verify correct provider instantiation)
+- Integration tests with `@pytest.mark.llm` for at least one end-to-end agent call
+- Sphinx docs updated for new `swanki/llm/` module, `provider` config option
+- `ruff check` and `ruff format` pass
+- Verify `instructor` and `tenacity` fully removed from `pyproject.toml`
 
 ## Open Questions
 

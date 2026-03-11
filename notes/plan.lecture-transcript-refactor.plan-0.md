@@ -243,12 +243,34 @@ The "≥50% main, ≤50% SI" rule is enforced via the critique prompt, not progr
 3. Run on a paper without SI — verify identical behavior (regression)
 4. Check transcript proportion: ≥50% covers main paper findings
 
+## Sequencing Note (see [[plan.major-refactor-sequence.plan-0]])
+
+This is **step 4** of the major refactor sequence.
+
+### Adjustments from original plan
+
+- All `.swanki_config/` references become `swanki/conf/` (config refactor completed in step 2)
+- The `si_start_page` passthrough in `pipeline.py:process_full()` must account for the `mode=audio_only` branch (step 1) — lecture generation runs in both modes, so the passthrough must be outside the mode guard
+- LLM calls in `lecture.py` still use instructor/OpenAI patterns (pydanticAI migration is step 5) — write new functions (`build_si_index`, `extract_relevant_si`) with the current call patterns
+- New functions in `lecture.py` will be migrated to pydanticAI agents in step 5
+
+### Quality gates for this step
+
+- All new/modified code must pass `mypy --strict` on touched files
+- Google-style docstrings on `build_si_index()`, `extract_relevant_si()`, and modified functions
+- Frontmatter updated via `/update-py-notes` for touched `.py` files
+- Unit tests for `build_si_index()` (regex parsing of SI content)
+- Unit tests for `extract_relevant_si()` (reference pattern matching)
+- Unit tests for length control changes (ratio computation, threshold behavior)
+- Sphinx docs updated for new `si_start_page` config/metadata
+- `ruff check` and `ruff format` pass
+
 ## Key Files
 
-| File                                  | Change                                                               |
-|---------------------------------------|----------------------------------------------------------------------|
-| `scripts/zotero_paper_import.py`      | `PrepareResult.si_start_page`, write `_meta.json`                    |
-| `swanki/pipeline/pipeline.py`         | Read `_meta.json`, pass `si_start_page` to lecture gen               |
-| `swanki/audio/lecture.py`             | SI splitting + index, length control refactor, proportion constraint |
-| `swanki/models/cards.py`              | Add `si_balance` field to `LectureTranscriptFeedback`                |
-| `.swanki_config/prompts/default.yaml` | `lecture_si_instructions` prompt, updated length guidance            |
+| File                               | Change                                                               |
+|------------------------------------|----------------------------------------------------------------------|
+| `scripts/zotero_paper_import.py`   | `PrepareResult.si_start_page`, write `_meta.json`                    |
+| `swanki/pipeline/pipeline.py`      | Read `_meta.json`, pass `si_start_page` to lecture gen               |
+| `swanki/audio/lecture.py`          | SI splitting + index, length control refactor, proportion constraint |
+| `swanki/models/cards.py`           | Add `si_balance` field to `LectureTranscriptFeedback`                |
+| `swanki/conf/prompts/default.yaml` | `lecture_si_instructions` prompt, updated length guidance            |

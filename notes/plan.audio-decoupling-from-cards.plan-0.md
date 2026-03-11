@@ -186,6 +186,19 @@ audio:
 4. **Audio-only with no audio:** `swanki pdf_path=paper.pdf citation_key=test mode=audio_only audio=none` logs warning about no output
 5. **Existing tests pass:** `pytest tests/` — no regressions
 
+## Sequencing Note (see [[plan.major-refactor-sequence.plan-0]])
+
+This is **step 1** of the major refactor sequence. Config changes go to `.swanki_config/` now and will be migrated to `swanki/conf/` in step 2 (config refactor). The `mode` key and `lecture_only.yaml` preset added here will be carried forward.
+
+### Quality gates for this step
+
+- All new/modified code must pass `mypy --strict` on touched files
+- Google-style docstrings on any new/modified functions
+- Frontmatter updated via `/update-py-notes` for touched `.py` files
+- Unit tests for `mode=audio_only` branch in `process_full()` (mock LLM calls)
+- Sphinx docs updated if any public API changes
+- `ruff check` and `ruff format` pass
+
 ## Scope
 
 - ~15 lines of branching logic in `process_full()`

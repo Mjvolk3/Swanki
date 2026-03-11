@@ -47,7 +47,7 @@ processing:
 | larger   | 5                 | 3                 | 2              |
 | smaller  | 2                 | 1                 | 0              |
 
-Dead `chunk_size`/`overlap` params removed from all presets. See [[config-refactor-less-clunky.plan-0]] for the broader config cleanup that will move these into `swanki/conf/` package defaults.
+Dead `chunk_size`/`overlap` params removed from all presets. See [[plan.config-refactor-less-clunky.plan-0]] for the broader config cleanup that will move these into `swanki/conf/` package defaults.
 
 ## New File: `swanki/pipeline/segmenter.py`
 
@@ -191,29 +191,38 @@ output_base/
   images/              # existing
 ```
 
-## Config Generator Update
+## Sequencing Note (see [[plan.major-refactor-sequence.plan-0]])
 
-**File: `swanki/config/generator.py`**
+This is **step 3** of the major refactor sequence. By this point, `generator.py` has been **deleted** (step 2 — config refactor). All config changes go directly to `swanki/conf/pipeline/*.yaml` package defaults.
 
-- Replace `num_cards_per_page` → `cards_per_segment` in all presets
-- Replace `cloze_cards_per_page` → `cloze_per_segment`
-- Remove `chunk_size` and `overlap` from all presets
-- Add `segmentation: page` and `char_segmentation: { target_chars: 2000 }` to all presets
-- Note: this file is slated for deletion in [[config-refactor-less-clunky.plan-0]]; these changes are interim
+### Adjustments from original plan
+
+- ~~Config Generator Update~~ — **SKIP ENTIRELY**. `generator.py` no longer exists.
+- All `.swanki_config/pipeline/*.yaml` references become `swanki/conf/pipeline/*.yaml`
+- The `mode=audio_only` branch (step 1) exists in `process_full()` — the new segmentation stage must be placed inside the `mode == "full"` branch (segments are only needed for card generation, not audio-only mode)
+
+### Quality gates for this step
+
+- All new/modified code must pass `mypy --strict` on touched files
+- Google-style docstrings on all functions in `segmenter.py`
+- Frontmatter header block on `segmenter.py` per project conventions
+- Frontmatter updated via `/update-py-notes` for touched `.py` files
+- Full unit test suite in `tests/test_segmenter.py` (11 tests listed below)
+- Sphinx docs updated for new `segmentation` config options
+- `ruff check` and `ruff format` pass
 
 ## Files to Modify/Create
 
-| File                                    | Action                                                                                                                                                                                                                                                   |
-|-----------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `swanki/pipeline/segmenter.py`          | **CREATE** — `combine_markdown_files`, `split_into_segments`, `write_segment_files`, `build_segment_to_page_map`                                                                                                                                         |
-| `swanki/pipeline/__init__.py`           | **MODIFY** — export segmenter if needed                                                                                                                                                                                                                  |
-| `swanki/pipeline/pipeline.py`           | **MODIFY** — delete `generate_cards_with_context`, rename `_generate_cards_for_page_with_context` → `_generate_cards_for_segment`, add segmentation stage, update card gen loop with interleaving, update `estimate_card_count`, rename config key reads |
-| `.swanki_config/pipeline/default.yaml`  | **MODIFY** — new config keys, remove dead params                                                                                                                                                                                                         |
-| `.swanki_config/pipeline/standard.yaml` | **MODIFY** — same                                                                                                                                                                                                                                        |
-| `.swanki_config/pipeline/larger.yaml`   | **MODIFY** — same                                                                                                                                                                                                                                        |
-| `.swanki_config/pipeline/smaller.yaml`  | **MODIFY** — same                                                                                                                                                                                                                                        |
-| `swanki/config/generator.py`            | **MODIFY** — update preset generation to match new config shape                                                                                                                                                                                          |
-| `tests/test_segmenter.py`               | **CREATE** — unit tests                                                                                                                                                                                                                                  |
+| File                                 | Action                                                                                                                                                                                                                                                   |
+|--------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `swanki/pipeline/segmenter.py`       | **CREATE** — `combine_markdown_files`, `split_into_segments`, `write_segment_files`, `build_segment_to_page_map`                                                                                                                                         |
+| `swanki/pipeline/__init__.py`        | **MODIFY** — export segmenter if needed                                                                                                                                                                                                                  |
+| `swanki/pipeline/pipeline.py`        | **MODIFY** — delete `generate_cards_with_context`, rename `_generate_cards_for_page_with_context` → `_generate_cards_for_segment`, add segmentation stage, update card gen loop with interleaving, update `estimate_card_count`, rename config key reads |
+| `swanki/conf/pipeline/default.yaml`  | **MODIFY** — new config keys, remove dead params                                                                                                                                                                                                         |
+| `swanki/conf/pipeline/standard.yaml` | **MODIFY** — same                                                                                                                                                                                                                                        |
+| `swanki/conf/pipeline/larger.yaml`   | **MODIFY** — same                                                                                                                                                                                                                                        |
+| `swanki/conf/pipeline/smaller.yaml`  | **MODIFY** — same                                                                                                                                                                                                                                        |
+| `tests/test_segmenter.py`            | **CREATE** — unit tests                                                                                                                                                                                                                                  |
 
 ## Tests: `tests/test_segmenter.py`
 

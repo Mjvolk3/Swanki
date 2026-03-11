@@ -237,20 +237,35 @@ swanki --init-config      # Copy defaults to ~/.swanki/ for customization
 3. Remove `.swanki_config/` from repo if tracked
 4. Remove `.swanki_config_custom/` after migration
 
-## Ordering vs Other Refactors
+## Sequencing Note (see [[plan.major-refactor-sequence.plan-0]])
 
-This refactor is **independent** of both audio decoupling and pydanticAI migration:
+This is **step 2** of the major refactor sequence.
 
-- Audio decoupling adds `mode` key to config and a `lecture.yaml` audio preset — works identically whether configs live in `.swanki_config/` or `swanki/conf/`
-- PydanticAI migration changes LLM client code, not config files (except maybe adding a `provider` field to model configs)
+### Prerequisite state from step 1 (audio decoupling)
 
-**Recommended order:**
+When this step begins, the following already exist in `.swanki_config/`:
 
-1. **Audio decoupling** (smallest, immediate user value)
-2. **Config refactor** (medium, quality of life — less clunky for all future work)
-3. **PydanticAI migration** (largest, enables multi-provider)
+- `config.yaml` has `mode: full` key
+- `audio/lecture_only.yaml` preset exists
 
-Audio decoupling can be done with the current config system and migrated trivially when configs move. The config refactor makes the pydanticAI migration easier because adding `provider` to model configs is cleaner when defaults live in version-controlled `swanki/conf/` files.
+These must be carried into `swanki/conf/` during migration. Specifically:
+
+- Include `mode: full` in `swanki/conf/config.yaml`
+- Include `lecture.yaml` (renamed from `lecture_only.yaml`) in `swanki/conf/audio/`
+
+### What comes after
+
+Steps 3-5 (segmentation, lecture transcript, pydanticAI) all benefit from `generator.py` being deleted — they write config directly to `swanki/conf/` and never touch the generator.
+
+### Quality gates for this step
+
+- All new/modified code must pass `mypy --strict` on touched files
+- Google-style docstrings on `SwankiSearchPathPlugin`, `helpers.py` functions
+- Frontmatter updated via `/update-py-notes` for touched `.py` files
+- Unit tests for `SwankiSearchPathPlugin` search path resolution (all 3 tiers)
+- Unit tests for `helpers.py` functions
+- Sphinx docs updated for new CLI flags (`--show-defaults`, `--init-config`, `--config-info`)
+- `ruff check` and `ruff format` pass
 
 ## Resolved Questions
 

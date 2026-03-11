@@ -29,6 +29,10 @@
             "path": "../instructor"
         },
         {
+            "name": "pydantic-ai",
+            "path": "../pydantic-ai"
+        },
+        {
             "name": "openai-python",
             "path": "../openai-python"
         },
