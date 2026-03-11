@@ -1,8 +1,16 @@
+---
+id: 5chgqag1e6qkb9s87iiqa48
+title: Refactor Progress Report
+desc: ''
+updated: 1773194835449
+created: 1773194835449
+---
 # Swanki Refactor Progress Report
 
 ## Original Plan (from refactor.md)
 
 The refactor aimed to modernize the PDF-to-Anki card generation system with:
+
 - **Hydra Configuration**: Flexible, user-customizable pipeline
 - **Structured Output**: Migration to `instructor` library with Pydantic models
 - **Context-Aware Processing**: Summary-first approach
@@ -11,25 +19,30 @@ The refactor aimed to modernize the PDF-to-Anki card generation system with:
 ## What We've Accomplished
 
 ### 1. ✅ Infrastructure Setup
+
 - Created new directory structure: `config/`, `models/`, `pipeline/`, `utils/`, `legacy/`
 - Implemented ConfigGenerator that auto-creates Hydra configs in `.swanki_config/`
 - Set up Pydantic models for structured output (cards, documents, audio, pipeline state)
 - Integrated `python-dotenv` for SWANKI_DATA environment variable
 
 ### 2. ✅ Hydra Integration
+
 - Successfully integrated Hydra for configuration management
 - Config files are generated locally (in current directory) rather than home directory
 - Fixed command syntax to use Hydra format: `pdf_path=X citation_key=Y` (no -- prefix)
 - Maintained backward compatibility with legacy mode (`--legacy` flag)
 
 ### 3. ✅ Pipeline Structure
+
 - Created main Pipeline class that orchestrates the entire process
 - Successfully integrated with legacy functions (maintaining existing functionality)
 - Output directory structure working correctly: `$SWANKI_DATA/citation_key/`
-- Added auto-increment for duplicate citation keys (appends _0, _1, etc.)
+- Added auto-increment for duplicate citation keys (appends _0,_1, etc.)
 
 ### 4. ✅ Current Pipeline Progress
+
 The pipeline is successfully executing through:
+
 1. **PDF Split** ✅ - Creating individual page PDFs
 2. **Markdown Conversion** ✅ - Using Mathpix (mpx) to convert PDFs to markdown
 3. **Markdown Cleaning** ✅ - Cleaning up the markdown files
@@ -37,6 +50,7 @@ The pipeline is successfully executing through:
 ## Current Issue
 
 The pipeline fails at the **Image Processing** stage with:
+
 ```
 KeyError: 'summary'
 ```
@@ -67,7 +81,7 @@ This occurs because the config structure has nested keys, but we're accessing th
 ## Key Learnings
 
 1. **Legacy Integration**: Successfully wrapped legacy functions but needed to adapt their directory-based approach
-2. **Hydra Quirks**: 
+2. **Hydra Quirks**:
    - Can't use `--` prefix for arguments
    - Config path must be absolute for Hydra to find it
    - Defaults need proper YAML structure (dict format, not strings)

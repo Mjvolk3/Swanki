@@ -1,3 +1,10 @@
+---
+id: nkhxvnq0l8xygzi6jbkfzxu
+title: Self Refine Refactor
+desc: ''
+updated: 1773194837541
+created: 1773194837541
+---
 # Actor-Critic Refactor Plan for Swanki Pipeline
 
 ## Executive Summary
@@ -946,17 +953,17 @@ flowchart TD
 
 ## How Self-Refine Addresses Each Issue
 
-| Issue | Detection in Feedback | Fix in Refinement |
-|-------|----------------------|-------------------|
-| External References `[1]` | Regex pattern match + LLM detection | Replace with actual content description |
-| Vague Context | Check for "this/the" without antecedent | Add specific framework/model names |
-| Generic Tags | Match against forbidden tag list | Suggest hierarchical conceptual tags |
-| Rote Memorization | Detect "What does X stand for?" | Transform to "How does X work?" |
-| Math Issues | Validate cloze syntax with math | Fix equation placement in cloze |
-| Multiple Cloze | Count {{c\d::}} occurrences | Merge or reduce to max 2 |
-| Image Problems | Analyze Q&A overlap | Rewrite to test understanding |
-| Audio Issues | Check math conversion | Humanize notation |
-| Undefined Acronyms | Match against doc_summary.acronyms | Expand on first use |
+| Issue                     | Detection in Feedback                   | Fix in Refinement                       |
+|---------------------------|-----------------------------------------|-----------------------------------------|
+| External References `[1]` | Regex pattern match + LLM detection     | Replace with actual content description |
+| Vague Context             | Check for "this/the" without antecedent | Add specific framework/model names      |
+| Generic Tags              | Match against forbidden tag list        | Suggest hierarchical conceptual tags    |
+| Rote Memorization         | Detect "What does X stand for?"         | Transform to "How does X work?"         |
+| Math Issues               | Validate cloze syntax with math         | Fix equation placement in cloze         |
+| Multiple Cloze            | Count {{c\d::}} occurrences             | Merge or reduce to max 2                |
+| Image Problems            | Analyze Q&A overlap                     | Rewrite to test understanding           |
+| Audio Issues              | Check math conversion                   | Humanize notation                       |
+| Undefined Acronyms        | Match against doc_summary.acronyms      | Expand on first use                     |
 
 ## Implementation Phases
 

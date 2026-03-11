@@ -1,3 +1,11 @@
+---
+id: n4154cdnkb488fz2pfhwvob
+title: Clean Pdf
+desc: ''
+updated: 1773195044563
+created: 1773195044563
+---
+
 # Clean PDF for Swanki
 
 Fully automated PDF preparation: detect and remove reference pages from main paper and SI, then stitch them together.

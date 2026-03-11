@@ -1,3 +1,11 @@
+---
+id: w9whu4lqzangesly3k602dk
+title: Fix Cloze
+desc: ''
+updated: 1773195071517
+created: 1773195071517
+---
+
 # Fix Cloze Cards
 
 ## Goal
@@ -77,7 +85,7 @@ We still want to use % delimiter to separate front from back. The only real diff
 ## @luoWhenCausalInference2020: Learning {{c1::causal relations}} rather than {{c1::correlations}} is a fundamental problem in both statistical machine learning and computer sciences.
 
 [audio-front](gen-md-complementary-audio/luoWhenCausalInference2020_dcd8f715-33bd-4413-8207-1d3e4a6f6d51_front.mp3)
- % 
+ %
 [audio-back](gen-md-complementary-audio/luoWhenCausalInference2020_dcd8f715-33bd-4413-8207-1d3e4a6f6d51_back.mp3)
 ```
 
@@ -107,42 +115,14 @@ swanki pdf_path=/Users/michaelvolk/Documents/projects/Swanki/Luo_2020.pdf citati
 /Users/michaelvolk/Documents/projects/Swanki/swanki
 ├── __init__.py
 ├── __main__.py
-├── __pycache__
-│   ├── __init__.cpython-311.pyc
-│   ├── __main__.cpython-311.pyc
-│   ├── clean_md.cpython-311.pyc
-│   ├── clean_transcript.cpython-311.pyc
-│   ├── combine_pdf.cpython-311.pyc
-│   ├── combine.cpython-311.pyc
-│   ├── cut.cpython-311.pyc
-│   ├── first_module.cpython-311.pyc
-│   ├── generate_cards_with_complementary_audio.cpython-311.pyc
-│   ├── generate_cards.cpython-311.pyc
-│   ├── generate_complementary_audio_gen_md.cpython-311.pyc
-│   ├── generate_complementary_audio_transcript_gen_md.cpython-311.pyc
-│   ├── generate_complementary_audio_transcript_image_cards.cpython-311.pyc
-│   ├── generate_image_cards_with_complementary_audio.cpython-311.pyc
-│   ├── generate_image_cards.cpython-311.pyc
-│   ├── generate_reading_transcript.cpython-311.pyc
-│   ├── generate_transcript.cpython-311.pyc
-│   ├── image_summary_replace.cpython-311.pyc
-│   ├── mathpix.cpython-311.pyc
-│   ├── md_to_anki.cpython-311.pyc
-│   ├── recombine_md.cpython-311.pyc
-│   ├── send_to_anki.cpython-311.pyc
-│   ├── split_pdf.cpython-311.pyc
-│   ├── token_count.cpython-311.pyc
-│   └── transcript_to_audio.cpython-311.pyc
 ├── __version__.py
 ├── config
 │   ├── __init__.py
-│   ├── __pycache__
 │   └── generator.py
 ├── cut.py
 ├── legacy
 │   ├── __init__.py
 │   ├── __main__legacy.py
-│   ├── __pycache__
 │   ├── clean_md.py
 │   ├── clean_transcript.py
 │   ├── combine_pdf.py
@@ -173,18 +153,15 @@ swanki pdf_path=/Users/michaelvolk/Documents/projects/Swanki/Luo_2020.pdf citati
 │   └── transcript_to_audio.py
 ├── models
 │   ├── __init__.py
-│   ├── __pycache__
 │   ├── audio.py
 │   ├── cards.py
 │   ├── document.py
 │   └── pipeline.py
 ├── pipeline
 │   ├── __init__.py
-│   ├── __pycache__
 │   └── pipeline.py
 ├── processing
 │   ├── __init__.py
-│   ├── __pycache__
 │   ├── anki_processor.py
 │   ├── image_processor.py
 │   ├── markdown_cleaner.py
@@ -193,12 +170,9 @@ swanki pdf_path=/Users/michaelvolk/Documents/projects/Swanki/Luo_2020.pdf citati
 ├── send_to_anki.py
 └── utils
     ├── __init__.py
-    ├── __pycache__
     ├── audio.py
     ├── content.py
     └── formatting.py
-
-14 directories, 79 files
 ```
 
 ## Tasks

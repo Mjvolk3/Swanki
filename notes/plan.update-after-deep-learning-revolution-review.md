@@ -1,3 +1,10 @@
+---
+id: 0lc9vajabsh9x22w00gh143
+title: Update after Deep Learning Revolution Review
+desc: ''
+updated: 1773194838580
+created: 1773194838580
+---
 # Update After Deep Learning Revolution Review
 
 ## Summary

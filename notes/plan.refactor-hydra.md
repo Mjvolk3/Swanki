@@ -1,3 +1,11 @@
+---
+id: wrsk60fmyismu18m667xib2
+title: Refactor Hydra
+desc: ''
+updated: 1773195081600
+created: 1773195081600
+---
+
 # PDF-to-Cards System Refactor Implementation Plan (Revised with Hydra)
 
 ## Overview
@@ -18,35 +26,35 @@ graph TD
     A[PDF Input] --> B[Split PDF into Pages]
     B --> C[Convert PDF to Markdown<br/>via Mathpix]
     C --> D[Clean Markdown Files]
-    
+
     D --> E[Process Images & Generate<br/>Individual Image Summaries]
     E --> F[Generate Document Summary]
-    
+
     F --> G[Generate Text Cards<br/>with Summary Context]
     F --> H[Generate Image Cards<br/>with Summary Context]
     F --> L[Generate Summary Audio]
-    
+
     G --> I[Audio Options]
     H --> I
-    
+
     I --> J{Audio Type}
     J -->|complementary_audio| K[Generate Complementary Audio]
     J -->|audio_summary| L
     J -->|audio_reading| M[Generate Reading Audio<br/>Audiobook of Document]
-    
+
     K --> N[Generate Text Card Transcript]
     K --> O[Generate Image Card Transcript]
-    
+
     L --> P[Audio Summary Output]
-    
+
     N --> Q[Enrich Text Cards with Audio]
     O --> R[Enrich Image Cards with Audio]
-    
+
     Q --> S[Combine Cards<br/>Create Duplicate Cards<br/>with Audio Complement]
     R --> S
-    
+
     S --> T[Final Output: cards-out.md]
-    
+
     M --> U[Generate Transcript Input]
     U --> V[Generate Transcript]
     V --> W[Clean Reading Transcript]
@@ -66,31 +74,31 @@ from typing import Dict, Any
 
 class ConfigGenerator:
     """Auto-generates default Hydra configs if not present"""
-    
+
     DEFAULT_CONFIG_DIR = Path.home() / ".swanki_config"
-    
+
     @classmethod
     def ensure_configs(cls) -> Path:
         """Ensure config directory exists with all defaults"""
         config_dir = cls.DEFAULT_CONFIG_DIR
-        
+
         if not config_dir.exists():
             print(f"Creating default configs at {config_dir}")
             config_dir.mkdir(parents=True, exist_ok=True)
             cls._generate_all_defaults(config_dir)
-        
+
         return config_dir
-    
+
     @classmethod
     def _generate_all_defaults(cls, config_dir: Path):
         """Generate all default configuration files"""
-        
+
         # Main config
         cls._write_yaml(config_dir / "config.yaml", {
             "defaults": [
                 "_self_",
                 "pipeline: default",
-                "prompts: default", 
+                "prompts: default",
                 "models: default",
                 "audio: default",
                 "output: default"
@@ -101,11 +109,11 @@ class ConfigGenerator:
                 }
             }
         })
-        
+
         # Pipeline configs
         pipeline_dir = config_dir / "pipeline"
         pipeline_dir.mkdir(exist_ok=True)
-        
+
         cls._write_yaml(pipeline_dir / "default.yaml", {
             "processing": {
                 "window_size": 2,
@@ -116,7 +124,7 @@ class ConfigGenerator:
                 "blocking_audio": True  # Based on learnings
             }
         })
-        
+
         cls._write_yaml(pipeline_dir / "comprehensive.yaml", {
             "processing": {
                 "window_size": 3,
@@ -127,7 +135,7 @@ class ConfigGenerator:
                 "blocking_audio": True
             }
         })
-        
+
         cls._write_yaml(pipeline_dir / "fast.yaml", {
             "processing": {
                 "window_size": 1,
@@ -138,11 +146,11 @@ class ConfigGenerator:
                 "blocking_audio": False
             }
         })
-        
+
         # Prompts configs
         prompts_dir = config_dir / "prompts"
         prompts_dir.mkdir(exist_ok=True)
-        
+
         cls._write_yaml(prompts_dir / "default.yaml", {
             "prompts": {
                 "summary": {
@@ -195,7 +203,7 @@ Known acronyms: {acronyms}"""
                 }
             }
         })
-        
+
         cls._write_yaml(prompts_dir / "technical.yaml", {
             "prompts": {
                 "summary": {
@@ -211,11 +219,11 @@ Known acronyms: {acronyms}"""
                 }
             }
         })
-        
+
         # Models configs
         models_dir = config_dir / "models"
         models_dir.mkdir(exist_ok=True)
-        
+
         cls._write_yaml(models_dir / "default.yaml", {
             "models": {
                 "llm": {
@@ -233,7 +241,7 @@ Known acronyms: {acronyms}"""
                 }
             }
         })
-        
+
         cls._write_yaml(models_dir / "openai_tts.yaml", {
             "models": {
                 "tts": {
@@ -244,11 +252,11 @@ Known acronyms: {acronyms}"""
                 }
             }
         })
-        
+
         # Audio configs
         audio_dir = config_dir / "audio"
         audio_dir.mkdir(exist_ok=True)
-        
+
         cls._write_yaml(audio_dir / "default.yaml", {
             "audio": {
                 "generate_complementary": True,
@@ -261,7 +269,7 @@ Known acronyms: {acronyms}"""
                 "quality": "high"
             }
         })
-        
+
         cls._write_yaml(audio_dir / "minimal.yaml", {
             "audio": {
                 "generate_complementary": True,
@@ -269,7 +277,7 @@ Known acronyms: {acronyms}"""
                 "generate_reading": False
             }
         })
-        
+
         cls._write_yaml(audio_dir / "full.yaml", {
             "audio": {
                 "generate_complementary": True,
@@ -277,11 +285,11 @@ Known acronyms: {acronyms}"""
                 "generate_reading": True
             }
         })
-        
+
         # Output configs
         output_dir = config_dir / "output"
         output_dir.mkdir(exist_ok=True)
-        
+
         cls._write_yaml(output_dir / "default.yaml", {
             "output": {
                 "base_dir": "swanki-out",
@@ -295,7 +303,7 @@ Known acronyms: {acronyms}"""
                 "create_anki_deck": False
             }
         })
-    
+
     @staticmethod
     def _write_yaml(path: Path, data: Dict[str, Any]):
         """Write YAML file with nice formatting"""
@@ -317,13 +325,13 @@ from swanki.pipeline import Pipeline
 @hydra.main(version_base=None, config_path=None, config_name="config")
 def main(cfg: DictConfig) -> None:
     """Main entry point with Hydra configuration"""
-    
+
     # Convert to regular dict for easier use
     config = OmegaConf.to_container(cfg, resolve=True)
-    
+
     # Initialize pipeline with config
     pipeline = Pipeline(config)
-    
+
     # Process based on command line args
     if cfg.pdf_path:
         outputs = pipeline.process_full(
@@ -338,10 +346,10 @@ def cli_main():
     """CLI entry point that ensures configs exist"""
     # Ensure default configs exist
     config_dir = ConfigGenerator.ensure_configs()
-    
+
     # Initialize Hydra with user's config directory
     initialize_config_dir(config_dir=str(config_dir), version_base=None)
-    
+
     # Run main with Hydra
     main()
 
@@ -363,7 +371,7 @@ class ImageSummary(BaseModel):
     image_url: str
     summary: str = Field(..., description="2-3 sentence description")
     extracted_text: Optional[str] = Field(None, description="Any text/equations in image")
-    
+
     @field_validator('summary')
     def summary_length(cls, v):
         """Ensure summary is concise"""
@@ -382,7 +390,7 @@ class DocumentSummary(BaseModel):
     acronyms: Dict[str, str] = Field(default_factory=dict, description="Acronym definitions")
     technical_terms: Dict[str, str] = Field(default_factory=dict, description="Technical term definitions")
     summary: str = Field(..., description="200-500 word summary")
-    
+
     @field_validator('summary')
     def summary_length(cls, v):
         words = len(v.split())
@@ -402,12 +410,12 @@ class PlainCard(BaseModel):
     back: CardContent
     tags: List[str] = Field(default_factory=list)
     difficulty: Literal["easy", "medium", "hard"] = "medium"
-    
+
     def add_citation_prefix(self, citation_key: str):
         """Add citation key to front of card"""
         if citation_key and not self.front.text.startswith(citation_key):
             self.front.text = f"{citation_key}: {self.front.text}"
-    
+
     def to_md(self, include_audio: bool = False, audio_uri: Optional[str] = None) -> str:
         """Convert to markdown with optional audio"""
         md = f"## Card\n\n"
@@ -423,7 +431,7 @@ class CardGenerationResponse(BaseModel):
     """Structured response for card generation"""
     cards: List[PlainCard]
     skipped_sections: List[str] = Field(default_factory=list, description="Sections not suitable for cards")
-    
+
     @field_validator('cards')
     def validate_card_count(cls, v):
         if len(v) == 0:
@@ -436,7 +444,7 @@ class AudioTranscript(BaseModel):
     card_id: str
     content: str
     tts_version: str = Field(..., description="TTS-friendly version with pronunciations")
-    
+
     def get_filename(self) -> str:
         return f"{self.citation_key}_{self.card_id}.txt"
 
@@ -462,47 +470,47 @@ import instructor
 from openai import OpenAI
 
 from .models import (
-    DocumentSummary, CardGenerationResponse, 
+    DocumentSummary, CardGenerationResponse,
     ImageSummary, ProcessingState
 )
 
 class Pipeline:
     """Main processing pipeline with Hydra configuration"""
-    
+
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.instructor = instructor.patch(OpenAI())
         self.state = None
-        
+
     def process_full(self, pdf_path: Path, citation_key: str) -> Dict[str, Path]:
         """Process PDF with configuration-driven pipeline"""
-        
+
         # Initialize state
         self.state = ProcessingState(
             pdf_path=pdf_path,
             citation_key=citation_key,
             current_stage="initialization"
         )
-        
+
         # 1. Split PDF based on config
         self.state.current_stage = "pdf_split"
         pages = self.split_pdf(pdf_path)
-        
+
         # 2. Convert to markdown
         self.state.current_stage = "markdown_conversion"
         markdown_files = self.convert_to_markdown(pages)
-        
+
         # 3. Clean markdown
         self.state.current_stage = "markdown_cleaning"
         cleaned_files = self.clean_markdown(markdown_files)
-        
+
         # 4. Process images with configured prompts
         self.state.current_stage = "image_processing"
         image_summaries = self.process_images(
             cleaned_files,
             prompt=self.config['prompts']['summary']['image_summary']
         )
-        
+
         # 5. Generate document summary (EARLY!)
         self.state.current_stage = "summary_generation"
         doc_summary = self.generate_document_summary(
@@ -512,7 +520,7 @@ class Pipeline:
             user_prompt=self.config['prompts']['summary']['document_summary']
         )
         self.state.document_summary = doc_summary
-        
+
         # 6. Generate cards with sliding window
         self.state.current_stage = "card_generation"
         all_cards = self.generate_cards_with_window(
@@ -522,17 +530,17 @@ class Pipeline:
             skip=self.config['processing']['skip'],
             num_cards=self.config['processing']['num_cards_per_page']
         )
-        
+
         # 7. Add citation keys
         for card in all_cards:
             card.add_citation_prefix(citation_key)
-        
+
         self.state.cards_generated = len(all_cards)
-        
+
         # 8. Generate outputs based on config
         self.state.current_stage = "output_generation"
         outputs = self.generate_outputs(all_cards, doc_summary)
-        
+
         # 9. Generate audio if configured
         if any([
             self.config['audio']['generate_complementary'],
@@ -541,12 +549,12 @@ class Pipeline:
         ]):
             self.state.current_stage = "audio_generation"
             self.generate_audio(all_cards, doc_summary, outputs)
-        
+
         self.state.outputs = outputs
         return outputs
-    
+
     def generate_cards_with_window(
-        self, 
+        self,
         markdown_files: List[Path],
         doc_summary: DocumentSummary,
         window_size: int,
@@ -555,21 +563,21 @@ class Pipeline:
     ) -> List[PlainCard]:
         """Generate cards using sliding window approach"""
         all_cards = []
-        
+
         for i in range(0, len(markdown_files) - window_size + 1, skip):
             window_files = markdown_files[i:i + window_size]
-            
+
             # Combine content from window
             combined_content = "\n\n".join([
                 f.read_text() for f in window_files
             ])
-            
+
             # Generate cards for this window
             response = self.instructor.chat.completions.create(
                 model=self.config['models']['llm']['model'],
                 messages=[
                     {
-                        "role": "system", 
+                        "role": "system",
                         "content": self.config['prompts']['cards']['system']
                     },
                     {
@@ -586,29 +594,29 @@ class Pipeline:
                 response_model=CardGenerationResponse,
                 max_retries=self.config['models']['llm']['max_retries']
             )
-            
+
             all_cards.extend(response.cards)
-        
+
         return all_cards
-    
+
     def generate_outputs(
-        self, 
-        cards: List[PlainCard], 
+        self,
+        cards: List[PlainCard],
         summary: DocumentSummary
     ) -> Dict[str, Path]:
         """Generate multiple output files based on config"""
         output_dir = Path(self.config['output']['base_dir'])
         output_dir.mkdir(exist_ok=True)
-        
+
         outputs = {}
-        
+
         # Plain cards (no audio)
         plain_path = output_dir / self.config['output']['formats']['cards_plain']
         with open(plain_path, 'w') as f:
             for card in cards:
                 f.write(card.to_md(include_audio=False))
         outputs['cards_plain'] = plain_path
-        
+
         # Cards with audio placeholders
         audio_path = output_dir / self.config['output']['formats']['cards_audio']
         with open(audio_path, 'w') as f:
@@ -616,7 +624,7 @@ class Pipeline:
                 audio_uri = f"audio/card_{i}.mp3"  # Placeholder
                 f.write(card.to_md(include_audio=True, audio_uri=audio_uri))
         outputs['cards_audio'] = audio_path
-        
+
         # Document summary
         summary_path = output_dir / self.config['output']['formats']['summary']
         with open(summary_path, 'w') as f:
@@ -630,7 +638,7 @@ class Pipeline:
             for acronym, definition in summary.acronyms.items():
                 f.write(f"- **{acronym}**: {definition}\n")
         outputs['summary'] = summary_path
-        
+
         return outputs
 ```
 
