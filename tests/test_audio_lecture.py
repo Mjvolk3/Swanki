@@ -40,6 +40,34 @@ def test_chunk_by_headers():
     assert any("Results" in t for t in titles)
 
 
+def test_chunk_by_headers_unnumbered():
+    content = (
+        "Preamble text.\n\n"
+        "## Introduction\n\nIntro paragraph.\n\n"
+        "## Methods\n\nMethods paragraph.\n\n"
+        "## Results\n\nResults paragraph."
+    )
+    chunks = chunk_by_headers(content)
+    titles = [title for title, _, _ in chunks]
+    assert any("Introduction" in t for t in titles)
+    assert any("Methods" in t for t in titles)
+    assert any("Results" in t for t in titles)
+
+
+def test_chunk_by_headers_mixed():
+    content = (
+        "Preamble text.\n\n"
+        "## 1.0 Introduction\n\nIntro paragraph.\n\n"
+        "## Methods\n\nMethods paragraph.\n\n"
+        "## 2.0 Results\n\nResults paragraph."
+    )
+    chunks = chunk_by_headers(content)
+    titles = [title for title, _, _ in chunks]
+    assert any("Introduction" in t for t in titles)
+    assert any("Methods" in t for t in titles)
+    assert any("Results" in t for t in titles)
+
+
 def test_chunk_by_headers_oversized():
     big_section = "Word " * 20000  # ~20k tokens, will exceed 15k limit
     content = f"## 1.0 Big Section\n\n{big_section}"

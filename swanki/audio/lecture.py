@@ -121,7 +121,8 @@ def chunk_by_headers(
     import re
 
     enc = tiktoken.get_encoding("cl100k_base")
-    header_pattern = r"^(#+)\s+([0-9.]+)(?:\s*\\\\)?\s*(.*)$"
+    numbered_pattern = r"^(#{2,})\s+([0-9.]+)(?:\s*\\\\)?\s*(.*)$"
+    unnumbered_pattern = r"^(#{2,})\s+([A-Z][A-Za-z\s,]+)$"
 
     chunks: list[tuple[str, str, int]] = []
     current_section: dict[str, str | int] = {
@@ -133,7 +134,11 @@ def chunk_by_headers(
     lines = content.split("\n")
 
     for line_idx, line in enumerate(lines):
-        match = re.match(header_pattern, line, re.MULTILINE)
+        numbered = re.match(numbered_pattern, line, re.MULTILINE)
+        unnumbered = (
+            re.match(unnumbered_pattern, line, re.MULTILINE) if not numbered else None
+        )
+        match = numbered or unnumbered
 
         if match:
             if current_section["content"]:
@@ -156,10 +161,20 @@ def chunk_by_headers(
                         )
                     )
 
-            number = match.group(2)
-            title = match.group(3).strip() if match.group(3) else f"Section {number}"
+            if numbered:
+                number = numbered.group(2)
+                title = (
+                    numbered.group(3).strip()
+                    if numbered.group(3)
+                    else f"Section {number}"
+                )
+                title = title or f"Section {number}"
+            else:
+                assert unnumbered is not None
+                title = unnumbered.group(2).strip()
+
             current_section = {
-                "title": title or f"Section {number}",
+                "title": title,
                 "content": line + "\n",
                 "start_line": line_idx,
             }
