@@ -1,7 +1,6 @@
 ---
 name: commit
 description: Commit staged changes with an auto-generated bulleted commit message. Run /stage first to stage files.
-disable-model-invocation: true
 ---
 
 When the user asks to commit changes, follow this workflow. The user's tool approval prompts serve as the approval gates -- do NOT ask extra confirmation questions.

@@ -2,7 +2,7 @@
 id: jw01iia69oz5lqyr1yz7ifh
 title: '11'
 desc: ''
-updated: 1773196112417
+updated: 1773197267148
 created: 1773142434234
 ---
 ## 2026.03.10
@@ -15,7 +15,7 @@ created: 1773142434234
 - [x] Write plan for improving lecture transcripts. [[lecture-transcript-refactor.plan-0]]
 - [x] Write plan for segmenting text more consistently [[optional-create-cards-per-char.plan-0]]
 - [x] Purged `.claude/settings.local.json` from git history and added `.claude/settings.json` as the committed project settings
-- [ ] ... plan integration?
+- [x] Added worktree documentation to CLAUDE.md, merge-worktree skill, worktree permissions in settings.json, and .env.example for key-safe env template [[scripts.setup-worktree]]
 
 ***
 

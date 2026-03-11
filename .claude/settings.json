@@ -1,6 +1,6 @@
 {
   "permissions": {
-    "additionalDirectories": ["../Swanki_Data", "../iBioFoundry-AI", "../Zendron", "../Deep-Learning-Foundations-and-Concepts", "../instructor", "../openai-python"],
+    "additionalDirectories": ["../Swanki_Data", "../iBioFoundry-AI", "../Zendron", "../Deep-Learning-Foundations-and-Concepts", "../instructor", "../openai-python", "../Swanki.worktrees"],
     "allow": [
       "Read(**)",
       "Search(**)",
@@ -9,9 +9,15 @@
       "Write(**/*.py)",
       "Write(**/*.md)",
       "Write(**/*.sh)",
+      "Write(../Swanki.worktrees/**/*.py)",
+      "Write(../Swanki.worktrees/**/*.md)",
+      "Write(../Swanki.worktrees/**/*.sh)",
       "Edit(**/*.py)",
       "Edit(**/*.md)",
       "Edit(**/*.sh)",
+      "Edit(../Swanki.worktrees/**/*.py)",
+      "Edit(../Swanki.worktrees/**/*.md)",
+      "Edit(../Swanki.worktrees/**/*.sh)",
       "Bash(mkdir:*)",
       "Bash(ls:*)",
       "Bash(python:*)",

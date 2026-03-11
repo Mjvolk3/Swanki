@@ -60,6 +60,7 @@ fi
 echo "  → Worktree-specific paths configured:"
 echo "    - ASSET_IMAGES_DIR → $WORKTREE_DIR/notes/assets/images"
 echo "    - WORKSPACE_DIR → $WORKTREE_DIR"
+echo "    - SWANKI_DATA → unchanged (shared sibling directory)"
 
 echo -e "\n${BLUE}2. Verifying Python environment...${NC}"
 if command -v conda &> /dev/null; then
