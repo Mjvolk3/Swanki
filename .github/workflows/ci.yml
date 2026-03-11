@@ -46,3 +46,9 @@ jobs:
         run: |
           coverage run -m pytest tests/ -x -m "not llm and not integration"
           coverage report
+          coverage xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}

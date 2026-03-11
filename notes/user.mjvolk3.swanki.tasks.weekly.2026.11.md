@@ -24,6 +24,7 @@ created: 1773142434234
 - [x] Added migration risk section for self-critic and retry mechanisms with pointers to local instructor and pydantic-ai repo clones as reference for faithful replication. [[plan.instructor-to-pydanticAI.plan-0]]
 - [x] Created fine-grained WIP scratchpad with full call site inventory (21 LLM calls across 7 files) and per-phase checklists for the pydanticAI migration. [[plan.instructor-to-pydanticAI.wip]]
 - [x] Added `setup: worktree` VS Code task and fixed executable permission on `scripts/setup-worktree.sh`
+- [x] Added README badges (CI status, Codecov coverage, Ruff, mypy strict, Python 3.13, MIT license) and Codecov integration to CI workflow
 
 ***
 
