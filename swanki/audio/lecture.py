@@ -191,8 +191,7 @@ def generate_and_validate_chunk(
     instructor_client: OpenAI,
     model: str,
     max_retries: int = 2,
-    section_budget_words: int = 0,
-    section_max_words: int = 0,
+    si_reference_content: str | None = None,
 ) -> str:
     """Generate a section transcript with immediate self-criticism validation.
 
@@ -206,8 +205,7 @@ def generate_and_validate_chunk(
         instructor_client: Instructor-patched client for validation.
         model: Model for generation and critique.
         max_retries: Maximum retry attempts.
-        section_budget_words: Allocated word budget for this section.
-        section_max_words: Maximum words with tolerance.
+        si_reference_content: Relevant SI content for this section.
 
     Returns:
         Validated lecture transcript for this section.
@@ -221,24 +219,6 @@ Check for:
 4. Lists (numbered or bulleted) - Should be converted to flowing narrative
 5. Cross-references ("see Figure X", "Table Y") - Should be removed or integrated naturally
 6. Conversational tone maintained throughout
-
-7. LENGTH CHECK (CRITICAL - GLOBAL BUDGET):
-   Section: {section_title}
-   Source: {source_words} words
-
-   This section's ALLOCATED budget from global 50% target:
-   Target: {budget_words} words (allocated share)
-   Maximum: {max_words} words (with 20% tolerance)
-
-   Count words in transcript: {word_count}
-
-   If {word_count} exceeds {max_words}, set done=False and meets_length_target=False with feedback:
-   "Section exceeds ALLOCATED budget ({word_count} words vs {max_words} max)"
-
-   Otherwise set meets_length_target=True.
-
-   NOTE: This budget is calculated from the TOTAL document target, not just this section.
-   Each section must stay within its share to meet the global 50% reduction goal.
 
 Transcript to review:
 {transcript}
@@ -263,12 +243,14 @@ If issues found, list them specifically. Set done=False if refinement needed, do
                 f"Content:\n{content_chunk}"
             )
 
-        # Calculate token limit
-        if section_max_words > 0:
-            section_max_tokens = int(section_max_words * 1.33)
-            max_completion_tokens = max(section_max_tokens * 3, 4000)
-        else:
-            max_completion_tokens = 10000
+        if si_reference_content:
+            user_message += (
+                "\n\n---\nRELEVANT SUPPLEMENTARY INFORMATION (use to enrich your discussion, "
+                "but keep the main paper as the primary focus):\n"
+                f"{si_reference_content}"
+            )
+
+        max_completion_tokens = 10000
 
         response = openai_client.chat.completions.create(
             model=model,
@@ -308,8 +290,6 @@ If issues found, list them specifically. Set done=False if refinement needed, do
         # Immediate critique
         try:
             chunk_escaped = chunk_transcript.replace("{", "{{").replace("}", "}}")
-            section_source_words = len(content_chunk.split())
-            section_word_count = len(chunk_transcript.split())
 
             critique = instructor_client.chat.completions.create(
                 model=model,
@@ -321,16 +301,7 @@ If issues found, list them specifically. Set done=False if refinement needed, do
                     {
                         "role": "user",
                         "content": critique_prompt.format(
-                            section_title=section_title,
                             transcript=chunk_escaped,
-                            source_words=section_source_words,
-                            budget_words=section_budget_words
-                            if section_budget_words > 0
-                            else int(section_source_words * 0.5),
-                            max_words=section_max_words
-                            if section_max_words > 0
-                            else int(section_source_words * 0.6),
-                            word_count=section_word_count,
                         ),
                     },
                 ],
@@ -510,16 +481,6 @@ def generate_lecture_audio(
         accumulated_transcript = ""
 
         total_source_words = len(cleaned_content.split())
-        total_target_words = int(total_source_words * 0.5)
-        total_tolerance_words = int(total_source_words * 0.6)
-
-        logger.info(
-            f"Global length target: {total_target_words} words (50% of {total_source_words})"
-        )
-        logger.info(
-            f"Global tolerance: {total_tolerance_words} words (60% of {total_source_words})"
-        )
-
         cumulative_output_words = 0
 
         import instructor
@@ -530,20 +491,11 @@ def generate_lecture_audio(
             semantic_chunks
         ):
             section_source_words = len(section_content.split())
-            section_fraction = section_source_words / total_source_words
-            section_budget_words = int(total_target_words * section_fraction)
-            section_max_words = int(section_budget_words * 1.2)
 
             logger.info(
                 f"Generating section {section_idx + 1}/{len(semantic_chunks)}: {section_title}"
             )
-            logger.info(
-                f"  Source: {section_source_words} words ({section_fraction * 100:.1f}% of total)"
-            )
-            logger.info(
-                f"  Budget: {section_budget_words} words (allocated from global target)"
-            )
-            logger.info(f"  Max: {section_max_words} words (with 20% tolerance)")
+            logger.info(f"  Source: {section_source_words} words")
 
             previous_context = (
                 _extract_context(accumulated_transcript, max_tokens=300)
@@ -561,8 +513,6 @@ def generate_lecture_audio(
                 instructor_client=instructor_client,
                 model=model,
                 max_retries=2,
-                section_budget_words=section_budget_words,
-                section_max_words=section_max_words,
             )
 
             section_actual_words = len(chunk_transcript.split())
@@ -570,17 +520,8 @@ def generate_lecture_audio(
 
             logger.info(f"  Generated: {section_actual_words} words")
             logger.info(
-                f"  Cumulative: {cumulative_output_words}/{total_tolerance_words} words "
-                f"({cumulative_output_words / total_tolerance_words * 100:.1f}%)"
+                f"  Cumulative: {cumulative_output_words}/{total_source_words} source words"
             )
-
-            if cumulative_output_words > total_tolerance_words:
-                logger.warning(
-                    f"CUMULATIVE LENGTH EXCEEDED: {cumulative_output_words} > {total_tolerance_words}"
-                )
-                logger.warning(
-                    "Remaining sections must be MORE concise to meet global target"
-                )
 
             accumulated_transcript += "\n\n" + chunk_transcript
             transcript_chunks.append(chunk_transcript)
@@ -625,6 +566,7 @@ def generate_lecture_audio(
         output_path,
         max_retries,
         enc,
+        source_words=len(cleaned_content.split()),
     )
 
     # Save final transcript
@@ -706,7 +648,8 @@ CRITICAL OUTPUT RULES:
    - No new information
 
 6. TARGET LENGTH:
-   - Aim for 50% of source content length
+   - Aim for roughly 40-60% of source manuscript length
+   - Let the content drive section lengths
    - Be selective: key concepts only, skip exhaustive details
    - Focus on WHY and HOW, not just WHAT"""
 
@@ -832,6 +775,7 @@ def _refine_transcript(
     output_path: Path,
     max_retries: int,
     enc: tiktoken.Encoding,
+    source_words: int = 0,
 ) -> str:
     """Run iterative critique-and-refine loop on the transcript."""
     import instructor
@@ -841,6 +785,18 @@ def _refine_transcript(
     max_iterations = 3
     current_transcript = full_transcript
     critique_feedback = None
+
+    # Length ratio check before critique loop
+    if source_words > 0:
+        ratio = len(current_transcript.split()) / source_words
+        if ratio > 0.7:
+            logger.warning(
+                f"Transcript is {ratio:.0%} of source length — injecting length-reduction feedback"
+            )
+        elif ratio < 0.3:
+            logger.warning(
+                f"Transcript is only {ratio:.0%} of source length — potential under-development"
+            )
 
     for iteration in range(max_iterations):
         logger.info(f"Lecture critique iteration {iteration + 1}/{max_iterations}")
@@ -904,9 +860,15 @@ def _refine_transcript(
             for start in range(0, len(transcript_tokens), chunk_size):
                 chunk = enc.decode(transcript_tokens[start : start + chunk_size])
 
-                feedback_text = "\n".join(
-                    f"- {issue}" for issue in critique_feedback.feedback
-                )
+                feedback_items = list(critique_feedback.feedback)
+                if source_words > 0:
+                    ratio = len(current_transcript.split()) / source_words
+                    if ratio > 0.7:
+                        feedback_items.append(
+                            f"LENGTH: Transcript is {ratio:.0%} of source. "
+                            "Cut to 40-60% by removing redundancy and excessive detail."
+                        )
+                feedback_text = "\n".join(f"- {issue}" for issue in feedback_items)
 
                 refinement_prompt = _REFINEMENT_TEMPLATE.substitute(
                     critique=feedback_text,

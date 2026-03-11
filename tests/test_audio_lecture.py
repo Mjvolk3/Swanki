@@ -7,14 +7,16 @@ Test file: tests/test_audio_lecture.py
 Tests for swanki.audio.lecture -- semantic chunking and mocked lecture generation.
 """
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from pydub import AudioSegment
 
 from swanki.audio.lecture import (
     _extract_context,
+    _refine_transcript,
     _split_large_section,
     chunk_by_headers,
+    generate_and_validate_chunk,
     generate_lecture_audio,
 )
 
@@ -117,3 +119,88 @@ def test_generate_lecture_audio_mocked(
 
         assert filename == "lecture.mp3"
         mock_tts.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# generate_and_validate_chunk (no budget params)
+# ---------------------------------------------------------------------------
+
+
+def test_generate_and_validate_chunk_no_budget(mock_openai_client):
+    """Chunk generation no longer takes budget/max word params."""
+    from swanki.models.cards import LectureTranscriptFeedback
+
+    mock_critique = LectureTranscriptFeedback(
+        feedback=[], done=True, word_count=50, meets_length_target=True
+    )
+    instructor_client = MagicMock()
+    instructor_client.chat.completions.create.return_value = mock_critique
+
+    result = generate_and_validate_chunk(
+        content_chunk="Some source content here.",
+        section_title="Intro",
+        previous_context="",
+        system_prompt="You are a lecturer.",
+        citation_key="Test Paper",
+        openai_client=mock_openai_client,
+        instructor_client=instructor_client,
+        model="gpt-5-mini",
+    )
+    assert result == "Mocked transcript text"
+
+
+# ---------------------------------------------------------------------------
+# _refine_transcript length enforcement
+# ---------------------------------------------------------------------------
+
+
+def test_refine_transcript_length_enforcement(tmp_path, mock_openai_client):
+    """When ratio > 0.7, length-reduction feedback is injected."""
+    import tiktoken
+
+    from swanki.models.cards import LectureTranscriptFeedback
+
+    enc = tiktoken.get_encoding("cl100k_base")
+    transcripts_dir = tmp_path / "transcripts"
+    transcripts_dir.mkdir()
+    output_path = tmp_path / "lecture.mp3"
+
+    # Transcript ~same length as source → ratio ~1.0
+    transcript = "word " * 100
+    source_words = 100
+
+    mock_critique = LectureTranscriptFeedback(
+        feedback=["Minor issue"], done=False, word_count=100, meets_length_target=False
+    )
+    mock_critique_pass = LectureTranscriptFeedback(
+        feedback=[], done=True, word_count=50, meets_length_target=True
+    )
+
+    critique_call_count = 0
+
+    def fake_critique(*args, **kwargs):
+        nonlocal critique_call_count
+        critique_call_count += 1
+        if critique_call_count == 1:
+            return mock_critique
+        return mock_critique_pass
+
+    with patch("instructor.patch") as mock_patch:
+        patched_client = MagicMock()
+        patched_client.chat.completions.create.side_effect = fake_critique
+        mock_patch.return_value = patched_client
+
+        result = _refine_transcript(
+            full_transcript=transcript,
+            full_system_prompt="System prompt",
+            openai_client=mock_openai_client,
+            model="gpt-5-mini",
+            citation_key="test",
+            transcripts_dir=transcripts_dir,
+            output_path=output_path,
+            max_retries=2,
+            enc=enc,
+            source_words=source_words,
+        )
+
+    assert isinstance(result, str)
