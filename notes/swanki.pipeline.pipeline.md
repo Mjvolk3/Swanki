@@ -2,7 +2,7 @@
 id: gc296t2rsgc6sx28n224rgq
 title: Pipeline
 desc: ''
-updated: 1773013975831
+updated: 1773270048272
 created: 1773013975831
 ---
 
@@ -33,3 +33,7 @@ Introduce a unified "segment" abstraction so card generation operates on segment
 - Deleted `generate_cards_with_context()` (~333 lines of dead code never called by `process_full()`).
 - Config key renames: `num_cards_per_page` to `cards_per_segment`, `cloze_cards_per_page` to `cloze_per_segment`. Dead `chunk_size`/`overlap` params removed.
 - `estimate_card_count` updated to accept segment files and use segment terminology.
+
+## 2026.03.11 - Read SI boundary metadata for lecture generation
+
+Before calling `generate_lecture_audio()`, read `{citation_key}_meta.json` from the PDF directory to get `si_start_page`. Pass it as a kwarg so lectures can treat main paper and SI content separately. Falls back to `None` (today's behavior) when the file is absent. Part of Step 4 ([[plan.major-refactor-sequence.plan-0]]).

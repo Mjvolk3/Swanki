@@ -14,7 +14,7 @@ Scratchpad for tracking fine-grained progress on [[plan.instructor-to-pydanticAI
 - [x] Step 1: Audio decoupling complete
 - [x] Step 2: Config refactor complete
 - [x] Step 3: Character segmentation complete
-- [ ] Step 4: Lecture transcript refactor complete
+- [x] Step 4: Lecture transcript refactor complete
 
 ## Call Site Inventory (21 total)
 
