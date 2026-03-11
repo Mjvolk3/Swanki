@@ -1,0 +1,4 @@
+anki:
+  enabled: true
+  deck_name: Research::Papers::{deck_name}
+  auto_send: false

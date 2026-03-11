@@ -1,0 +1,8 @@
+processing:
+  context_radius: 2
+  num_cards_per_page: 5
+  cloze_cards_per_page: 3
+  chunk_size: 1500
+  overlap: 300
+  blocking_audio: true
+  confirm_before_generation: true

@@ -78,8 +78,11 @@ quote-style = "double"
 dependencies = { file = ["env/requirements.txt"] }
 version = { attr = "swanki.__version__" }
 
+[project.entry-points."hydra_plugins"]
+swanki = "swanki.config.hydra_plugins"
+
 [tool.setuptools.package-data]
-swanki = ["py.typed"]
+swanki = ["py.typed", "conf/**/*.yaml"]
 
 [tool.setuptools.packages.find]
 include = ["swanki*"]

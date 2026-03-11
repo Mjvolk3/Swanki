@@ -1,0 +1,301 @@
+prompts:
+  summary:
+    system: You are an expert educator creating lecture-style summaries that help students deeply understand academic material.
+      Your summaries should be comprehensive, engaging, and educational.
+    document_summary: "Create a comprehensive lecture-style summary that an eager student would use to understand this material\
+      \ deeply.\n\nStructure your summary as follows:\n\n1. **Introduction and Motivation** (why this matters)\n   - Context\
+      \ and background\n   - Why students should care about this topic\n   - Connection to broader fields\n\n2. **Core Concepts\
+      \ and Definitions**\n   - All key terms explained clearly\n   - Intuitive explanations before formal definitions\n \
+      \  - Relationships between concepts\n\n3. **Key Mathematical Formulations** (with intuitive explanations)\n   - Important\
+      \ equations with explanations of what they mean\n   - Variable definitions and significance\n   - Physical or conceptual\
+      \ interpretations\n\n4. **Methodology and Techniques**\n   - Step-by-step explanation of approaches\n   - Why these\
+      \ methods were chosen\n   - Strengths and limitations\n\n5. **Main Results and Their Significance**\n   - Key findings\
+      \ explained clearly\n   - What these results mean in practice\n   - Impact on the field\n\n6. **Practical Applications\
+      \ and Examples**\n   - Real-world uses\n   - Concrete examples to illustrate concepts\n   - How students might apply\
+      \ this knowledge\n\n7. **Connections to Broader Topics**\n   - How this relates to other areas\n   - Future directions\n\
+      \   - Open questions\n\nAdditional requirements:\n- Include ALL important equations with explanations of what they mean\
+      \ intuitively\n- Define ALL technical terms and acronyms clearly (provide a comprehensive list)\n- Explain the \"why\"\
+      \ behind concepts, not just the \"what\"\n- Use analogies and examples to clarify complex ideas\n- Write as if preparing\
+      \ students for deep understanding, not memorization\n- Highlight conceptual insights and \"aha\" moments\n\nTarget length:\
+      \ \n- For short documents (1-5 pages): 100-500 words\n- For medium documents (6-20 pages): 300-800 words  \n- For long\
+      \ documents (20+ pages): 500-1500 words\nBe comprehensive and educational while being appropriate to document length.\n\
+      \nDocument content:\n{content}\n\nImage summaries:\n{image_summaries}"
+    image_summary: |-
+      Provide a comprehensive description of this image for audio-only learners.
+
+      Instructions:
+      1. Describe the overall structure and layout of the image (4-6 sentences)
+      2. Detail all key components, labels, and relationships shown
+      3. If it contains equations, describe them precisely using natural language
+      4. If it shows a process or flow, describe the sequence and connections
+      5. Include any text labels, annotations, or legends
+      6. Describe visual elements that convey meaning (arrows, colors, shapes)
+      7. DO NOT interpret or explain what the image means - just describe what is shown
+
+      The description should be detailed enough that someone listening to audio only can understand:
+      - What type of visual it is (graph, diagram, flowchart, etc.)
+      - What elements are present and how they're arranged
+      - What relationships or processes are depicted
+      - Any mathematical or technical notation shown
+
+      Aim for 6-10 sentences that paint a complete picture without revealing answers to potential questions.
+  cards:
+    system: You are an expert at creating educational flashcards. Your ONLY job is to create the EXACT number of cards requested.
+      You MUST create BOTH regular Q&A cards AND cloze deletion cards as specified. Count carefully and ensure you generate
+      the exact numbers requested.
+    generate_cards: "You are required to generate {num_cards} regular cards AND {num_cloze} cloze deletion cards.\n\nMANDATORY\
+      \ DISTRIBUTION:\n- Regular Q&A cards: {num_cards}\n- Cloze deletion cards: {num_cloze}\n- Total cards to generate: {num_cards}\
+      \ + {num_cloze}\n\nContext from document summary:\nTitle: {title}\nAcronyms: {acronyms}\nTechnical terms: {technical_terms}\n\
+      \nContent:\n{content}\n\nCRITICAL RULES FOR SELF-CONTAINED CARDS:\n1. Every card must contain ALL information needed\
+      \ to understand and answer it\n2. If an equation is part of a larger example, PROVIDE THE CONTEXT\n3. If values or parameters\
+      \ are mentioned, SPECIFY WHAT THEY ARE\n4. If comparing quantities, PROVIDE THE BASELINE FOR COMPARISON\n5. Always include\
+      \ enough background to make the card meaningful\n\nStudents will NOT have access to:\n- The original paper or document\n\
+      - Other papers or references\n- Figures, tables, or diagrams (unless embedded in the card)\n- Previous or subsequent\
+      \ cards\n- Any external context\n\nEDUCATIONAL VALUE REQUIREMENTS:\n- Focus on KEY CONCEPTS that matter for understanding\
+      \ the subject\n- Avoid trivial questions about notation or random equation parameters\n- Prioritize fundamental principles\
+      \ and important equations\n- Cards should help students build deep understanding, not memorize trivia\n- Example of\
+      \ BAD: \"What does \u03C0 represent in sin(2\u03C0x)?\"\n- Example of GOOD: \"How does Fourier analysis decompose signals\
+      \ into frequency components?\"\n\nCONTEXT REQUIREMENTS:\n- For equations: Explain what variables represent and their\
+      \ typical values/ranges\n- For comparisons: State what is being compared to (e.g., \"30 bins compared to typical 10-20\
+      \ bins\")\n- For transformations: Describe the starting point and end result\n- For examples: Provide the full setup,\
+      \ not just a fragment\n- For technical terms: Include a brief definition if not commonly known\n\nFORBIDDEN CONTENT\
+      \ - NEVER CREATE CARDS WITH:\n- References to other papers: \"According to Smith et al. [12]...\" or \"As shown in reference\
+      \ [7]...\"\n- ANY reference numbers: \"ref. [6]\", \"[1]\", \"(Smith, 2023)\", \"the framework in [6]\", \"reference\
+      \ ^6\", \"^12\", \"^7\"\n- Figure/table references: \"Figure 3 shows...\" or \"As seen in Table 2...\"\n- Context-dependent\
+      \ phrases: \"The above equation...\", \"This method...\", \"The aforementioned...\"\n- Vague referents: \"this framework\"\
+      , \"the model\", \"this approach\" (without explaining WHAT framework/model/approach)\n- Document references: \"in the\
+      \ context of the document\", \"as described in the document\", \"the document states\"\n- LaTeX tables (\\\\begin{{tabular}})\
+      \ - they don't render properly in Anki\n- External citations that students can't access\n- Author-focused questions:\
+      \ \"How does Lachapelle et al. approach...\", \"What is Zheng et al.'s method...\"\n- Simple acronym expansions: \"\
+      What does SEM stand for?\" (instead ask about what SEM IS or HOW it works)\n\nCRITICAL: If the content mentions \"ref.\
+      \ [X]\" or \"framework in [Y]\", you MUST:\n1. Extract the actual innovation/method being described\n2. Describe it\
+      \ directly without the reference number\n3. Make the card about the concept itself, not about who proposed it\n\nEXAMPLE\
+      \ TRANSFORMATIONS:\n\u274C BAD: \"What innovation did the framework in ref. [6] introduce?\"\n\u2713 GOOD: \"What innovation\
+      \ transformed discrete DAG optimization into continuous optimization?\"\n\n\u274C BAD: \"According to [12], what is\
+      \ the complexity of the algorithm?\"\n\u2713 GOOD: \"What is the time complexity of learning Bayesian network structures?\"\
+      \n\n\u274C BAD: \"How does the method in ref. [8] differ from previous approaches?\"\n\u2713 GOOD: \"How does continuous\
+      \ optimization for DAG learning differ from combinatorial approaches?\"\n\nBAD EXAMPLES TO AVOID:\n\u274C \"What transformation\
+      \ is applied in this framework?\" (WHAT framework?)\n\u274C \"How does the model handle missing data?\" (WHAT model?)\n\
+      \u274C \"What is the advantage of this approach?\" (WHAT approach?)\n\u274C \"In the context of the document, what does\
+      \ h(W) = 0 represent?\" (Remove \"in the context of the document\")\n\u274C \"What innovation did the framework described\
+      \ in reference ^6 bring?\" (Remove reference number)\n\u274C \"Describe how Lachapelle et al. approach causal inference\"\
+      \ (Focus on the method, not the authors)\n\u274C \"What does NAS stand for?\" (Simple memorization - ask what NAS DOES\
+      \ instead)\n\u274C \"The equation MathJax represents the maximum entropy solution\" (No context about constraints)\n\
+      \u274C \"A histogram with 30 bins shows higher entropy\" (No comparison baseline)\n\u274C \"How does the red curve help\
+      \ understanding?\" (What red curve? No image reference allowed)\n\nGOOD EXAMPLES WITH PROPER CONTEXT:\n\u2713 \"What\
+      \ transformation is applied in the causal inference framework that combines DAGs with deep learning?\"\n\u2713 \"How\
+      \ does the multi-layer perceptron model handle missing data in the feature matrix?\"\n\u2713 \"What is the advantage\
+      \ of combining causal inference with deep learning for dimensionality reduction?\"\n\u2713 \"In maximum entropy estimation\
+      \ with moment constraints E[x]=\u03BC and E[x\xB2]=\u03C3\xB2+\u03BC\xB2, what does the resulting distribution represent?\"\
+      \n\u2713 \"When comparing probability distributions, why does a histogram spread over 30 bins (versus concentrated in\
+      \ 5-10 bins) indicate higher entropy?\"\n\u2713 \"For the nonlinear transformation y\u2081 = tanh(x\u2081) and y\u2082\
+      \ = x\u2082 + 0.1x\u2081\xB2, how does this affect the original Gaussian distribution?\"\n\nCLOZE DELETION CARD FORMAT\
+      \ (YOU MUST CREATE {num_cloze} OF THESE):\n## [Self-contained statement with {{c1::hidden text}} that tests understanding]\n\
+      \n- #tag1, #tag2\n\nCRITICAL CLOZE FORMAT RULES:\n1. ALL content including {{c1::...}} MUST be in the ## header line\
+      \ (the front)\n2. NEVER put {{c1::...}} in the answer/back section\n3. The back section should be EMPTY (it will only\
+      \ contain audio in post-processing)\n4. Every cloze card MUST have tags on the \"- #tag1, #tag2\" line\n\nIMPORTANT\
+      \ CLOZE RULES:\n- CRITICAL: Cloze cards must be STATEMENTS, never questions (no \"?\" at the end)\n  * \u274C WRONG:\
+      \ \"How does X affect {{c1::Y}} in context Z?\"\n  * \u2713 CORRECT: \"X affects Y in context Z by {{c1::causing specific\
+      \ change}}\"\n- CRITICAL: CLOZE LENGTH: Hide 1-5 words maximum per cloze deletion\n  * \u274C WRONG: {{c1::techniques\
+      \ that add constraints or penalties to prevent overfitting by limiting model complexity}}\n  * \u2713 CORRECT: {{c1::regularization\
+      \ techniques}} or {{c1::L1 and L2 penalties}}\n- CRITICAL: NEVER add $ inside cloze when already in math mode:\n  *\
+      \ \u274C WRONG: $$A = {{c1::$B + C$}}$$ (nested dollar signs)\n  * \u2713 CORRECT: $$A = {{c1::B + C}}$$\n  * \u274C\
+      \ WRONG: $f(x) = {{c1::$2x$}}$\n  * \u2713 CORRECT: $f(x) = {{c1::2x}}$\n- PRIORITIZE hiding key terms, not full definitions\n\
+      - Focus on terminology that students need to understand deeply\n- Hide KEY TERMS or CRITICAL VALUES, not entire explanations\n\
+      - For equations: Hide PARTS of equations (variables, operators), not entire equations\n- CRITICAL: When mentioning an\
+      \ equation, include the equation but hide only key parts\n- Make cards educational - test understanding of concepts,\
+      \ not memorization\n- Each card must stand alone without external context\n- Focus on FUNDAMENTAL CONCEPTS from the\
+      \ document summary, not trivial details\n- Avoid cards about minor notation or parameters that don't aid understanding\n\
+      \nCLOZE CARD PRIORITIES (in order of importance):\n1. Definitions of technical terms and jargon\n2. What complex concepts\
+      \ mean or represent\n3. Key properties or characteristics of methods/algorithms\n4. Important relationships between\
+      \ concepts\n5. Significance or purpose of equations/formulas\n6. Critical distinctions between similar concepts\n\n\
+      CRITICAL MATH CLOZE RULES:\n- NEVER put dollar signs $ inside cloze deletions {{c1::...}}\n- If the whole line is in\
+      \ math mode, don't add $ inside the cloze\n- WRONG: \"The equation {{c1::$E = mc^2$}} expresses...\" (nested $)\n- CORRECT:\
+      \ \"The equation $E = {{c1::mc^2}}$ expresses...\" (hide part)\n- CORRECT: \"The derivative $\\frac{d}{dx}(x^2) = {{c1::2x}}$\"\
+      \ (no nested $)\n\nExample GOOD cloze cards with 1-5 word deletions:\n## Regularization in machine learning refers to\
+      \ {{c1::L1 and L2 penalties}} that prevent overfitting by limiting model complexity.\n\n- #machine-learning.regularization,\
+      \ #overfitting-prevention\n\n## A Directed Acyclic Graph (DAG) is a graph with {{c1::directed edges}} and {{c1::no cycles}},\
+      \ meaning you cannot return to the same node.\n\n- #graph-theory.dags, #data-structures\n\n## The backpropagation algorithm\
+      \ computes gradients using the {{c1::chain rule}} recursively from output to input layers.\n\n- #neural-networks.training,\
+      \ #optimization.gradients\n\n## In statistics, a p-value represents the probability of obtaining results at least as\
+      \ extreme as observed, assuming the {{c1::null hypothesis}} is true.\n\n- #statistics.hypothesis-testing, #p-values\n\
+      \n## The {{c1::vanishing gradient}} problem occurs when gradients become exponentially small as they propagate backwards\
+      \ through many layers.\n\n- #deep-learning.challenges, #neural-networks.gradients\n\n## Attention mechanisms compute\
+      \ {{c1::weighted combinations}} of input based on learned relevance scores.\n\n- #deep-learning.attention, #transformer-architecture\n\
+      \nExample BAD cloze cards to AVOID:\n- \"How can the choice of axis impact {{c1::perception}} in public health contexts?\"\
+      \ (Cloze card is a question!)\n- \"What does the term '30 excess deaths' mean based on {{c1::average risk comparisons}}?\"\
+      \ (Questions are for Q&A cards, not cloze!)\n- \"According to [12], the algorithm is {{c1::efficient}}\" (References\
+      \ external paper)\n- \"The original constraints are replaced by {{c1::continuous equality}}\" (What original constraints?)\n\
+      - \"As shown in Figure 3, performance {{c1::improves}}\" (No access to Figure 3)\n- \"The equation {{c1::describes relationships}}\
+      \ $E[X | Y] = f(Y)$\" (Equation is outside cloze!)\n- \"Using equation {{c1::MathJax}} to express dependencies\" (Meaningless\
+      \ placeholder)\n- \"The probability is \\[{{c1::p(x|\\mu,\\sigma^2) = \\frac{1}{\\sqrt{2\\pi\\sigma^2}}e^{-\\frac{(x-\\\
+      mu)^2}{2\\sigma^2}}}}\\]\" (Display math inside cloze!)\n- \"The equation \\[p(t|x,w,\\sigma^2)={{c1::\\mathcal{N}(t|y(x,w),\\\
+      sigma^2)}}\\]\" (Display math with cloze inside!)\n- \"Regularization refers to {{c1::techniques that add constraints\
+      \ or penalties to prevent overfitting}}\" (TOO LONG - more than 5 words!)\n\nCRITICAL FORMAT ERRORS TO AVOID:\n\u274C\
+      \ WRONG - Putting cloze in the back/answer:\n## In visual data, what function transforms density modes?\n\n{{c1::The\
+      \ sigmoid function}} transforms the modes.\n\n- #visualization\n\n\u274C WRONG - Q&A format with cloze in answer:\n\
+      ## What is the probability of data in Bayesian inference?\n\nThe marginal likelihood is {{c1::the integral over parameters}}.\n\
+      \n- #bayesian\n\n\u2705 CORRECT - All content in the front with cloze:\n## In visual data, {{c1::the sigmoid function}}\
+      \ transforms density modes as indicated by color curves.\n\n- #visualization, #sigmoid\n\n\u2705 CORRECT - Equation\
+      \ cloze all in front:\n## In Bayesian inference, the probability of data $p(\\mathcal{D})$ is computed using {{c1::marginalization}}.\n\
+      \n- #bayesian-inference, #probability\n\nGOOD alternatives for complex equations:\n- \"The Gaussian distribution has\
+      \ the form \\[p(x|\\mu,\\sigma^2) = \\frac{1}{\\sqrt{2\\pi\\sigma^2}}e^{-\\frac{(x-\\mu)^2}{2\\sigma^2}}\\] where the\
+      \ normalization factor is {{c1::1/\\sqrt{2\\pi\\sigma^2}}}\"\n- \"In linear regression, we model $p(t|x,w,\\sigma^2)\
+      \ = \\mathcal{N}(t|y(x,w),\\sigma^2)$, which means the target follows a {{c1::Gaussian distribution}} centered at the\
+      \ prediction y(x,w)\"\n\nREGULAR Q&A CARD FORMAT (YOU MUST CREATE {num_cards} OF THESE):\n## [MUST BE A QUESTION - start\
+      \ with What/How/Why/When/Which/Calculate/Explain/Compare]\n\n[Complete answer that doesn't reference external content]\n\
+      \n- #tag1, #tag2\n\nCRITICAL Q&A RULES:\n- EVERY regular card MUST ask a question in the ## header\n- NEVER use statements\
+      \ for regular cards (save statements for cloze cards only)\n- Include all necessary context IN THE QUESTION\n- Good\
+      \ question starters: \"What is...\", \"How does...\", \"Why does...\", \"Calculate...\", \"Explain how...\", \"Compare...\"\
+      \n- BAD: \"The significance of applying a change of variables to a Gaussian distribution\"\n- GOOD: \"What is the significance\
+      \ of applying a change of variables to a Gaussian distribution?\"\n\nExample GOOD regular cards WITH CONTEXT:\n## What\
+      \ is the time complexity of quicksort in the average case?\n\nThe average case time complexity of quicksort is O(n log\
+      \ n), where n is the number of elements to sort. This assumes random pivot selection and balanced partitions.\n\n- #algorithms.sorting,\
+      \ #complexity-analysis\n\n## How does gradient descent minimize a loss function?\n\nGradient descent iteratively updates\
+      \ parameters by moving in the direction opposite to the gradient. At each step, it computes the gradient of the loss\
+      \ function and updates parameters: \u03B8 = \u03B8 - \u03B1\u2207L(\u03B8), where \u03B1 is the learning rate.\n\n-\
+      \ #optimization, #machine-learning.algorithms\n\n## In polynomial regression with basis functions \u03C6\u2C7C(x) =\
+      \ x\u02B2 for j=0 to M, how does the design matrix \u03A6 relate inputs to the model?\n\nThe design matrix \u03A6 has\
+      \ shape N\xD7(M+1) where N is the number of data points. Each row i contains [1, x\u1D62, x\u1D62\xB2, ..., x\u1D62\u1D39\
+      ], transforming the input x\u1D62 into the polynomial basis. This allows linear regression in the transformed feature\
+      \ space.\n\n- #regression.polynomial, #linear-algebra.matrices\n\n## When using variational inference to approximate\
+      \ p(w|D) with q(w), what does the ELBO (evidence lower bound) represent?\n\nThe ELBO represents a lower bound on log\
+      \ p(D), the log marginal likelihood. It equals log p(D) - KL[q(w)||p(w|D)], so maximizing ELBO minimizes the KL divergence\
+      \ between the approximate and true posterior. It provides both a tractable optimization objective and a measure of approximation\
+      \ quality.\n\n- #bayesian-inference.variational, #optimization.objectives\n\nExample BAD regular cards to AVOID:\n##\
+      \ According to the paper, what is the main contribution?\n\n(Bad - which paper? Students don't have access to it)\n\n\
+      ## What does Table 3 show about performance?\n\n(Bad - students can't see Table 3)\n\n## In the context of the document,\
+      \ what does the equation $h(W) = 0$ represent?\n\n(Bad - \"in the context of the document\" is vague, and h is undefined)\n\
+      \n## What is the significance of Zheng et al.'s nonparametric model in DAG learning?\n\n(Bad - asks about specific authors\
+      \ instead of the concept)\n\n## What does SEM stand for, and how is it used in this context?\n\n(Bad - \"What does X\
+      \ stand for\" is rote memorization, and \"in this context\" is vague)\n\n## What approach does Lachapelle et al. use\
+      \ for causal inference?\n\n(Bad - focuses on authors rather than the method itself)\n\nCRITICAL REQUIREMENTS:\n1. YOU\
+      \ MUST generate EXACTLY {num_cloze} cloze deletion cards (with {{c1::...}} syntax)\n2. YOU MUST generate EXACTLY {num_cards}\
+      \ regular Q&A cards\n3. EVERY card MUST be completely self-contained - no external references\n4. EVERY card MUST have\
+      \ EXACTLY ONE tag line with AT LEAST 2 meaningful tags:\n   - FORMAT: \"- #tag1, #tag2\" (standard format - with dash\
+      \ before hashtag)\n   - Alternative \"#tag1, #tag2\" also acceptable but not preferred\n   - Stay consistent within\
+      \ a document\n   - NEVER duplicate tags anywhere in the card\n   - NEVER add a second tag line\n   - If you see yourself\
+      \ writing tags twice, STOP and fix it\n5. Tags should be hierarchical when appropriate (e.g., #algorithms.sorting, #optimization.gradient-based)\n\
+      \   IMPORTANT: Use hyphens (-) instead of underscores (_) in tags: #machine-learning NOT #machine_learning\n6. Never\
+      \ start the question with the citation - it will be added automatically\n7. WRITING STYLE:\n   - Write in complete,\
+      \ flowing sentences that read naturally\n   - Avoid terse, choppy statements that sound robotic\n   - Use transitional\
+      \ phrases to connect ideas\n   - Minimize parenthetical statements - integrate information naturally\n   - Ensure content\
+      \ sounds good when read aloud for audio generation\n7. EDUCATIONAL VALUE - PRIORITIZE creating cards about:\n   - KEY\
+      \ CONCEPTS AND FUNDAMENTAL PRINCIPLES from the document\n   - Mathematical equations that are IMPORTANT for understanding\
+      \ the subject\n   - Core algorithms and their purpose (not minor implementation details)\n   - Major theoretical results\
+      \ and their significance\n   - Statistical methods and their applications\n   - Avoid trivial notation questions (e.g.,\
+      \ \"what is \u03C0?\") - focus on concepts\n8. Use the document summary to identify WHAT'S IMPORTANT to teach\n9. Use\
+      \ LaTeX format: $ for inline math, $$ for display math (will be converted to MathJax for Anki)\n10. ALWAYS wrap math\
+      \ in $ or $$ delimiters - never leave raw LaTeX commands unwrapped\n11. NEVER use LaTeX tables (\\\\begin{{tabular}})\n\
+      12. CRITICAL for cloze + LaTeX: If ANY LaTeX/math ends with } inside cloze, add space before }}\n    Examples where\
+      \ space is REQUIRED:\n    - {{c1::\\mathbf{B}^{\\mathrm{T}} }} (ends with })\n    - {{c1::\\mathbf{A}^{-1} }} (ends\
+      \ with })\n    - {{c1::\\boldsymbol{\\Lambda} }} (ends with })\n    - {{c1::D + C A^{-1} B }} (ends with })\n    WRONG:\
+      \ {{c1::\\mathbf{B}^{\\mathrm{T}}}} (no space = broken rendering)\n    Example: {{c1::The formula $\\frac{a}{\\frac{b}{c}\
+      \ }$ shows...}} (note the space before })\n13. For cloze cards with :: in content: Use HTML comment\n    Example: {{c1::std:<!--\
+      \ -->:variant is a C++ feature}}\n14. For equation cloze cards: NEVER put $ inside cloze deletions\n    Example: \"\
+      The equation $E = {{c1::mc^2}}$ demonstrates...\" NOT \"The equation {{c1::$E = mc^2$}}\"\n15. CRITICAL LaTeX/MathJax\
+      \ rules for cloze cards:\n    - AVOID complex LaTeX inside cloze deletions - prefer simple expressions or conceptual\
+      \ answers\n    - NEVER use display math $$ inside cloze - use inline $ only\n    - For complex equations, put the cloze\
+      \ around the CONCEPT, not the formula\n    - Add parentheses around expressions: \"1 - \\cos\" \u2192 \"(1 - \\cos)\"\
+      \n    - Fix summation indices: NOT \"\\sum_{i=1}}^{m}}\" but \"\\sum_{i=1}^{m}\"\n    - Ensure balanced braces in LaTeX\
+      \ commands\n    - Maximum 1 cloze deletion per card (use {{c1::}})\n    - Keep entire mathematical expressions together\
+      \ in one cloze\n    - NEVER split cloze deletions across multiple lines\n16. Each card must teach a concept, not test\
+      \ memorization of references\n17. IMPORTANT: Focus on mathematical notation that MATTERS for understanding key concepts\n\
+      18. NEVER use generic tags like #equation, #formula, #definition, #concept, #method\n    Use specific conceptual tags:\
+      \ #optimization.gradient-descent, #causal-inference.dag, #machine-learning.regularization\n    TAG FORMAT RULES: \n\
+      \    - Use hyphens (-) not underscores (_) or spaces: #deep-learning NOT #deep_learning\n    - Both \"- #tag1, #tag2\"\
+      \ and \"#tag1, #tag2\" formats are valid\n19. ALWAYS define mathematical symbols within the card: \"where h is a smooth\
+      \ function\" not just \"h(W) = 0\"\n20. ALWAYS expand acronyms when first used: \"NAS (Neural Architecture Search)\"\
+      \ not just \"NAS\"\n21. For EVERY mathematical symbol or function (h, F, g_j, etc.), ensure the card defines what it\
+      \ represents\n22. Focus on WHAT methods do and HOW they work, not WHO proposed them\n23. Transform author-centric questions\
+      \ into concept-centric ones:\n    \u274C \"What is Zheng et al.'s approach?\" \n    \u2713 \"How does the nonparametric\
+      \ DAG learning method work?\"\n\nStart generating cards now. First generate all {num_cloze} cloze cards, then generate\
+      \ all {num_cards} regular cards."
+  audio:
+    transcript_cleaning: |-
+      Convert this text to be TTS-friendly:
+      1. Expand acronyms on first use
+      2. Convert math notation to words
+      3. Add pronunciation guides for technical terms
+      4. Ensure citation key is read at start of card
+
+      Text: {text}
+      Citation key: {citation_key}
+      Known acronyms: {acronyms}
+    lecture_system: |-
+      You are an expert educator creating an audio lecture from academic content.
+
+      WRITING STYLE:
+      Emulate the engaging, conversational style of popular science authors:
+      - Philip Ball (How Life Works) - Accessible explanations with narrative flow
+      - David Deutsch (The Beginning of Infinity) - Clear reasoning about complex ideas
+      - Douglas Hofstadter (GEB) - Playful exploration with deep insights
+      - Peter M Hoffmann (Life's Ratchet) - Vivid analogies and storytelling
+
+      Write as if you're explaining to an intellectually curious friend over coffee.
+
+      YOUR TASK:
+      Transform the provided academic text into an engaging, conversational audio lecture.
+
+      CRITICAL OUTPUT RULES:
+      1. NO LISTS: Never use numbered lists (1., 2., 3.) or bullet points (-)
+         - Convert to flowing narrative
+
+      2. NO LATEX: Convert ALL LaTeX to natural language for audio
+         - Tables: Replace with brief highlights ("For example, yeast has 16 chromosomes while...")
+         - Math symbols: Convert to words ("10%" not "$10 \%$", "alpha-tubulin" not "$\boldsymbol{\alpha}$-tubulin")
+         - Figures: Introduce naturally ("In the text, an image shows...")
+         - Footnotes: Convert to inline narrative, never use \footnotetext or \footnote
+         - Equations: Speak them naturally ("E equals m c squared" not "$E = mc^2$")
+         - NEVER output LaTeX commands like \begin{table}, \begin{figure}, \captionsetup, \caption, \hline, etc.
+
+      3. SKIP METADATA: Completely omit these sections:
+         - References sections (NEVER include)
+         - "Further Reading" sections (NEVER include)
+         - "Competing interests"
+         - Author affiliations and emails
+         - Bibliography and citations
+         - Acknowledgments
+
+      4. NO CITATIONS: Remove all inline citations
+         - NEVER include author citations like "(Smith et al., 2009)" or "Fernandez-Martinez and Rout, 2009"
+         - Instead describe the finding directly: "Research has shown..." or "Studies indicate..."
+         - Focus on the content, not who discovered it
+
+      5. TABLES: Summarize key highlights only
+         - NEVER read tables verbatim
+         - Pick 2-3 interesting examples from the table
+         - Example: "Looking at genome sizes, yeast species range from about 9 to 20 megabases, with S. cerevisiae at around 12 megabases"
+         - NEVER use LaTeX table syntax (\begin{tabular}, \hline, etc.)
+
+      6. FIGURES: Natural narrative integration
+         - Start with "In the text, an image shows..." or "Looking at a diagram, we can see..."
+         - Describe what's shown, not the figure itself
+         - Keep descriptions brief and relevant to the narrative
+
+      7. CONVERSATIONAL TONE:
+         - Explain to a curious student
+         - Use smooth transitions between ideas
+         - Vary sentence structure
+         - Write complete, flowing sentences
+
+      8. MARKDOWN ONLY: Output pure markdown
+         - NEVER use LaTeX commands or environments
+         - Convert all formatting to plain text or markdown
+         - Use ## for section headers if needed
+
+      9. CONCLUDE WITH SUMMARY:
+         - End with 3-5 main takeaways
+         - Wrap up the key concepts covered
+
+      10. TARGET LENGTH:
+          - Aim for 50% of source content
+          - Key concepts only, no exhaustive details
+    lecture_generation: |-
+      Begin your lecture on: {citation_key}
+
+      Content:
+      {content}
+    lecture_prefix: Begin your lecture on
+    lecture_max_section_tokens: 15000
+    lecture_context_tokens: 300

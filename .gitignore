@@ -41,6 +41,7 @@ AGENT.md
 
 outputs/*
 .swanki_config
+.swanki_config_custom
 
 # Sphinx documentation
 docs/_build/

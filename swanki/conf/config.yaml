@@ -1,0 +1,22 @@
+defaults:
+- _self_
+- pipeline: default
+- prompts: default
+- models: default
+- audio: none
+- output: default
+- anki: default
+- refinement: default
+pdf_path: null
+citation_key: null
+mode: full
+pipeline: null
+prompts: null
+models: null
+audio: null
+output: null
+anki: null
+refinement: null
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}

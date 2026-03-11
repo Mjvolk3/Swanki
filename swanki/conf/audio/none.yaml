@@ -1,0 +1,5 @@
+audio:
+  generate_complementary: false
+  generate_summary: false
+  generate_reading: false
+  generate_lecture: false

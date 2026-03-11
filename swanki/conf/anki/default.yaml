@@ -1,0 +1,9 @@
+anki:
+  enabled: false
+  deck_name: '{deck_name}'
+  host: 127.0.0.1
+  port: 8765
+  auto_send: false
+  update_existing: true
+  media_upload: true
+  card_format: with_audio

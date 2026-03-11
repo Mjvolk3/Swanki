@@ -156,18 +156,18 @@ Every step must satisfy all of the following before committing:
 
 ### Step 2: Config Refactor [[plan.config-refactor-less-clunky.plan-0]]
 
-- [ ] Create `swanki/conf/` with all YAML defaults (including `mode: full` from step 1)
-- [ ] Rename audio presets to self-documenting names
-- [ ] Implement `SwankiSearchPathPlugin` for three-tier resolution
-- [ ] Register plugin via `pyproject.toml` entry point
-- [ ] Update `@hydra.main(config_path=...)` in `__main__.py`
-- [ ] Delete `swanki/config/generator.py` (1360 lines)
-- [ ] Create `swanki/config/helpers.py`
-- [ ] Add `--show-defaults`, `--init-config`, `--config-info` CLI flags
-- [ ] Migrate `.swanki_config_custom/` contents to `~/.swanki/`
-- [ ] Add `swanki/conf/**/*.yaml` to `pyproject.toml` package data
-- [ ] Write unit tests for search path plugin, helpers
-- [ ] Quality gates pass
+- [x] Create `swanki/conf/` with all YAML defaults (including `mode: full` from step 1)
+- [x] Rename audio presets to self-documenting names
+- [x] Implement `SwankiSearchPathPlugin` for three-tier resolution
+- [x] Register plugin via `pyproject.toml` entry point
+- [x] Update `@hydra.main(config_path=...)` in `__main__.py`
+- [x] Delete `swanki/config/generator.py` (1360 lines)
+- [x] Create `swanki/config/helpers.py`
+- [x] Add `--show-defaults`, `--init-config`, `--config-info` CLI flags
+- [x] Migrate `.swanki_config_custom/` contents to `~/.swanki/`
+- [x] Add `swanki/conf/**/*.yaml` to `pyproject.toml` package data
+- [x] Write unit tests for search path plugin, helpers
+- [x] Quality gates pass
 - [ ] Commit: "Replace ConfigGenerator with three-tier config system"
 
 ### Step 3: Character Segmentation [[plan.optional-create-cards-per-char.plan-0]]
