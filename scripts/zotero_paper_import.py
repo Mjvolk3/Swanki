@@ -1,6 +1,7 @@
 
 import argparse
 import importlib.util
+import json
 import os
 import re
 import subprocess
@@ -105,6 +106,7 @@ class PrepareResult(BaseModel):
     clean_pdf: Path
     sh_script: Path
     used_llm: bool
+    si_start_page: int | None = None
 
 
 def connect(config: ZoteroConfig) -> zotero.Zotero:
@@ -375,9 +377,11 @@ def clean_pdf(output_dir: Path, citation_key: str) -> PrepareResult:
         print(f"  Keep range: pages {start + 1}-{end} of {total}")
 
     kept_pages = sum(end - start for start, end in keep_ranges)
+    si_start_page: int | None = None
 
     # Cut SI if present
     if si_pdf:
+        si_start_page = kept_pages
         si_ranges, si_total, _ = _get_keep_ranges(si_pdf)
         for i, (start, end) in enumerate(si_ranges):
             piece = output_dir / f"{citation_key}_si_range{i}.pdf"
@@ -395,6 +399,11 @@ def clean_pdf(output_dir: Path, citation_key: str) -> PrepareResult:
     sh_path = write_sh_script(output_dir, citation_key)
     print(f"  Created: {sh_path}")
 
+    # Write _meta.json with SI boundary info
+    meta_path = output_dir / f"{citation_key}_meta.json"
+    meta_path.write_text(json.dumps({"si_start_page": si_start_page}, indent=2))
+    print(f"  Created: {meta_path}")
+
     return PrepareResult(
         citation_key=citation_key,
         total_pages=total,
@@ -403,6 +412,7 @@ def clean_pdf(output_dir: Path, citation_key: str) -> PrepareResult:
         clean_pdf=clean_path,
         sh_script=sh_path,
         used_llm=used_llm,
+        si_start_page=si_start_page,
     )
 
 
