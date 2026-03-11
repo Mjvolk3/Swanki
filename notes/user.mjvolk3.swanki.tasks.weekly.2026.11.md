@@ -22,6 +22,8 @@ created: 1773142434234
 
 - [x] Added sequencing notes, per-step adjustments, and quality gates (mypy, docstrings, tests, sphinx, ruff) to all 5 refactor plans so each is aware of its position in the execution order. [[plan.audio-decoupling-from-cards.plan-0]] [[plan.config-refactor-less-clunky.plan-0]] [[plan.optional-create-cards-per-char.plan-0]] [[plan.lecture-transcript-refactor.plan-0]] [[plan.instructor-to-pydanticAI.plan-0]]
 - [x] Added migration risk section for self-critic and retry mechanisms with pointers to local instructor and pydantic-ai repo clones as reference for faithful replication. [[plan.instructor-to-pydanticAI.plan-0]]
+- [x] Created fine-grained WIP scratchpad with full call site inventory (21 LLM calls across 7 files) and per-phase checklists for the pydanticAI migration. [[plan.instructor-to-pydanticAI.wip]]
+- [x] Added `setup: worktree` VS Code task and fixed executable permission on `scripts/setup-worktree.sh`
 
 ***
 
