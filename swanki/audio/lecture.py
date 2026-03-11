@@ -239,6 +239,16 @@ Transcript to review:
 
 If issues found, list them specifically. Set done=False if refinement needed, done=True if acceptable."""
 
+    if si_reference_content:
+        critique_prompt += """
+
+SI BALANCE CHECK:
+- At least 50% of the section must cover main paper content.
+- At most 50% may be SI enrichment.
+- If SI dominates, set done=False and si_balance=False with feedback:
+  "SI content dominates this section — rebalance toward main paper."
+"""
+
     chunk_transcript = ""
 
     for attempt in range(max_retries):
