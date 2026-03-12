@@ -134,7 +134,30 @@ else
     echo "  ℹ No settings.local.json in main repo (skipping)"
 fi
 
-echo -e "\n${BLUE}6. Installing pre-commit hooks...${NC}"
+echo -e "\n${BLUE}6. Fixing relative paths in .claude/settings.json...${NC}"
+# settings.json uses "../X" relative paths that assume cwd is ~/projects/Swanki/.
+# In a worktree at ~/projects/Swanki.worktrees/<branch>/, "../" resolves to the wrong parent.
+# Fix: compute the correct relative path from worktree to the projects directory and rewrite.
+WT_SETTINGS="$WORKTREE_DIR/.claude/settings.json"
+if [ -f "$WT_SETTINGS" ]; then
+    PROJECTS_DIR="$(dirname "$MAIN_REPO")"
+    REL_TO_PROJECTS=$(python3 -c "import os; print(os.path.relpath('$PROJECTS_DIR', '$WORKTREE_DIR'))")
+    if [ "$REL_TO_PROJECTS" != ".." ]; then
+        # Only rewrite if the worktree is not at the same depth as the main repo
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s|\"\\.\\.\/|\"$REL_TO_PROJECTS/|g" "$WT_SETTINGS"
+        else
+            sed -i "s|\"\\.\\.\/|\"$REL_TO_PROJECTS/|g" "$WT_SETTINGS"
+        fi
+        echo "  ✓ Rewrote '../' → '$REL_TO_PROJECTS/' in settings.json"
+    else
+        echo "  ✓ Relative paths already correct (same depth as main repo)"
+    fi
+else
+    echo "  ℹ No .claude/settings.json found (skipping)"
+fi
+
+echo -e "\n${BLUE}7. Installing pre-commit hooks...${NC}"
 if command -v pre-commit &> /dev/null; then
     pre-commit install
     echo "  ✓ pre-commit hooks installed"
@@ -147,6 +170,7 @@ echo -e "\n${BLUE}How this works:${NC}"
 echo "  - .env is COPIED (not symlinked) from main repo with worktree-specific overrides"
 echo "  - .env.vscode sets PYTHONPATH to prioritize this worktree's code"
 echo "  - Claude Code auto memory symlinked to main repo (shared across worktrees)"
+echo "  - .claude/settings.json relative paths rewritten for worktree depth"
 echo "  - Other worktrees and main repo are NOT affected"
 echo -e "\n${BLUE}Verify worktree is active:${NC}"
 echo "  python -c 'import swanki; print(swanki.__file__)'"
