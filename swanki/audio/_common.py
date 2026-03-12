@@ -119,7 +119,7 @@ def text_to_speech(
         voice_settings=settings,
     )
 
-    data = b"".join(stream) if hasattr(stream, "__iter__") else stream
+    data: bytes = b"".join(stream) if hasattr(stream, "__iter__") else stream  # type: ignore[arg-type]
 
     if speed != 1.0:
         temp_path = output_path.with_suffix(".temp.mp3")

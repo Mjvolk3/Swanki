@@ -50,3 +50,7 @@ Replaced all instructor and direct OpenAI calls with pydantic-ai agents from `sw
 - `_refine_audio_transcript` uses shared `text_agent` (previously `response_model=None`).
 - `ImageProcessor` initialized with `model: str` instead of `self.instructor`.
 - Audio generation functions called without `openai_client` parameter.
+
+## 2026.03.12 - Add mypy type-narrowing asserts for ProcessingState
+
+Added `assert self.state is not None` after state initialization and before SI boundary reads. These help mypy narrow the `ProcessingState | None` union without runtime cost. Also added explicit type annotation `self.state: ProcessingState | None = None` in `__init__`.

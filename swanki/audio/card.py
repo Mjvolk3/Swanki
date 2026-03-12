@@ -372,7 +372,7 @@ def generate_card_audio(
     card.audio_front_transcript = front_transcript
     card.audio_back_transcript = back_transcript
 
-    card_uuid = card.card_id
+    card_uuid = card.card_id or str(card_index)
 
     if citation_key:
         front_filename = f"{citation_key}_{card_uuid}_front.mp3"

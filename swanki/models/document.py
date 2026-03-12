@@ -1,41 +1,22 @@
-"""Data models for document structure and content representation.
+"""
+swanki/models/document.py
+[[swanki.models.document]]
+https://github.com/Mjvolk3/Swanki/tree/main/swanki/models/document.py
+Test file: tests/test_models_validation.py
 
-This module defines data structures for representing document summaries
-and image content extracted from academic PDFs. These models are used
-throughout the processing pipeline to maintain structured information.
-
-Classes
--------
-ImageSummary
-    Summary and metadata for an extracted image
-DocumentSummary
-    Comprehensive summary of a document with metadata
-
-Examples
---------
->>> from swanki.models.document import DocumentSummary
->>> 
->>> summary = DocumentSummary(
-...     title="Deep Learning Fundamentals",
-...     authors=["Smith, J.", "Doe, A."],
-...     main_topic="Neural network architectures",
-...     key_contributions=["New activation function", "Improved backprop"],
-...     methodology="Experimental study with benchmarks",
-...     summary="This paper presents..." # 100-1500 words
-... )
+Data models for document structure and content representation.
 """
 
-from pydantic import BaseModel, Field, field_validator
-from typing import List, Optional, Dict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ImageSummary(BaseModel):
     """Structured summary and metadata for an extracted image.
-    
+
     Represents an image extracted from a document page, including its
     location, URL, descriptive summary, and any text content extracted
     from the image (such as equations or labels).
-    
+
     Parameters
     ----------
     page_idx : int
@@ -46,24 +27,17 @@ class ImageSummary(BaseModel):
         Detailed description of the image content (up to 300 words)
     extracted_text : str, optional
         Any text or equations extracted from the image via OCR
-    
-    Attributes
-    ----------
-    page_idx : int
-        Page index in source document
-    image_url : str
-        Image file location
-    summary : str
-        Descriptive summary
-    extracted_text : str or None
-        OCR-extracted text content
-    
-    Raises
+    alt_text : str
+        Alt text for the image
+    context : str
+        Surrounding text context from the source document
+
+    Raises:
     ------
     ValueError
-        If summary exceeds 150 words
-    
-    Examples
+        If summary exceeds 300 words
+
+    Examples:
     --------
     >>> image = ImageSummary(
     ...     page_idx=5,
@@ -72,29 +46,34 @@ class ImageSummary(BaseModel):
     ...     extracted_text="Input Layer -> Hidden Layer 1 -> Hidden Layer 2 -> Output"
     ... )
     """
+
+    model_config = ConfigDict(extra="forbid")
+
     page_idx: int
     image_url: str
     summary: str = Field(..., description="Detailed description (up to 300 words)")
-    extracted_text: Optional[str] = Field(None, description="Any text/equations in image")
-    
-    @field_validator('summary')
+    extracted_text: str | None = Field(None, description="Any text/equations in image")
+    alt_text: str = Field("", description="Alt text for the image")
+    context: str = Field("", description="Surrounding text context")
+
+    @field_validator("summary")
     def summary_length(cls, v):
         """Validate that image summary is reasonably sized.
-        
+
         Ensures the summary doesn't exceed 300 words to maintain
         clarity while allowing for detailed technical descriptions.
-        
+
         Parameters
         ----------
         v : str
             The summary text to validate
-        
-        Returns
+
+        Returns:
         -------
         str
             The validated summary text
-        
-        Raises
+
+        Raises:
         ------
         ValueError
             If summary exceeds 300 words
@@ -107,13 +86,13 @@ class ImageSummary(BaseModel):
 
 class DocumentSummary(BaseModel):
     """Comprehensive summary of a document with metadata.
-    
+
     Captures the essential information from an academic document including
     bibliographic data, key contributions, methodology, and a structured
     summary. Also maintains dictionaries of acronyms and technical terms
     for reference. Designed to create lecture-style summaries that help
     students deeply understand the material.
-    
+
     Parameters
     ----------
     title : str
@@ -138,8 +117,8 @@ class DocumentSummary(BaseModel):
         What students should understand after studying
     summary : str
         Comprehensive lecture-style summary (100-1500 words)
-    
-    Attributes
+
+    Attributes:
     ----------
     title : str
         Document title
@@ -163,14 +142,14 @@ class DocumentSummary(BaseModel):
         Learning goals
     summary : str
         Full summary text
-    
-    Raises
+
+    Raises:
     ------
     ValueError
         If summary is not between 500-1500 words
         If more than 5 key contributions provided
-    
-    Examples
+
+    Examples:
     --------
     >>> doc_summary = DocumentSummary(
     ...     title="Attention Is All You Need",
@@ -197,37 +176,48 @@ class DocumentSummary(BaseModel):
     ...     summary="This comprehensive lecture covers..." # 100-1500 word summary
     ... )
     """
+
     title: str
-    authors: List[str]
+    authors: list[str]
     main_topic: str
-    key_contributions: List[str] = Field(..., max_length=5)
+    key_contributions: list[str] = Field(..., max_length=5)
     methodology: str
-    acronyms: Dict[str, str] = Field(default_factory=dict, description="Acronym definitions")
-    technical_terms: Dict[str, str] = Field(default_factory=dict, description="Technical term definitions")
-    key_equations: List[str] = Field(default_factory=list, description="Important equations with explanations")
-    conceptual_framework: Optional[str] = Field(None, description="How concepts relate to each other")
-    learning_objectives: List[str] = Field(default_factory=list, description="What students should understand")
+    acronyms: dict[str, str] = Field(
+        default_factory=dict, description="Acronym definitions"
+    )
+    technical_terms: dict[str, str] = Field(
+        default_factory=dict, description="Technical term definitions"
+    )
+    key_equations: list[str] = Field(
+        default_factory=list, description="Important equations with explanations"
+    )
+    conceptual_framework: str | None = Field(
+        None, description="How concepts relate to each other"
+    )
+    learning_objectives: list[str] = Field(
+        default_factory=list, description="What students should understand"
+    )
     summary: str = Field(..., description="100-1500 word summary")
-    
-    @field_validator('summary')
+
+    @field_validator("summary")
     def summary_length(cls, v):
         """Validate document summary length.
-        
+
         Ensures the summary is appropriate for the document length.
         For shorter documents, allows shorter summaries while maintaining
         quality. For longer documents, encourages comprehensive coverage.
-        
+
         Parameters
         ----------
         v : str
             The summary text to validate
-        
-        Returns
+
+        Returns:
         -------
         str
             The validated summary text
-        
-        Raises
+
+        Raises:
         ------
         ValueError
             If summary is too short (<100 words) or too long (>1500 words)

@@ -1,17 +1,26 @@
+"""
+swanki/models/__init__.py
+[[swanki.models.__init__]]
+https://github.com/Mjvolk3/Swanki/tree/main/swanki/models/__init__.py
+Test file: tests/test_models_validation.py
+
+Pydantic data models for documents, cards, audio, and pipeline state.
+"""
+
+from .audio import AudioTranscript
 from .cards import (
-    PlainCard, 
-    CardContent, 
-    CardGenerationResponse, 
-    ImageCard, 
-    ImageCardContent,
-    CardFeedback,
     AudioTranscriptFeedback,
-    RefinementHistory,
+    CardContent,
+    CardFeedback,
+    CardGenerationResponse,
+    CardIssue,
     EnhancedCardGenerationResponse,
-    CardIssue
+    ImageCard,
+    ImageCardContent,
+    PlainCard,
+    RefinementHistory,
 )
 from .document import DocumentSummary, ImageSummary
-from .audio import AudioTranscript
 from .pipeline import ProcessingState
 
 __all__ = [
@@ -21,7 +30,7 @@ __all__ = [
     "ImageCard",
     "ImageCardContent",
     "CardFeedback",
-    "AudioTranscriptFeedback", 
+    "AudioTranscriptFeedback",
     "RefinementHistory",
     "EnhancedCardGenerationResponse",
     "CardIssue",

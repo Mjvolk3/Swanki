@@ -21,17 +21,6 @@ from swanki.config.helpers import (
 from swanki.pipeline import Pipeline
 
 
-def legacy_main() -> None:
-    """Run legacy CLI for backward compatibility.
-
-    Delegates to the original legacy CLI implementation to support
-    older command formats and scripts that depend on them.
-    """
-    from swanki.legacy.__main__legacy import main as legacy_cli_main
-
-    legacy_cli_main()  # type: ignore[no-untyped-call]
-
-
 def process_with_config(cfg: DictConfig) -> None:
     """Process PDF with the given Hydra configuration.
 
@@ -80,28 +69,14 @@ def cli_main(cfg: DictConfig) -> None:
     Args:
         cfg: Hydra configuration merged from config files and CLI.
     """
-    if len(sys.argv) > 1 and (
-        "-f" in sys.argv
-        or "--file" in sys.argv
-        or "-n" in sys.argv
-        or "--num-cards" in sys.argv
-    ):
-        print("Detected legacy command format. Using legacy mode...")
-        legacy_main()
-        return
-
     process_with_config(cfg)
 
 
 def send_to_anki_command() -> None:
-    """Send existing markdown cards to Anki.
+    """Send existing markdown cards to Anki via the modern send_to_anki module."""
+    from swanki.send_to_anki import main as send_to_anki_main
 
-    Delegates to the legacy md_to_anki command which handles
-    parsing markdown files and sending cards via AnkiConnect.
-    """
-    from swanki.legacy.md_to_anki import main as md_to_anki_main
-
-    md_to_anki_main()
+    send_to_anki_main()
 
 
 def main() -> None:
@@ -112,7 +87,6 @@ def main() -> None:
     - ``--init-config``: copy defaults to ``~/.swanki/``
     - ``--config-info``: show all config locations
     - ``--send-to-anki``: send cards to Anki
-    - ``--legacy``: legacy CLI
     - default: Hydra-based processing
     """
     if "--send-to-anki" in sys.argv:
@@ -163,16 +137,11 @@ Examples:
   swanki pdf_path=paper.pdf citation_key=smith2023 +output_dir=smith2023_CH5
   swanki pdf_path=paper.pdf citation_key=smith2023 mode=audio_only audio=lecture
   swanki pdf_path=paper.pdf citation_key=smith2023 anki=auto_send
-  swanki --legacy -f paper.pdf --citation-key @smith2023 --num-cards 3
   swanki --send-to-anki path/to/cards.md --send --host 127.0.0.1 --port 8765
 """)
         sys.exit(0)
 
-    if "--legacy" in sys.argv:
-        sys.argv.remove("--legacy")
-        legacy_main()
-    else:
-        cli_main()
+    cli_main()
 
 
 if __name__ == "__main__":

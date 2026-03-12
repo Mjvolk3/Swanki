@@ -6,6 +6,7 @@ updated: 1773622820303
 updated: 1773322944373
 updated: 1773269920361
 updated: 1773322264312
+updated: 1773333750152
 created: 1773142434234
 ---
 ## 2026.03.10
@@ -54,7 +55,7 @@ created: 1773142434234
 
 - [x] Implemented Step 5 (pydantic-ai migration) of major refactor: created `swanki/llm/` agent registry with 6 agents, replaced all 21 instructor/OpenAI call sites across 7 files with pydantic-ai `agent.run_sync()`, removed instructor/tenacity deps, added anthropic.yaml preset, and updated all test mocks [[plan.instructor-to-pydanticAI.wip]] [[swanki.llm.agents#20260312---centralized-pydantic-ai-agent-registry]] [[swanki.pipeline.pipeline#20260312---migrate-from-instructoropenai-to-pydantic-ai-agents]] [[swanki.audio.card#20260312---migrate-from-openai-client-to-pydantic-ai-agents]] [[swanki.audio.lecture#20260312---migrate-from-instructoropenai-to-pydantic-ai-agents]] [[swanki.processing.image_processor#20260312---migrate-from-openai-client-to-pydantic-ai-agents-and-modernize-code]]
 - [x] Fixed all ruff errors and mypy --strict issues across migrated files: rewrote image_processor.py with modern types and Google-style docstrings, added missing type stubs to pyproject.toml ignore list, added class docstrings to PageLabel/PDFCutPlan [[swanki.processing.image_processor#20260312---migrate-from-openai-client-to-pydantic-ai-agents-and-modernize-code]] [[swanki.utils.pdf_classifier#20260312---migrate-from-instructor-to-pydantic-ai-and-add-docstrings]]
-- [ ] `major-refactor` clean up continued. Improving tests, docs, relying on mypy strict, ruff formatter, dendron `py-notes` etc.
+- [ ]  [[plan.major-refactor-sequence-cleanup.plan-0]]
 
 ***
 

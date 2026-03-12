@@ -63,7 +63,7 @@ ignore = ["E501"]
 # Frontmatter docstrings (path, dendron link, github URL) aren't Google-style summaries
 "**" = ["D205", "D212", "D415"]
 # Test files: pytest hooks and __init__.py don't need docstrings
-"tests/**" = ["D103", "D104"]
+"tests/**" = ["D100", "D101", "D102", "D103", "D104"]
 # Utility scripts: small single-purpose tools, docstrings optional
 "notes/assets/scripts/**" = ["D100", "D103"]
 
@@ -121,6 +121,7 @@ patch_tags = ["BLD", "BUG", "MAINT"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
+plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = "tests.*"
@@ -135,7 +136,7 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["swanki.audio.*", "swanki.pipeline.*", "swanki.presentation.*", "swanki.models.*"]
 disallow_untyped_calls = false
-disable_error_code = ["arg-type", "call-arg", "call-overload", "var-annotated", "type-arg", "unused-ignore", "assignment", "attr-defined", "no-any-return", "no-untyped-def"]
+disable_error_code = ["call-overload", "var-annotated", "type-arg", "unused-ignore", "assignment", "no-any-return", "no-untyped-def"]
 
 [tool.pytest.ini_options]
 markers = [

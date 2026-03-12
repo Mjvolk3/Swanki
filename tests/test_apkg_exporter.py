@@ -1,7 +1,6 @@
 """Tests for the ApkgExporter (.apkg direct export)."""
 
 import json
-import os
 import sqlite3
 import tempfile
 import zipfile
@@ -9,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from swanki.processing.apkg_exporter import ApkgExporter, _guid, _stable_id
+from swanki.processing.apkg_exporter import ApkgExporter
 
 
 @pytest.fixture
@@ -191,7 +190,7 @@ def test_export_from_file(exporter, tmp_dir):
 
 
 def test_col_table_has_valid_json(exporter, tmp_dir):
-    """col table should have parseable JSON for models, decks, dconf."""
+    """Col table should have parseable JSON for models, decks, dconf."""
     cards = [{"front": "Q", "back": "A", "tags": []}]
     out = tmp_dir / "schema.apkg"
     exporter.export_from_cards(cards, out, tmp_dir)
@@ -230,7 +229,7 @@ def test_cloze_model_type_is_1(exporter, tmp_dir):
 
 
 def test_flds_uses_unit_separator(exporter, tmp_dir):
-    """notes.flds should use \\x1f as field delimiter."""
+    r"""notes.flds should use \x1f as field delimiter."""
     cards = [{"front": "Front text", "back": "Back text", "tags": []}]
     out = tmp_dir / "flds.apkg"
     exporter.export_from_cards(cards, out, tmp_dir)

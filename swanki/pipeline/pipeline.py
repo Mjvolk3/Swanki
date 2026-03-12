@@ -144,7 +144,7 @@ class Pipeline:
         Loads environment variables and initializes state.
         """
         self.config = config
-        self.state = None
+        self.state: ProcessingState | None = None
 
         # Load environment variables
         load_dotenv()
@@ -196,6 +196,7 @@ class Pipeline:
         self.state = ProcessingState(
             pdf_path=pdf_path, citation_key=citation_key, current_stage="initialization"
         )
+        assert self.state is not None  # Set above; helps mypy narrow type
 
         # Create output directory based on output_dir or citation key with auto-increment if exists
         base_name = (
@@ -1987,6 +1988,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             )
 
             # Read SI boundary from _meta.json if available
+            assert self.state is not None
             meta_path = self.state.pdf_path.parent / f"{self.citation_key}_meta.json"
             si_start_page = None
             if meta_path.exists():
