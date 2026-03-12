@@ -1,7 +1,9 @@
-"""LLM-based PDF page classifier for smart cutting.
+"""
+swanki/utils/pdf_classifier.py
+[[swanki.utils.pdf_classifier]]
+https://github.com/Mjvolk3/Swanki/tree/main/swanki/utils/pdf_classifier.py
 
-Classifies each page of a PDF as keep/cut based on educational value,
-producing a cut plan with potentially multiple keep-ranges.
+LLM-based PDF page classifier for smart cutting.
 """
 
 import warnings
@@ -12,12 +14,16 @@ from PyPDF2 import PdfReader
 
 
 class PageLabel(BaseModel):
+    """Single page classification with label and keep/cut decision."""
+
     page: int  # 1-indexed
     label: str  # "content" | "references" | "acknowledgments" | "author_info" | "supplementary"
     keep: bool  # educational value?
 
 
 class PDFCutPlan(BaseModel):
+    """LLM-generated plan for which PDF pages to keep or cut."""
+
     pages: list[PageLabel]
     keep_ranges: list[tuple[int, int]]  # 0-indexed [start, end) ranges to KEEP
 
@@ -61,7 +67,7 @@ def _extract_page_previews(pdf_path: Path, max_lines: int = 5) -> list[str]:
     previews = []
     for page in reader.pages:
         text = page.extract_text() or ""
-        lines = [l.strip() for l in text.split("\n") if l.strip()][:max_lines]
+        lines = [line.strip() for line in text.split("\n") if line.strip()][:max_lines]
         previews.append("\n".join(lines))
     return previews
 
@@ -74,15 +80,12 @@ def classify_pdf(pdf_path: Path) -> PDFCutPlan:
     for i, preview in enumerate(previews):
         user_msg += f"--- Page {i + 1} ---\n{preview}\n\n"
 
-    import instructor
-    from openai import OpenAI
+    from pydantic_ai import Agent
 
-    client = instructor.from_openai(OpenAI())
-    return client.chat.completions.create(
-        model="gpt-5-nano",
-        response_model=PDFCutPlan,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_msg},
-        ],
+    pdf_cut_agent: Agent[None, PDFCutPlan] = Agent(output_type=PDFCutPlan, retries=3)
+    result = pdf_cut_agent.run_sync(
+        user_msg,
+        instructions=SYSTEM_PROMPT,
+        model="openai:gpt-5-nano",
     )
+    return result.output  # type: ignore[no-any-return]

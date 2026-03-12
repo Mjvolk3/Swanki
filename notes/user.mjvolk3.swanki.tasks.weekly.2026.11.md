@@ -5,6 +5,7 @@ desc: ''
 updated: 1773622820303
 updated: 1773322944373
 updated: 1773269920361
+updated: 1773322264312
 created: 1773142434234
 ---
 ## 2026.03.10
@@ -48,6 +49,8 @@ created: 1773142434234
 - [x] Implemented Step 2 (config refactor) of major refactor: replaced 1354-line `ConfigGenerator` with static YAML defaults in `swanki/conf/`, three-tier Hydra SearchPathPlugin (package/global/local), config helpers, renamed audio presets to self-documenting names, migrated custom configs to `~/.swanki/`, added `--show-defaults`/`--init-config`/`--config-info` CLI flags, and 16 unit tests [[plan.config-refactor-less-clunky.plan-0]] [[swanki.config.helpers#20260311---new-config-utility-module]] [[swanki.config.hydra_plugins#20260311---new-three-tier-hydra-searchpathplugin]] [[swanki.config.generator#20260311---add-mode-key-and-lecture_only-audio-preset]] [[tests.test_config_helpers#20260311---new-test-suite-for-config-helpers]] [[tests.test_hydra_plugins#20260311---new-test-suite-for-swankisearchpathplugin]]
 - [x] Implemented Step 3 (character segmentation) of major refactor: created `segmenter.py` with 4 utility functions for char-based segmentation, added segmentation stage and document-order interleaving to `process_full()`, deleted 333 lines of dead code (`generate_cards_with_context`), renamed config keys to segment terminology, and wrote 11 unit tests [[plan.optional-create-cards-per-char.plan-0]] [[swanki.pipeline.segmenter#20260311---new-module-for-character-based-segmentation]] [[swanki.pipeline.pipeline#20260311---add-character-based-segmentation-mode-for-card-generation]] [[tests.test_segmenter#20260311---initial-test-suite-for-segmenter-module]] [[tests.test_pipeline_mode#20260311---update-mock-for-segment-rename]]
 - [x] Implemented Step 4 (lecture transcript refactor) of major refactor: tracked SI boundary in `_meta.json`, removed per-section word budgets in favor of global ratio-based length control, broadened `chunk_by_headers()` to match unnumbered headers, added SI splitting/indexing/contextual enrichment with `build_si_index()` and `extract_relevant_si()`, SI proportion constraint in critique, `si_balance` on feedback model, pipeline reads `_meta.json`, and 11 new unit tests [[plan.lecture-transcript-refactor.plan-0]] [[swanki.audio.lecture]] [[swanki.models.cards]] [[swanki.pipeline.pipeline]] [[tests.test_audio_lecture]]
+
+- [ ] `major-refactor` clean up. Fix all mypy strict related issus. fix ruff errors. Before running some tests with our API we want to really clean up the code base. Improving tests, docs, relying on mypy strict, ruff formatter, dendron `py-notes` etc.
 
 ***
 

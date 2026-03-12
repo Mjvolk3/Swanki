@@ -14,8 +14,8 @@ from pathlib import Path
 from string import Template
 
 import tiktoken
-from openai import OpenAI
 
+from ..llm.agents import lecture_critic_agent, text_agent
 from ..models.cards import LectureTranscriptFeedback
 from ..utils.formatting import humanize_citation_key
 from ._common import (
@@ -32,22 +32,18 @@ logger = logging.getLogger(__name__)
 def critique_transcript_chunks(
     transcript: str,
     critique_prompt: str,
-    instructor_client: OpenAI,
-    model: str = "gpt-5",
+    model: str = "openai:gpt-5",
     chunk_size: int = 8000,
     max_chunks: int = 5,
-    max_retries: int = 3,
 ) -> LectureTranscriptFeedback:
     """Critique transcript by sampling multiple chunks for comprehensive feedback.
 
     Args:
         transcript: Full transcript to critique.
         critique_prompt: Prompt template with {transcript} and {position} placeholders.
-        instructor_client: OpenAI client patched with instructor.
-        model: Model to use for critique.
+        model: pydantic-ai model string.
         chunk_size: Characters per chunk.
         max_chunks: Maximum chunks to sample.
-        max_retries: Retries per chunk.
 
     Returns:
         Combined feedback with done=False if any chunk has issues.
@@ -68,24 +64,15 @@ def critique_transcript_chunks(
         chunk_escaped = chunk.replace("{", "{{").replace("}", "}}")
 
         try:
-            critique = instructor_client.chat.completions.create(
+            result = lecture_critic_agent.run_sync(
+                critique_prompt.format(
+                    transcript=chunk_escaped,
+                    position=f"Characters {start_pos}-{start_pos + len(chunk)}",
+                ),
+                instructions="You are an expert educational content reviewer.",
                 model=model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert educational content reviewer.",
-                    },
-                    {
-                        "role": "user",
-                        "content": critique_prompt.format(
-                            transcript=chunk_escaped,
-                            position=f"Characters {start_pos}-{start_pos + len(chunk)}",
-                        ),
-                    },
-                ],
-                response_model=LectureTranscriptFeedback,
-                max_retries=max_retries,
             )
+            critique = result.output
 
             if not critique.done:
                 all_done = False
@@ -201,8 +188,6 @@ def generate_and_validate_chunk(
     previous_context: str,
     system_prompt: str,
     citation_key: str,
-    openai_client: OpenAI,
-    instructor_client: OpenAI,
     model: str,
     max_retries: int = 2,
     si_reference_content: str | None = None,
@@ -215,9 +200,7 @@ def generate_and_validate_chunk(
         previous_context: Context from previous section.
         system_prompt: System prompt with lecture instructions.
         citation_key: Humanized citation key.
-        openai_client: Regular OpenAI client for generation.
-        instructor_client: Instructor-patched client for validation.
-        model: Model for generation and critique.
+        model: pydantic-ai model string.
         max_retries: Maximum retry attempts.
         si_reference_content: Relevant SI content for this section.
 
@@ -276,62 +259,39 @@ SI BALANCE CHECK:
 
         max_completion_tokens = 10000
 
-        response = openai_client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-            ],
-            max_completion_tokens=max_completion_tokens,
-        )
-
-        chunk_transcript = (
-            response.choices[0].message.content.strip()
-            if response.choices[0].message.content
-            else ""
-        )
-        finish_reason = response.choices[0].finish_reason
+        try:
+            gen_result = text_agent.run_sync(
+                user_message,
+                instructions=system_prompt,
+                model=model,
+                model_settings={"max_tokens": max_completion_tokens},
+            )
+            chunk_transcript = gen_result.output.strip()
+        except Exception as e:
+            logger.error(f"Section '{section_title}' generation failed: {e}")
+            chunk_transcript = ""
 
         logger.info(
             f"Section '{section_title}' response: "
             f"content_length={len(chunk_transcript)}, "
-            f"finish_reason={finish_reason}, "
             f"max_completion_tokens={max_completion_tokens}"
         )
 
         if not chunk_transcript:
-            logger.error(
-                f"Section '{section_title}' returned EMPTY content! "
-                f"finish_reason={finish_reason}, "
-                f"has_refusal={hasattr(response.choices[0].message, 'refusal') and response.choices[0].message.refusal is not None}"
-            )
-            if (
-                hasattr(response.choices[0].message, "refusal")
-                and response.choices[0].message.refusal
-            ):
-                logger.error(f"Refusal reason: {response.choices[0].message.refusal}")
+            logger.error(f"Section '{section_title}' returned EMPTY content!")
 
         # Immediate critique
         try:
             chunk_escaped = chunk_transcript.replace("{", "{{").replace("}", "}}")
 
-            critique = instructor_client.chat.completions.create(
+            critique_result = lecture_critic_agent.run_sync(
+                critique_prompt.format(
+                    transcript=chunk_escaped,
+                ),
+                instructions="You are an expert educational content reviewer.",
                 model=model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert educational content reviewer.",
-                    },
-                    {
-                        "role": "user",
-                        "content": critique_prompt.format(
-                            transcript=chunk_escaped,
-                        ),
-                    },
-                ],
-                response_model=LectureTranscriptFeedback,
-                max_retries=2,
             )
+            critique = critique_result.output
 
             if critique.done:
                 logger.info(f"Section '{section_title}' passed validation")
@@ -355,10 +315,9 @@ def generate_lecture_audio(
     markdown_files: list[Path],
     image_summaries: list[str],
     output_path: Path,
-    openai_client: OpenAI,
     elevenlabs_api_key: str,
     voice_id: str | None = None,
-    model: str = "gpt-5-mini",
+    model: str = "openai:gpt-5-mini",
     citation_key: str | None = None,
     lecture_prompt_config: dict | None = None,
     speed: float = 1.0,
@@ -370,10 +329,9 @@ def generate_lecture_audio(
         markdown_files: Cleaned markdown file paths in order.
         image_summaries: Image summary strings to embed.
         output_path: Path for the output MP3 file.
-        openai_client: OpenAI client for transcript generation.
         elevenlabs_api_key: ElevenLabs API key.
         voice_id: Voice ID (defaults to DEFAULT_VOICE_ID).
-        model: OpenAI model to use.
+        model: pydantic-ai model string (e.g. ``"openai:gpt-5-mini"``).
         citation_key: Citation key to include in lecture.
         lecture_prompt_config: Custom prompt config with 'lecture_system'
             and 'lecture_prefix' keys.
@@ -493,47 +451,20 @@ def generate_lecture_audio(
                 f"{si_content[:3000]}"
             )
 
-        lecture_transcript = None
-        for attempt in range(max_retries):
-            try:
-                response = openai_client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": full_system_prompt},
-                        {"role": "user", "content": user_message},
-                    ],
-                    max_completion_tokens=10000,
-                )
-
-                if (
-                    response.choices
-                    and len(response.choices) > 0
-                    and response.choices[0].message.content
-                ):
-                    lecture_transcript = response.choices[0].message.content.strip()
-                    if lecture_transcript:
-                        break
-                    else:
-                        logger.warning(
-                            f"Attempt {attempt + 1}: Returned empty lecture transcript"
-                        )
-                else:
-                    logger.warning(
-                        f"Attempt {attempt + 1}: Returned malformed response for lecture"
-                    )
-
-            except Exception as e:
-                logger.warning(
-                    f"Attempt {attempt + 1}: Error generating lecture transcript: {e}"
-                )
-
-            if attempt < max_retries - 1:
-                time.sleep(2**attempt)
+        try:
+            gen_result = text_agent.run_sync(
+                user_message,
+                instructions=full_system_prompt,
+                model=model,
+                model_settings={"max_tokens": 10000},
+            )
+            lecture_transcript = gen_result.output.strip()
+        except Exception as e:
+            logger.error(f"Error generating lecture transcript: {e}")
+            lecture_transcript = ""
 
         if not lecture_transcript:
-            logger.error(
-                f"Failed to generate lecture transcript after {max_retries} attempts, using original"
-            )
+            logger.error("Failed to generate lecture transcript, using original")
             lecture_transcript = section_content
 
         full_transcript = lecture_transcript
@@ -544,10 +475,6 @@ def generate_lecture_audio(
 
         total_source_words = len(cleaned_content.split())
         cumulative_output_words = 0
-
-        import instructor
-
-        instructor_client = instructor.from_openai(openai_client)
 
         for section_idx, (section_title, section_content, _) in enumerate(
             semantic_chunks
@@ -575,8 +502,6 @@ def generate_lecture_audio(
                 previous_context=previous_context,
                 system_prompt=full_system_prompt,
                 citation_key=humanized_key,
-                openai_client=openai_client,
-                instructor_client=instructor_client,
                 model=model,
                 max_retries=2,
                 si_reference_content=si_ref,
@@ -626,7 +551,6 @@ def generate_lecture_audio(
     full_transcript = _refine_transcript(
         full_transcript,
         full_system_prompt,
-        openai_client,
         model,
         citation_key,
         transcripts_dir,
@@ -947,7 +871,6 @@ PROVIDE THE COMPLETE REVISED TRANSCRIPT:""")
 def _refine_transcript(
     full_transcript: str,
     full_system_prompt: str,
-    openai_client: OpenAI,
     model: str,
     citation_key: str | None,
     transcripts_dir: Path,
@@ -957,10 +880,6 @@ def _refine_transcript(
     source_words: int = 0,
 ) -> str:
     """Run iterative critique-and-refine loop on the transcript."""
-    import instructor
-
-    instructor_client = instructor.patch(openai_client)
-
     max_iterations = 3
     current_transcript = full_transcript
     critique_feedback = None
@@ -983,35 +902,24 @@ def _refine_transcript(
         transcript_escaped = current_transcript.replace("{", "{{").replace("}", "}}")
 
         try:
-            critique_feedback = instructor_client.chat.completions.create(
+            critique_result = lecture_critic_agent.run_sync(
+                _CRITIQUE_PROMPT.format(
+                    transcript=transcript_escaped,
+                    position="Full document",
+                ),
+                instructions="You are an expert educational content reviewer.",
                 model=model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert educational content reviewer.",
-                    },
-                    {
-                        "role": "user",
-                        "content": _CRITIQUE_PROMPT.format(
-                            transcript=transcript_escaped,
-                            position="Full document",
-                        ),
-                    },
-                ],
-                response_model=LectureTranscriptFeedback,
-                max_retries=max_retries,
             )
+            critique_feedback = critique_result.output
         except Exception as e:
             logger.warning(f"Error critiquing full transcript: {e}")
             logger.info("Falling back to chunked critique...")
             critique_feedback = critique_transcript_chunks(
                 transcript=current_transcript,
                 critique_prompt=_CRITIQUE_PROMPT,
-                instructor_client=instructor_client,
                 model=model,
                 chunk_size=8000,
                 max_chunks=10,
-                max_retries=max_retries,
             )
 
         if critique_feedback.done:
@@ -1054,41 +962,17 @@ def _refine_transcript(
                     transcript=chunk,
                 )
 
-                refined_chunk = None
-
-                for attempt in range(max_retries):
-                    try:
-                        refinement = openai_client.chat.completions.create(
-                            model=model,
-                            messages=[
-                                {"role": "system", "content": full_system_prompt},
-                                {"role": "user", "content": refinement_prompt},
-                            ],
-                            max_completion_tokens=max_output_tokens,
-                        )
-
-                        if (
-                            refinement.choices
-                            and len(refinement.choices) > 0
-                            and refinement.choices[0].message.content
-                        ):
-                            refined_chunk = refinement.choices[
-                                0
-                            ].message.content.strip()
-                            if refined_chunk:
-                                break
-                        else:
-                            logger.warning(
-                                f"Attempt {attempt + 1}: Empty refinement response"
-                            )
-
-                    except Exception as e:
-                        logger.warning(
-                            f"Attempt {attempt + 1}: Error during refinement: {e}"
-                        )
-
-                    if attempt < max_retries - 1:
-                        time.sleep(2**attempt)
+                try:
+                    refine_result = text_agent.run_sync(
+                        refinement_prompt,
+                        instructions=full_system_prompt,
+                        model=model,
+                        model_settings={"max_tokens": max_output_tokens},
+                    )
+                    refined_chunk = refine_result.output.strip()
+                except Exception as e:
+                    logger.warning(f"Error during refinement: {e}")
+                    refined_chunk = ""
 
                 if not refined_chunk:
                     logger.error("Failed to refine chunk, using original")

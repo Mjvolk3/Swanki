@@ -28,7 +28,7 @@ dependencies = [
     "hydra-core",
     "omegaconf",
     "pydantic>=2.0",
-    "instructor",
+    "pydantic-ai>=0.1",
     "pyyaml",
     "elevenlabs",
     "pydub",
@@ -129,7 +129,7 @@ disallow_untyped_calls = false
 disallow_untyped_decorators = false
 
 [[tool.mypy.overrides]]
-module = ["pydub", "pydub.*", "tiktoken", "tiktoken.*", "elevenlabs", "elevenlabs.*", "instructor", "instructor.*", "PIL", "PIL.*"]
+module = ["pydub", "pydub.*", "tiktoken", "tiktoken.*", "elevenlabs", "elevenlabs.*", "pydantic_ai", "pydantic_ai.*", "PyPDF2", "PyPDF2.*", "PIL", "PIL.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

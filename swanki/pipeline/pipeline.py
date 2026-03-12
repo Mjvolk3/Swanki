@@ -14,16 +14,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-import instructor
 from dotenv import load_dotenv
-from openai import OpenAI
 from pydantic import ValidationError
-from tenacity import (
-    Retrying,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
 
 # Import audio utilities
 from ..audio import (
@@ -31,6 +23,14 @@ from ..audio import (
     generate_lecture_audio,
     generate_reading_audio,
     generate_summary_audio,
+)
+from ..llm.agents import (
+    audio_feedback_agent,
+    card_feedback_agent,
+    card_gen_agent,
+    document_summary_agent,
+    get_model_string,
+    text_agent,
 )
 from ..models import (
     AudioTranscriptFeedback,
@@ -84,8 +84,6 @@ class Pipeline:
     ----------
     config : Dict[str, Any]
         Configuration dictionary
-    instructor : instructor.Instructor
-        Patched OpenAI client for structured outputs
     state : ProcessingState or None
         Current processing state tracker
     data_dir : Path
@@ -143,10 +141,9 @@ class Pipeline:
         Notes:
         -----
         Loads environment variables including SWANKI_DATA for output directory.
-        Initializes OpenAI client with instructor for structured outputs.
+        Loads environment variables and initializes state.
         """
         self.config = config
-        self.instructor = instructor.patch(OpenAI())
         self.state = None
 
         # Load environment variables
@@ -559,8 +556,11 @@ class Pipeline:
         ImageProcessor : Handles image extraction and summarization
         ImageSummary : Data model for image information
         """
-        # Initialize processor with OpenAI client if available
-        processor = ImageProcessor(self.output_base, self.instructor)
+        # Initialize processor with model string
+        models_config = self.config.get("models", {}).get("models", {})
+        llm_config = models_config.get("llm", {})
+        model_string = get_model_string(llm_config)
+        processor = ImageProcessor(self.output_base, model_string)
 
         # Process all images
         try:
@@ -686,25 +686,18 @@ Image summaries:
 {image_summaries}""",
         )
 
-        # Generate summary using instructor
+        # Generate summary using pydantic-ai
         models_config = self.config.get("models", {}).get("models", {})
         llm_config = models_config.get("llm", {})
-        response = self.instructor.chat.completions.create(
-            model=llm_config.get("model", "gpt-4"),
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": user_prompt.format(
-                        content=combined_content, image_summaries=image_summary_text
-                    ),
-                },
-            ],
-            response_model=DocumentSummary,
-            max_retries=llm_config.get("max_retries", 3),
+        result = document_summary_agent.run_sync(
+            user_prompt.format(
+                content=combined_content, image_summaries=image_summary_text
+            ),
+            instructions=system_prompt,
+            model=get_model_string(llm_config),
         )
 
-        return response
+        return result.output
 
     def _detect_math_density(self, content: str) -> float:
         """Detect the density of mathematical content in text.
@@ -890,23 +883,12 @@ MATHEMATICAL CONTENT PRIORITY (CRITICAL):
 
 Generate {adjusted_num_cards} regular Q&A cards now. Focus on the actual subject matter, not document structure."""
 
-        # Configure retries for validation errors
-        regular_response = self.instructor.chat.completions.create(
-            model=llm_config.get("model", "gpt-4"),
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Generate ONLY regular Q&A flashcards. Do NOT create any cloze deletion cards.\n\nCRITICAL LENGTH REQUIREMENT:\n- Card answers (back) MUST be under 500 characters (HARD LIMIT - validation will fail otherwise)\n- Aim for 200-400 characters for optimal learning\n- Be concise and focus on key points only\n- Remove verbose explanations and unnecessary words\n\nCRITICAL: ALL mathematical variables, symbols, and expressions MUST be wrapped in LaTeX delimiters using $ for inline math. For example: $W$, $X_j$, $h(W) = 0$, $W_{ji} \\neq 0$. NEVER write bare mathematical symbols without LaTeX.",
-                },
-                {"role": "user", "content": regular_prompt},
-            ],
-            response_model=CardGenerationResponse,
-            max_retries=Retrying(
-                stop=stop_after_attempt(3),
-                wait=wait_exponential(multiplier=1, min=4, max=10),
-                reraise=True,
-            ),
+        regular_result = card_gen_agent.run_sync(
+            regular_prompt,
+            instructions="Generate ONLY regular Q&A flashcards. Do NOT create any cloze deletion cards.\n\nCRITICAL LENGTH REQUIREMENT:\n- Card answers (back) MUST be under 500 characters (HARD LIMIT - validation will fail otherwise)\n- Aim for 200-400 characters for optimal learning\n- Be concise and focus on key points only\n- Remove verbose explanations and unnecessary words\n\nCRITICAL: ALL mathematical variables, symbols, and expressions MUST be wrapped in LaTeX delimiters using $ for inline math. For example: $W$, $X_j$, $h(W) = 0$, $W_{ji} \\neq 0$. NEVER write bare mathematical symbols without LaTeX.",
+            model=get_model_string(llm_config),
         )
+        regular_response = regular_result.output
 
         # Generate cloze cards separately (only if requested)
         if adjusted_cloze_cards > 0:
@@ -977,23 +959,12 @@ BAD Examples (AVOID):
 REMEMBER: EVERY cloze card MUST have tags just like regular cards!
 Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formulas, and facts from the actual content."""
 
-            # Configure retries for validation errors
-            cloze_response = self.instructor.chat.completions.create(
-                model=llm_config.get("model", "gpt-4"),
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "Generate ONLY cloze deletion flashcards using {{c1::text}} syntax.\n\nCRITICAL LENGTH REQUIREMENT:\n- Cloze card BACKS should be MINIMAL (ideally empty, max 100 characters)\n- Front content (full text with cloze) must stay under 500 characters total\n- Keep content concise - cloze cards are meant to be brief\n\nCRITICAL LaTeX RULES:\n1. ALL mathematical variables and expressions MUST use LaTeX with $ delimiters\n2. When math is NOT inside cloze markers, wrap it properly: $W$, $X_j$, $h(W) = 0$\n3. When math IS inside cloze markers, still use LaTeX: {{c1::$E = mc^2$}}\n4. NEVER write bare math symbols without LaTeX (WRONG: W, X_j, W_{ji})",
-                    },
-                    {"role": "user", "content": cloze_prompt},
-                ],
-                response_model=CardGenerationResponse,
-                max_retries=Retrying(
-                    stop=stop_after_attempt(3),
-                    wait=wait_exponential(multiplier=1, min=4, max=10),
-                    reraise=True,
-                ),
+            cloze_result = card_gen_agent.run_sync(
+                cloze_prompt,
+                instructions="Generate ONLY cloze deletion flashcards using {{c1::text}} syntax.\n\nCRITICAL LENGTH REQUIREMENT:\n- Cloze card BACKS should be MINIMAL (ideally empty, max 100 characters)\n- Front content (full text with cloze) must stay under 500 characters total\n- Keep content concise - cloze cards are meant to be brief\n\nCRITICAL LaTeX RULES:\n1. ALL mathematical variables and expressions MUST use LaTeX with $ delimiters\n2. When math is NOT inside cloze markers, wrap it properly: $W$, $X_j$, $h(W) = 0$\n3. When math IS inside cloze markers, still use LaTeX: {{c1::$E = mc^2$}}\n4. NEVER write bare math symbols without LaTeX (WRONG: W, X_j, W_{ji})",
+                model=get_model_string(llm_config),
             )
+            cloze_response = cloze_result.output
         else:
             # No cloze cards requested - set to None
             cloze_response = None
@@ -1199,23 +1170,17 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
 - #optimization.learning-rate, #machine-learning.training, #convergence-analysis"""
 
-            # Generate cards using instructor
+            # Generate cards using pydantic-ai
             try:
-                response = self.instructor.chat.completions.create(
-                    model=llm_config.get("model", "gpt-4"),
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": cards_prompts.get(
-                                "system",
-                                "You are an expert at creating educational flashcards that test understanding of visual content.",
-                            ),
-                        },
-                        {"role": "user", "content": image_prompt},
-                    ],
-                    response_model=CardGenerationResponse,
-                    max_retries=llm_config.get("max_retries", 3),
+                img_result = card_gen_agent.run_sync(
+                    image_prompt,
+                    instructions=cards_prompts.get(
+                        "system",
+                        "You are an expert at creating educational flashcards that test understanding of visual content.",
+                    ),
+                    model=get_model_string(llm_config),
                 )
+                response = img_result.output
 
                 # Apply self-refine if enabled for image cards
                 refinement_config = self.config.get("refinement", {}).get(
@@ -1508,23 +1473,17 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
 - #optimization.learning-rate, #machine-learning.training, #convergence-analysis"""
 
-                # Generate cards using instructor
+                # Generate cards using pydantic-ai
                 try:
-                    response = self.instructor.chat.completions.create(
-                        model=llm_config.get("model", "gpt-4"),
-                        messages=[
-                            {
-                                "role": "system",
-                                "content": cards_prompts.get(
-                                    "system",
-                                    "You are an expert at creating educational flashcards that test understanding of visual content.",
-                                ),
-                            },
-                            {"role": "user", "content": image_prompt},
-                        ],
-                        response_model=CardGenerationResponse,
-                        max_retries=llm_config.get("max_retries", 3),
+                    img_result2 = card_gen_agent.run_sync(
+                        image_prompt,
+                        instructions=cards_prompts.get(
+                            "system",
+                            "You are an expert at creating educational flashcards that test understanding of visual content.",
+                        ),
+                        model=get_model_string(llm_config),
                     )
+                    response = img_result2.output
 
                     # Apply self-refine if enabled for image cards
                     refinement_config = self.config.get("refinement", {}).get(
@@ -1888,15 +1847,10 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         if not elevenlabs_api_key:
             raise RuntimeError("ELEVEN_LABS_API_KEY not set in environment.")
 
-        openai_api_key = os.getenv("OPENAI_API_KEY")
-        if not openai_api_key:
-            raise RuntimeError("OPENAI_API_KEY not set in environment.")
-        openai_client = OpenAI(api_key=openai_api_key)
-
         # Get model config
         models_config = self.config.get("models", {}).get("models", {})
         llm_config = models_config.get("llm", {})
-        model = llm_config.get("model", "gpt-5")
+        model = get_model_string(llm_config)
 
         # Get voice_id from TTS config in models, not from audio config
         tts_config = models_config.get("tts", {})
@@ -1930,7 +1884,6 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                         card_index=i + 1,
                         page_base=card_base,
                         audio_dir=audio_dir,
-                        openai_client=openai_client,
                         elevenlabs_api_key=elevenlabs_api_key,
                         voice_id=voice_id,
                         model=model,
@@ -1979,7 +1932,6 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             generate_summary_audio(
                 summary_text=summary_text,
                 output_path=summary_audio_path,
-                openai_client=openai_client,
                 elevenlabs_api_key=elevenlabs_api_key,
                 voice_id=voice_id,
                 model=model,
@@ -2003,7 +1955,6 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             generate_reading_audio(
                 full_content=full_content,
                 output_path=reading_audio_path,
-                openai_client=openai_client,
                 elevenlabs_api_key=elevenlabs_api_key,
                 voice_id=voice_id,
                 model=model,
@@ -2048,7 +1999,6 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 markdown_files=cleaned_files,
                 image_summaries=image_summary_strings,
                 output_path=lecture_audio_path,
-                openai_client=openai_client,
                 elevenlabs_api_key=elevenlabs_api_key,
                 voice_id=voice_id,
                 model=model,
@@ -2470,17 +2420,11 @@ Check for these issues in {card_type} cards:
 If ALL cards are high quality AND educationally valuable, set done=True.
 Otherwise provide specific, actionable feedback focused on what matters for learning."""
 
-        return self.instructor.chat.completions.create(
-            model=llm_config.get("model", "gpt-4"),
-            response_model=CardFeedback,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": f"""
+        eval_result = card_feedback_agent.run_sync(
+            f"""
 Document context:
 Title: {doc_summary.title}
-Summary: {doc_summary.summary[:500]}... 
+Summary: {doc_summary.summary[:500]}...
 Key concepts: {doc_summary.technical_terms}
 Acronyms: {doc_summary.acronyms}
 
@@ -2492,13 +2436,10 @@ Cards should focus on these fundamental ideas, not trivial notation or random de
 
 {feedback_prompt}
 """,
-                },
-            ],
-            max_retries=Retrying(
-                stop=stop_after_attempt(2),
-                wait=wait_exponential(multiplier=1, min=2, max=5),
-            ),
+            instructions=system_prompt,
+            model=get_model_string(llm_config),
         )
+        return eval_result.output
 
     def _refine_cards(
         self,
@@ -2575,13 +2516,24 @@ Example fixes:
         llm_config = models_config.get("llm", {})
 
         try:
-            return self.instructor.chat.completions.create(
-                model=llm_config.get("model", "gpt-4"),
-                response_model=CardGenerationResponse,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": f"""You are an expert flashcard creator.
+            refine_result = card_gen_agent.run_sync(
+                f"""
+Original cards:
+{cards_text}
+
+Feedback to address:
+{feedback_text}
+
+Document context:
+Title: {doc_summary.title}
+Acronyms: {doc_summary.acronyms}
+Technical terms: {doc_summary.technical_terms}
+
+{refinement_prompt}
+
+Generate {len(response.cards)} improved {card_type} cards addressing all feedback.
+""",
+                instructions=f"""You are an expert flashcard creator.
 Refine the {card_type} cards to address ALL feedback issues.
 Maintain the same number and types of cards.
 
@@ -2598,39 +2550,12 @@ WRITING STYLE IMPROVEMENTS:
 4. Minimize parenthetical phrases - integrate information naturally
 5. Ensure content sounds good when read aloud
 6. Use varied sentence structure for better engagement""",
-                    },
-                    {
-                        "role": "user",
-                        "content": f"""
-Original cards:
-{cards_text}
-
-Feedback to address:
-{feedback_text}
-
-Document context:
-Title: {doc_summary.title}
-Acronyms: {doc_summary.acronyms}
-Technical terms: {doc_summary.technical_terms}
-
-{refinement_prompt}
-
-Generate {len(response.cards)} improved {card_type} cards addressing all feedback.
-""",
-                    },
-                ],
-                max_retries=Retrying(
-                    stop=stop_after_attempt(2),
-                    wait=wait_exponential(multiplier=1, min=2, max=5),
-                    retry=retry_if_exception_type(ValidationError),
-                ),
+                model=get_model_string(llm_config),
             )
-        except ValidationError as e:
-            # If validation still fails, log the error and return original
-            logger.error(f"Validation error during refinement: {e}")
-            logger.warning(
-                "Returning original cards due to refinement validation error"
-            )
+            return refine_result.output
+        except (ValidationError, Exception) as e:
+            logger.error(f"Error during refinement: {e}")
+            logger.warning("Returning original cards due to refinement error")
             return response
 
     def _format_cards_for_feedback(self, cards: list[PlainCard]) -> str:
@@ -2726,17 +2651,8 @@ Generate {len(response.cards)} improved {card_type} cards addressing all feedbac
         models_config = self.config.get("models", {}).get("models", {})
         llm_config = models_config.get("llm", {})
 
-        return self.instructor.chat.completions.create(
-            model=llm_config.get("model", "gpt-4"),
-            response_model=AudioTranscriptFeedback,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are an expert in audio transcript quality for text-to-speech.",
-                },
-                {
-                    "role": "user",
-                    "content": f"""
+        af_result = audio_feedback_agent.run_sync(
+            f"""
 Transcript to evaluate:
 {transcript}
 
@@ -2746,9 +2662,10 @@ Acronyms in document: {doc_summary.acronyms}
 
 {feedback_prompts.get(f"{card_type}_audio", feedback_prompts.get("audio_transcript", ""))}
 """,
-                },
-            ],
+            instructions="You are an expert in audio transcript quality for text-to-speech.",
+            model=get_model_string(llm_config),
         )
+        return af_result.output
 
     def _refine_audio_transcript(
         self,
@@ -2809,10 +2726,10 @@ Rewrite the transcript addressing all issues.
             },
         ]
 
-        response = self.instructor.chat.completions.create(
-            model=llm_config.get("model", "gpt-4"),
-            messages=messages,
-            response_model=None,  # Just get raw text response
+        rat_result = text_agent.run_sync(
+            messages[1]["content"],
+            instructions=messages[0]["content"],
+            model=get_model_string(llm_config),
         )
 
-        return response.choices[0].message.content
+        return rat_result.output

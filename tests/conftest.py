@@ -43,15 +43,11 @@ def tmp_audio_dir(tmp_path):
 
 
 @pytest.fixture()
-def mock_openai_client():
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = "Mocked transcript text"
-    mock_response.choices[0].finish_reason = "stop"
-
-    client = MagicMock()
-    client.chat.completions.create.return_value = mock_response
-    return client
+def mock_text_agent_result():
+    """Mock pydantic-ai agent result with .output attribute."""
+    mock_result = MagicMock()
+    mock_result.output = "Mocked transcript text"
+    return mock_result
 
 
 @pytest.fixture()

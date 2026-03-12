@@ -11,8 +11,8 @@ import time
 from pathlib import Path
 
 import tiktoken
-from openai import OpenAI
 
+from ..llm.agents import text_agent
 from ..utils.formatting import humanize_citation_key
 from ._common import (
     DEFAULT_VOICE_ID,
@@ -28,10 +28,9 @@ logger = logging.getLogger(__name__)
 def generate_reading_audio(
     full_content: str,
     output_path: Path,
-    openai_client: OpenAI,
     elevenlabs_api_key: str,
     voice_id: str | None = None,
-    model: str = "gpt-5-mini",
+    model: str = "openai:gpt-5-mini",
     citation_key: str | None = None,
     speed: float = 1.0,
 ) -> str:
@@ -43,10 +42,9 @@ def generate_reading_audio(
     Args:
         full_content: The full document content.
         output_path: Path for the output MP3 file.
-        openai_client: OpenAI client for transcript generation.
         elevenlabs_api_key: ElevenLabs API key.
         voice_id: Voice ID (defaults to DEFAULT_VOICE_ID).
-        model: OpenAI model to use.
+        model: pydantic-ai model string (e.g. ``"openai:gpt-5-mini"``).
         citation_key: Citation key to announce at the beginning.
         speed: Audio playback speed multiplier.
 
@@ -78,7 +76,7 @@ def generate_reading_audio(
 
     # Pass 1: Humanize LaTeX notation
     logger.info("Humanizing LaTeX notation in content...")
-    user_content = _humanize_latex(user_content, openai_client, model)
+    user_content = _humanize_latex(user_content, model)
     logger.info("LaTeX humanization complete")
 
     # Pass 2: Generate reading transcript
@@ -90,52 +88,20 @@ def generate_reading_audio(
     for start in range(0, len(tokens), max_chunk):
         chunk = enc.decode(tokens[start : start + max_chunk])
 
-        chunk_transcript = None
-        max_retries = 3
-
-        for attempt in range(max_retries):
-            try:
-                response = openai_client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": chunk},
-                    ],
-                    max_completion_tokens=8000,
-                )
-
-                if (
-                    response.choices
-                    and len(response.choices) > 0
-                    and response.choices[0].message.content
-                ):
-                    chunk_transcript = response.choices[0].message.content.strip()
-                    if chunk_transcript:
-                        break
-                    else:
-                        logger.warning(
-                            f"Attempt {attempt + 1}: GPT-5 returned empty reading transcript for chunk"
-                        )
-                else:
-                    logger.warning(
-                        f"Attempt {attempt + 1}: GPT-5 returned malformed response for reading. "
-                        f"Response details: choices={len(response.choices) if response.choices else 0}, "
-                        f"has_content={bool(response.choices and response.choices[0].message.content) if response.choices else False}, "
-                        f"finish_reason={response.choices[0].finish_reason if response.choices and len(response.choices) > 0 else 'N/A'}"
-                    )
-
-            except Exception as e:
-                logger.warning(
-                    f"Attempt {attempt + 1}: Error generating reading transcript: {e}"
-                )
-
-            if attempt < max_retries - 1:
-                time.sleep(2**attempt)
+        try:
+            result = text_agent.run_sync(
+                chunk,
+                instructions=system_prompt,
+                model=model,
+                model_settings={"max_tokens": 8000},
+            )
+            chunk_transcript = result.output.strip()
+        except Exception as e:
+            logger.warning(f"Error generating reading transcript: {e}")
+            chunk_transcript = ""
 
         if not chunk_transcript:
-            logger.error(
-                f"Failed to generate reading transcript after {max_retries} attempts, using original"
-            )
+            logger.error("Failed to generate reading transcript, using original")
             chunk_transcript = chunk
 
         transcript_chunks.append(chunk_transcript)
@@ -230,13 +196,12 @@ Special Cases:
 DO NOT change any other text - only convert LaTeX. Preserve all prose exactly."""
 
 
-def _humanize_latex(content: str, openai_client: OpenAI, model: str) -> str:
+def _humanize_latex(content: str, model: str) -> str:
     """Convert all LaTeX notation to natural readable text using LLM.
 
     Args:
         content: Content with LaTeX notation.
-        openai_client: OpenAI client for conversion.
-        model: OpenAI model to use.
+        model: pydantic-ai model string.
 
     Returns:
         Content with all LaTeX converted to natural language.
@@ -249,49 +214,20 @@ def _humanize_latex(content: str, openai_client: OpenAI, model: str) -> str:
     for start in range(0, len(tokens), max_chunk):
         chunk = enc.decode(tokens[start : start + max_chunk])
 
-        max_retries = 3
-        humanized_chunk = None
-
-        for attempt in range(max_retries):
-            try:
-                response = openai_client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": _LATEX_SYSTEM_PROMPT},
-                        {"role": "user", "content": chunk},
-                    ],
-                    max_completion_tokens=10000,
-                )
-
-                if (
-                    response.choices
-                    and len(response.choices) > 0
-                    and response.choices[0].message.content
-                ):
-                    humanized_chunk = response.choices[0].message.content.strip()
-                    if humanized_chunk:
-                        break
-                    else:
-                        logger.warning(
-                            f"Attempt {attempt + 1}: LaTeX humanization returned empty"
-                        )
-                else:
-                    logger.warning(
-                        f"Attempt {attempt + 1}: LaTeX humanization returned malformed response"
-                    )
-
-            except Exception as e:
-                logger.warning(
-                    f"Attempt {attempt + 1}: Error in LaTeX humanization: {e}"
-                )
-
-            if attempt < max_retries - 1:
-                time.sleep(2**attempt)
+        try:
+            result = text_agent.run_sync(
+                chunk,
+                instructions=_LATEX_SYSTEM_PROMPT,
+                model=model,
+                model_settings={"max_tokens": 10000},
+            )
+            humanized_chunk = result.output.strip()
+        except Exception as e:
+            logger.warning(f"Error in LaTeX humanization: {e}")
+            humanized_chunk = ""
 
         if not humanized_chunk:
-            logger.error(
-                f"LaTeX humanization failed after {max_retries} attempts, using original chunk"
-            )
+            logger.error("LaTeX humanization failed, using original chunk")
             humanized_chunk = chunk
 
         humanized_chunks.append(humanized_chunk)

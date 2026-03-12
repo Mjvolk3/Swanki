@@ -10,8 +10,7 @@ import logging
 import time
 from pathlib import Path
 
-from openai import OpenAI
-
+from ..llm.agents import text_agent
 from ..utils.formatting import humanize_citation_key
 from ._common import (
     DEFAULT_VOICE_ID,
@@ -27,10 +26,9 @@ logger = logging.getLogger(__name__)
 def generate_summary_audio(
     summary_text: str,
     output_path: Path,
-    openai_client: OpenAI,
     elevenlabs_api_key: str,
     voice_id: str | None = None,
-    model: str = "gpt-5-mini",
+    model: str = "openai:gpt-5-mini",
     citation_key: str | None = None,
     speed: float = 1.0,
 ) -> str:
@@ -39,10 +37,9 @@ def generate_summary_audio(
     Args:
         summary_text: The summary text to convert to audio.
         output_path: Path for the output MP3 file.
-        openai_client: OpenAI client for transcript generation.
         elevenlabs_api_key: ElevenLabs API key.
         voice_id: Voice ID (defaults to DEFAULT_VOICE_ID).
-        model: OpenAI model to use.
+        model: pydantic-ai model string (e.g. ``"openai:gpt-5-mini"``).
         citation_key: Citation key to announce at the beginning.
         speed: Audio playback speed multiplier.
 
@@ -71,49 +68,20 @@ def generate_summary_audio(
         humanized_key = humanize_citation_key(citation_key)
         user_content = f"Citation: {humanized_key}\n\n{summary_text}"
 
-    transcript = None
-    max_retries = 3
-
-    for attempt in range(max_retries):
-        try:
-            response = openai_client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content},
-                ],
-                max_completion_tokens=1500,
-            )
-
-            if (
-                response.choices
-                and len(response.choices) > 0
-                and response.choices[0].message.content
-            ):
-                transcript = response.choices[0].message.content.strip()
-                if transcript:
-                    break
-                else:
-                    logger.warning(
-                        f"Attempt {attempt + 1}: GPT-5 returned empty summary transcript"
-                    )
-            else:
-                logger.warning(
-                    f"Attempt {attempt + 1}: GPT-5 returned malformed response for summary"
-                )
-
-        except Exception as e:
-            logger.warning(
-                f"Attempt {attempt + 1}: Error generating summary transcript: {e}"
-            )
-
-        if attempt < max_retries - 1:
-            time.sleep(2**attempt)
+    try:
+        result = text_agent.run_sync(
+            user_content,
+            instructions=system_prompt,
+            model=model,
+            model_settings={"max_tokens": 1500},
+        )
+        transcript = result.output.strip()
+    except Exception as e:
+        logger.error(f"Failed to generate summary transcript: {e}")
+        transcript = ""
 
     if not transcript:
-        logger.error(
-            f"Failed to generate transcript after {max_retries} attempts, using original text"
-        )
+        logger.error("Empty transcript, using original text")
         transcript = user_content
 
     # Save transcript with markdown for human reading/editing

@@ -20,3 +20,7 @@ Major overhaul addressing two problems: false mid-lecture conclusions when SI pa
 - **SI indexing**: New `build_si_index()` parses SI content at markers (Extended Data Fig, Supplementary Fig, Table S, Methods headers) into a `dict[str, str]`. New `extract_relevant_si()` scans each main section for SI references and returns matched snippets with fuzzy key normalization.
 - **SI enrichment**: Per-section SI snippets passed to `generate_and_validate_chunk()` via `si_reference_content` param, appended to user message. Single-pass path passes truncated SI directly. SI instructions appended to system prompt.
 - **SI balance constraint**: When SI content is provided, critique prompt includes an SI BALANCE CHECK requiring at least 50% main paper coverage.
+
+## 2026.03.12 - Migrate from instructor/OpenAI to pydantic-ai agents
+
+Replaced dual-client pattern (`instructor.from_openai()` + `instructor.patch()`) with `lecture_critic_agent` and shared `text_agent` from `swanki.llm.agents`. Removed `openai_client` and `instructor_client` parameters from all functions. Three structured call sites now use `lecture_critic_agent.run_sync()` for critique and `text_agent.run_sync()` for generation/refinement. Critique-regenerate loop preserved identically. Part of Step 5 ([[plan.major-refactor-sequence.plan-0]]).

@@ -118,9 +118,7 @@ def test_extract_context_empty():
 # ---------------------------------------------------------------------------
 
 
-def test_generate_lecture_audio_mocked(
-    tmp_audio_dir, mock_openai_client, mock_elevenlabs_api_key
-):
+def test_generate_lecture_audio_mocked(tmp_audio_dir, mock_elevenlabs_api_key):
     # Create a small markdown file
     md_file = tmp_audio_dir / "content.md"
     md_file.write_text("## 1.0 Introduction\n\nThis is the content of the lecture.")
@@ -139,16 +137,29 @@ def test_generate_lecture_audio_mocked(
 
         mock_tts.side_effect = fake_tts
 
-        filename = generate_lecture_audio(
-            markdown_files=[md_file],
-            image_summaries=[],
-            output_path=output,
-            openai_client=mock_openai_client,
-            elevenlabs_api_key=mock_elevenlabs_api_key,
-        )
+        mock_gen_result = MagicMock()
+        mock_gen_result.output = "This is a lecture transcript."
 
-        assert filename == "lecture.mp3"
-        mock_tts.assert_called()
+        with patch("swanki.audio.lecture.text_agent") as mock_text:
+            mock_text.run_sync.return_value = mock_gen_result
+
+            mock_critique_result = MagicMock()
+            mock_critique_result.output = MagicMock(
+                feedback=[], done=True, word_count=50, meets_length_target=True
+            )
+
+            with patch("swanki.audio.lecture.lecture_critic_agent") as mock_critic:
+                mock_critic.run_sync.return_value = mock_critique_result
+
+                filename = generate_lecture_audio(
+                    markdown_files=[md_file],
+                    image_summaries=[],
+                    output_path=output,
+                    elevenlabs_api_key=mock_elevenlabs_api_key,
+                )
+
+                assert filename == "lecture.mp3"
+                mock_tts.assert_called()
 
 
 # ---------------------------------------------------------------------------
@@ -156,27 +167,35 @@ def test_generate_lecture_audio_mocked(
 # ---------------------------------------------------------------------------
 
 
-def test_generate_and_validate_chunk_no_budget(mock_openai_client):
+def test_generate_and_validate_chunk_no_budget():
     """Chunk generation no longer takes budget/max word params."""
     from swanki.models.cards import LectureTranscriptFeedback
 
-    mock_critique = LectureTranscriptFeedback(
+    mock_gen_result = MagicMock()
+    mock_gen_result.output = "Mocked transcript text"
+
+    mock_critique_fb = LectureTranscriptFeedback(
         feedback=[], done=True, word_count=50, meets_length_target=True
     )
-    instructor_client = MagicMock()
-    instructor_client.chat.completions.create.return_value = mock_critique
+    mock_critique_result = MagicMock()
+    mock_critique_result.output = mock_critique_fb
 
-    result = generate_and_validate_chunk(
-        content_chunk="Some source content here.",
-        section_title="Intro",
-        previous_context="",
-        system_prompt="You are a lecturer.",
-        citation_key="Test Paper",
-        openai_client=mock_openai_client,
-        instructor_client=instructor_client,
-        model="gpt-5-mini",
-    )
-    assert result == "Mocked transcript text"
+    with (
+        patch("swanki.audio.lecture.text_agent") as mock_text,
+        patch("swanki.audio.lecture.lecture_critic_agent") as mock_critic,
+    ):
+        mock_text.run_sync.return_value = mock_gen_result
+        mock_critic.run_sync.return_value = mock_critique_result
+
+        result = generate_and_validate_chunk(
+            content_chunk="Some source content here.",
+            section_title="Intro",
+            previous_context="",
+            system_prompt="You are a lecturer.",
+            citation_key="Test Paper",
+            model="openai:gpt-5-mini",
+        )
+        assert result == "Mocked transcript text"
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +203,7 @@ def test_generate_and_validate_chunk_no_budget(mock_openai_client):
 # ---------------------------------------------------------------------------
 
 
-def test_refine_transcript_length_enforcement(tmp_path, mock_openai_client):
+def test_refine_transcript_length_enforcement(tmp_path):
     """When ratio > 0.7, length-reduction feedback is injected."""
     import tiktoken
 
@@ -195,7 +214,7 @@ def test_refine_transcript_length_enforcement(tmp_path, mock_openai_client):
     transcripts_dir.mkdir()
     output_path = tmp_path / "lecture.mp3"
 
-    # Transcript ~same length as source → ratio ~1.0
+    # Transcript ~same length as source -> ratio ~1.0
     transcript = "word " * 100
     source_words = 100
 
@@ -211,20 +230,27 @@ def test_refine_transcript_length_enforcement(tmp_path, mock_openai_client):
     def fake_critique(*args, **kwargs):
         nonlocal critique_call_count
         critique_call_count += 1
+        mock_result = MagicMock()
         if critique_call_count == 1:
-            return mock_critique
-        return mock_critique_pass
+            mock_result.output = mock_critique
+        else:
+            mock_result.output = mock_critique_pass
+        return mock_result
 
-    with patch("instructor.patch") as mock_patch:
-        patched_client = MagicMock()
-        patched_client.chat.completions.create.side_effect = fake_critique
-        mock_patch.return_value = patched_client
+    mock_refine_result = MagicMock()
+    mock_refine_result.output = "Refined transcript text"
+
+    with (
+        patch("swanki.audio.lecture.lecture_critic_agent") as mock_critic,
+        patch("swanki.audio.lecture.text_agent") as mock_text,
+    ):
+        mock_critic.run_sync.side_effect = fake_critique
+        mock_text.run_sync.return_value = mock_refine_result
 
         result = _refine_transcript(
             full_transcript=transcript,
             full_system_prompt="System prompt",
-            openai_client=mock_openai_client,
-            model="gpt-5-mini",
+            model="openai:gpt-5-mini",
             citation_key="test",
             transcripts_dir=transcripts_dir,
             output_path=output_path,

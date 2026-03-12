@@ -13,3 +13,7 @@ Six unit tests covering the `mode=audio_only` branch in `process_full()` and the
 ## 2026.03.11 - Update mock for segment rename
 
 Updated mock fixture to reference `_generate_cards_for_segment` (renamed from `_generate_cards_for_page_with_context` in the segmentation refactor).
+
+## 2026.03.12 - Remove OpenAI client mock for pydantic-ai migration
+
+Removed `mock_openai_client` from the test fixture since the pipeline no longer initializes an OpenAI client directly. Pipeline tests now only mock pipeline methods, not LLM clients.

@@ -37,3 +37,16 @@ Introduce a unified "segment" abstraction so card generation operates on segment
 ## 2026.03.11 - Read SI boundary metadata for lecture generation
 
 Before calling `generate_lecture_audio()`, read `{citation_key}_meta.json` from the PDF directory to get `si_start_page`. Pass it as a kwarg so lectures can treat main paper and SI content separately. Falls back to `None` (today's behavior) when the file is absent. Part of Step 4 ([[plan.major-refactor-sequence.plan-0]]).
+
+## 2026.03.12 - Migrate from instructor/OpenAI to pydantic-ai agents
+
+Replaced all instructor and direct OpenAI calls with pydantic-ai agents from `swanki.llm.agents`. This is the largest file in the migration (Step 5 of [[plan.major-refactor-sequence.plan-0]]).
+
+- Removed `self.instructor = instructor.patch(OpenAI())` from `__init__` and `OpenAI(api_key=...)` from `generate_audio()`.
+- Removed `instructor`, `openai`, and `tenacity` imports.
+- `generate_document_summary` uses `document_summary_agent.run_sync()` with `output_type=DocumentSummary`.
+- Card generation (4 call sites: regular, cloze, 2x image) uses `card_gen_agent.run_sync()` with `output_type=CardGenerationResponse`. Tenacity retry wrappers replaced by agent `retries=3`.
+- Self-critic loop: `_evaluate_cards` uses `card_feedback_agent`, `_refine_cards` uses `card_gen_agent`, `_generate_audio_feedback` uses `audio_feedback_agent`.
+- `_refine_audio_transcript` uses shared `text_agent` (previously `response_model=None`).
+- `ImageProcessor` initialized with `model: str` instead of `self.instructor`.
+- Audio generation functions called without `openai_client` parameter.

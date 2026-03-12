@@ -133,12 +133,7 @@ class TestComplementaryAudioGuard:
         summary.summary = "Test summary"
         summary.key_contributions = []
 
-        with (
-            patch.dict(
-                "os.environ", {"ELEVEN_LABS_API_KEY": "k", "OPENAI_API_KEY": "k"}
-            ),
-            patch("swanki.pipeline.pipeline.OpenAI"),
-        ):
+        with patch.dict("os.environ", {"ELEVEN_LABS_API_KEY": "k"}):
             p.generate_audio(
                 cards=[],
                 summary=summary,
