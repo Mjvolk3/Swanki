@@ -1,9 +1,10 @@
-"""Download PDFs from Zotero, cut references, and prepare for Swanki."""
 
 import argparse
+import importlib.util
 import os
 import re
 import subprocess
+import sys
 import warnings
 from pathlib import Path
 
@@ -11,9 +12,6 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 from PyPDF2 import PdfReader
 from pyzotero import zotero
-
-import importlib.util
-import sys
 
 # Import pdf_classifier directly to avoid triggering swanki/__init__.py
 # (which pulls in Pipeline → instructor → anthropic, not available in base env)
@@ -32,11 +30,10 @@ ZOTERO_API_KEY = os.environ["ZOTERO_API_KEY"]
 ZOTERO_LIBRARY_ID = os.environ["ZOTERO_LIBRARY_ID"]
 
 SWANKI_DATA = Path(__file__).resolve().parent.parent.parent / "Swanki_Data"
-SWANKI_CUT = "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/swanki-cut"
+QPDF = "qpdf"
 
-# Headings that mark the end of educational content.
-# Acknowledgments, references, etc. have zero educational value.
-# Cut at the earliest match.
+# Headings that mark the start of non-educational content (references,
+# acknowledgments, etc.).  Cut pages matching these.
 #
 # NOTE: We omit short mid-page headings like "Author Information",
 # "Author Contributions", "Competing Interests", "Notes" because
@@ -49,7 +46,35 @@ END_MATTER_PATTERNS = re.compile(
     r"|Acknowledg(?:e)?ments?|ACKNOWLEDG(?:E)?MENTS?"
     r"|Supporting Information|SUPPORTING INFORMATION"
     r"|Supplementary (?:Information|Materials?)|SUPPLEMENTARY (?:INFORMATION|MATERIALS?)"
+    r"|Online [Cc]ontent"
+    r"|Author [Cc]ontributions|AUTHOR CONTRIBUTIONS"
+    r"|Declaration of [Ii]nterests?|DECLARATION OF INTERESTS?"
+    r"|Competing [Ii]nterests?|COMPETING INTERESTS?"
     r")\s*$",
+    re.IGNORECASE,
+)
+
+# Headings that resume educational content after a non-educational gap
+# (e.g. Extended Data figures after references in Nature papers, STAR
+# Methods + supplemental figures after references in Cell papers).
+RESUME_EDUCATIONAL_PATTERNS = re.compile(
+    r"^[■□▪▸►]?\s*("
+    r"Extended Data"
+    r"|STAR\s*[★✩]?\s*METHODS|STAR\s*[★✩]?\s*Methods|Star\s*Methods"
+    r"|Supplemental [Ff]igures?"
+    r"|Supplementary [Ff]igures?"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Headings that mark content to cut at the very end (reporting summaries,
+# checklists appended by publishers).
+TAIL_CUT_PATTERNS = re.compile(
+    r"("
+    r"nature\s+portfolio"
+    r"|Reporting [Ss]ummary"
+    r"|REPORTING SUMMARY"
+    r")",
     re.IGNORECASE,
 )
 
@@ -179,27 +204,69 @@ def download_pdfs(
 # --- PDF cleaning ---
 
 
-def find_end_matter_page(pdf_path: Path) -> tuple[int | None, str | None, int]:
-    """Find the first page containing a non-educational end-matter heading.
+def _classify_pages_regex(pdf_path: Path) -> tuple[list[str], int]:
+    """Classify each page as 'keep', 'cut', or 'resume' using regex.
 
-    Returns (page_index, matched_heading, total_pages).
+    Returns (labels, total_pages) where labels[i] is the classification.
     """
     warnings.filterwarnings("ignore")
     reader = PdfReader(str(pdf_path), strict=False)
     total = len(reader.pages)
+    labels = ["keep"] * total
+
+    in_cut_zone = False
     for i, page in enumerate(reader.pages):
         text = page.extract_text() or ""
-        for line in text.split("\n"):
-            m = END_MATTER_PATTERNS.match(line.strip())
-            if m:
-                return i, m.group(1), total
-    return None, None, total
+        lines = [line.strip() for line in text.split("\n")]
+
+        # Check if this page resumes educational content
+        if in_cut_zone:
+            for line in lines:
+                if RESUME_EDUCATIONAL_PATTERNS.search(line):
+                    in_cut_zone = False
+                    break
+
+        # Check if this page starts non-educational content
+        if not in_cut_zone:
+            for line in lines:
+                if END_MATTER_PATTERNS.match(line):
+                    in_cut_zone = True
+                    break
+
+        # Check if this page starts tail-end publisher content (always cut)
+        for line in lines:
+            if TAIL_CUT_PATTERNS.search(line):
+                in_cut_zone = True
+                break
+
+        if in_cut_zone:
+            labels[i] = "cut"
+
+    return labels, total
+
+
+def _labels_to_ranges(labels: list[str]) -> list[tuple[int, int]]:
+    """Convert page labels to keep-ranges (0-based, end-exclusive)."""
+    ranges: list[tuple[int, int]] = []
+    start = None
+    for i, label in enumerate(labels):
+        if label == "keep":
+            if start is None:
+                start = i
+        else:
+            if start is not None:
+                ranges.append((start, i))
+                start = None
+    if start is not None:
+        ranges.append((start, len(labels)))
+    return ranges
 
 
 def cut_pdf(input_pdf: Path, output_pdf: Path, start: int, end: int) -> None:
-    """Cut a PDF using swanki-cut (0-based, end-exclusive)."""
+    """Cut a PDF using qpdf (0-based start, end-exclusive)."""
+    # qpdf uses 1-based inclusive page ranges
     subprocess.run(
-        [SWANKI_CUT, "-s", str(start), "-e", str(end), str(input_pdf), str(output_pdf)],
+        [QPDF, str(input_pdf), "--pages", ".", f"{start + 1}-{end}", "--", str(output_pdf)],
         check=True,
     )
 
@@ -239,12 +306,17 @@ def _get_keep_ranges_llm(pdf_path: Path) -> tuple[list[tuple[int, int]], int]:
 
 def _get_keep_ranges_regex(pdf_path: Path) -> tuple[list[tuple[int, int]], int]:
     """Use regex fallback to get keep-ranges. Returns (keep_ranges, total_pages)."""
-    end_page, heading, total = find_end_matter_page(pdf_path)
-    if end_page is not None:
-        print(f"  Regex fallback: '{heading}' at page {end_page + 1}, keeping 0:{end_page}")
-        return [(0, end_page)], total
-    print(f"  Regex fallback: no end-matter detected, keeping all {total} pages")
-    return [(0, total)], total
+    labels, total = _classify_pages_regex(pdf_path)
+    ranges = _labels_to_ranges(labels)
+
+    cut_pages = [i + 1 for i, l in enumerate(labels) if l == "cut"]
+    if cut_pages:
+        ranges_str = ", ".join(f"{s+1}-{e}" for s, e in ranges)
+        print(f"  Regex fallback: keeping [{ranges_str}], cutting pages {cut_pages}")
+    else:
+        print(f"  Regex fallback: no end-matter detected, keeping all {total} pages")
+
+    return ranges, total
 
 
 def _get_keep_ranges(pdf_path: Path) -> tuple[list[tuple[int, int]], int, bool]:

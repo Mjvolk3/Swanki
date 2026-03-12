@@ -31,6 +31,7 @@ created: 1773142434234
 ## 2026.03.12
 
 - [x] Fixed VS Code test/coverage tasks to use hardcoded conda env path instead of `${command:python.interpreterPath}` which resolved to the wrong interpreter
+- [x] Added multi-range PDF cutting to zotero import script so Extended Data (Nature) and STAR Methods/SI figures (Cell) are preserved while refs and publisher reporting summaries are cut; migrated from broken `swanki-cut` to `qpdf` [[scripts.zotero_paper_import#20260312---multi-range-pdf-cutting-and-qpdf-migration]]
 
 ***
 

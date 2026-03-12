@@ -26,3 +26,14 @@ Replace the simple references-only regex with a two-tier page classification sys
 - `_get_keep_ranges()` dispatches to LLM or regex, with graceful `ImportError` fallback
 - `pdf_classifier` is imported via `importlib.util` to avoid pulling in the full `swanki` dependency chain
 - SI PDFs also go through the same classification pipeline
+
+## 2026.03.12 - Multi-range PDF cutting and qpdf migration
+
+Support keeping multiple non-contiguous page ranges in a single PDF -- needed for Nature and Cell papers where Extended Data figures or STAR Methods appear after references. Previously the regex fallback produced a single cut point at the first end-matter heading, discarding everything after it including valuable supplemental content.
+
+- Replaced `swanki-cut` (broken due to `instructor` import chain) with `qpdf` for page extraction
+- New `_classify_pages_regex()` walks pages with a state machine: enters cut zone on end-matter headings, exits on resume-educational headings, re-enters on tail-cut patterns
+- `RESUME_EDUCATIONAL_PATTERNS` detects Extended Data, STAR Methods, Supplemental/Supplementary figures
+- `TAIL_CUT_PATTERNS` detects Nature Portfolio reporting summaries appended by the publisher
+- `END_MATTER_PATTERNS` expanded with Online content, Author contributions, Declaration/Competing interests
+- `_labels_to_ranges()` converts per-page keep/cut labels into multi-range tuples for cutting
