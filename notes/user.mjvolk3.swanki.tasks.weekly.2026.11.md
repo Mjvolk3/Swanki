@@ -2,7 +2,7 @@
 id: jw01iia69oz5lqyr1yz7ifh
 title: '11'
 desc: ''
-updated: 1773238033969
+updated: 1773322944373
 created: 1773142434234
 ---
 ## 2026.03.10
@@ -27,6 +27,10 @@ created: 1773142434234
 - [x] Added README badges (CI status, Codecov coverage, Ruff, mypy strict, Python 3.13, MIT license) and Codecov integration to CI workflow
 - [x] Added `settings.local.json` copy step to `setup-worktree.sh` so new worktrees inherit `Bash(*)` permissions automatically [[scripts.setup-worktree]]
 - [x] Added "Finding Rationale for Changes" section to CLAUDE.md pointing to dendron module notes as the primary source of decision history
+
+## 2026.03.12
+
+- [x] Fixed VS Code test/coverage tasks to use hardcoded conda env path instead of `${command:python.interpreterPath}` which resolved to the wrong interpreter
 
 ***
 
