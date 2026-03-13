@@ -249,7 +249,7 @@ Keep the summary concise but informative (2-4 sentences)."""
         result = text_agent.run_sync(
             [prompt, image_content],
             model=self.model,
-            model_settings={"max_tokens": 300, "temperature": 0.3},
+            model_settings={"max_tokens": 1024, "temperature": 0.3},
         )
         summary: str = result.output.strip()
         logger.debug(f"Generated summary for image: {summary[:50]}...")

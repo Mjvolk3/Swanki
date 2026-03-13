@@ -1,5 +1,5 @@
 processing:
-  segmentation: page
+  segmentation: char
   context_radius: 2
   cards_per_segment: 5
   cloze_per_segment: 3

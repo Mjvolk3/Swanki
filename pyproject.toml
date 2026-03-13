@@ -85,7 +85,7 @@ swanki = "swanki.config.hydra_plugins"
 swanki = ["py.typed", "conf/**/*.yaml"]
 
 [tool.setuptools.packages.find]
-include = ["swanki*"]
+include = ["swanki*", "hydra_plugins*"]
 
 [tool.semantic_release]
 version_variables = [

@@ -25,3 +25,7 @@ Replaced direct `OpenAI` vision API calls with `text_agent.run_sync()` using pyd
 - Fixed `PILImage.LANCZOS` to `PILImage.Resampling.LANCZOS` and PIL type narrowing for `img.resize()`.
 - Introduced `ImageInfo = dict[str, Any]` type alias for readability.
 - All ruff and mypy --strict errors resolved. Part of Step 5 ([[plan.major-refactor-sequence.plan-0]]).
+
+## 2026.03.12 - Increase max_tokens for image summary generation
+
+Bumped `max_tokens` from 300 to 1024 for image summary API calls. The pydantic-ai token accounting was rejecting 300 as insufficient before any response could be generated, causing the pipeline to fail at the image processing stage.

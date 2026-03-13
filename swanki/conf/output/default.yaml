@@ -6,5 +6,5 @@ output:
     cards_combined: cards-combined.md
     summary: document-summary.md
   organize_by_type: true
-  create_anki_deck: false
+  create_anki_deck: true
   tag_format: slugified

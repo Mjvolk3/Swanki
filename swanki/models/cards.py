@@ -358,6 +358,9 @@ class CardContent(BaseModel):
             r"([A-Z])_([a-z0-9]+)\}", r"\1_{\2}", v
         )  # Fix orphaned closing brace
 
+        # Fix split subscripts like W_{i}j} → W_{ij} (brace closes too early)
+        v = re.sub(r"([A-Za-z])_\{([a-z0-9]+)\}([a-z0-9]+)\}", r"\1_{\2\3}", v)
+
         # Also fix subscripts without any braces at all (X_0 → X_{0})
         v = re.sub(r"([A-Z])_([a-z0-9]+)(?![}{])", r"\1_{\2}", v)
 
@@ -396,6 +399,18 @@ class CardContent(BaseModel):
 
         # Common mathematical patterns that should be in LaTeX
         math_issues = []
+
+        # Check brace balance inside LaTeX spans
+        for latex_match in re.finditer(r"\$([^$]+)\$", v):
+            latex_content = latex_match.group(1)
+            depth = 0
+            for ch in latex_content:
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+            if depth != 0:
+                math_issues.append(f"Unbalanced braces in LaTeX: ${latex_content}$")
 
         # Pattern 1: Subscripted variables with two-stage matching
         # Stage 1: Match subscript+superscript combinations (e.g., M_{m}^{(s)})
