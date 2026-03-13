@@ -6,7 +6,7 @@ processing:
   blocking_audio: true
   confirm_before_generation: true
   char_segmentation:
-    target_chars: 2000
+    target_chars: 6000
   image_cards:
     enabled: true
     cards_per_image: 2

@@ -18,3 +18,20 @@ Added auto-fix and validation for malformed LaTeX subscript braces (e.g. `W_{i}j
 
 - New regex catches `W_{i}j}` pattern and merges it into `W_{ij}`
 - Added brace-balance check inside `$...$` spans that flags unbalanced braces as a `math_issues` error, triggering pydantic-ai retry
+
+## 2026.03.13 - Auto-fix LaTeX issues instead of relying on LLM retries
+
+LLM-generated cards had recurring LaTeX problems that the validator caught but the LLM could not fix within the 3-retry limit, causing pipeline crashes. Shifted strategy from validation-only to auto-fix-then-validate: programmatic fixes handle common patterns, validation remains as a safety net.
+
+### Auto-fixes added (pre-validation)
+
+- Double closing braces in subscripts: `_{ij}}` -> `_{ij}`
+- Unbalanced braces inside `$...$` spans: append missing `}` (e.g. `$\sigma_{\mathrm{DNA}$` -> `$\sigma_{\mathrm{DNA}}$`)
+- Bare subscript+superscript patterns wrapped in `$`: `V_{i}^{\max}` -> `$V_{i}^{\max}$`
+- Bare subscript-only patterns wrapped in `$`: `L_{0}` -> `$L_{0}$`
+
+### Validation improvements
+
+- Extended brace-balance check to `\(...\)` delimiters (previously only `$...$`)
+- Single math issue now triggers retry (removed pass-through that only logged a warning)
+- Added 14 context words to Pattern 7 (isolated variable detection) for better coverage of mathematical prose

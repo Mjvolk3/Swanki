@@ -55,6 +55,11 @@ created: 1773142434234
 - [x] Fixed all ruff errors and mypy --strict issues across migrated files: rewrote image_processor.py with modern types and Google-style docstrings, added missing type stubs to pyproject.toml ignore list, added class docstrings to PageLabel/PDFCutPlan [[swanki.processing.image_processor#20260312---migrate-from-openai-client-to-pydantic-ai-agents-and-modernize-code]] [[swanki.utils.pdf_classifier#20260312---migrate-from-instructor-to-pydantic-ai-and-add-docstrings]]
 - [x] Pre-API hardening (cleanup plan steps 1-7): deleted `swanki/legacy/` (31 files, -3500 lines), removed `--legacy` CLI, applied ruff formatting and type annotation modernization across all modern modules, added `ConfigDict(extra="forbid")` to Pydantic models, added standard frontmatter docstrings, fixed mypy errors, and added 4 new test files (agents, config resolution, model validation, LLM smoke) [[plan.major-refactor-sequence-cleanup.plan-0]] [[swanki.__init__#20260312---remove-legacy-re-exports-from-top-level-package]] [[swanki.models.document#20260312---strict-model-config-and-new-imagesummary-fields]] [[swanki.processing.anki_processor#20260312---type-annotation-modernization-and-ruff-formatting]] [[swanki.pipeline.pipeline#20260312---add-mypy-type-narrowing-asserts-for-processingstate]]
 
+## 2026.03.13
+
+- [x] Added auto-fix for recurring LaTeX issues (unbalanced braces, bare subscripts/superscripts, double closing braces) that caused pipeline crashes when LLM retries couldn't resolve them; also extended brace-balance validation to `\(...\)` delimiters and tightened single-issue pass-through [[swanki.models.cards#20260313---auto-fix-latex-issues-instead-of-relying-on-llm-retries]]
+- [x] Increased default `target_chars` from 4000 to 6000 to reduce segment count and bring card totals closer to old page-based counts (~28 vs ~39)
+
 ***
 
 - [ ] Cite pydantic in paper.

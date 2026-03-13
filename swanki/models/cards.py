@@ -364,6 +364,36 @@ class CardContent(BaseModel):
         # Also fix subscripts without any braces at all (X_0 → X_{0})
         v = re.sub(r"([A-Z])_([a-z0-9]+)(?![}{])", r"\1_{\2}", v)
 
+        # Fix double closing braces in subscripts inside LaTeX: _{ij}} → _{ij}
+        # The LLM sometimes generates extra } after subscripts
+        v = re.sub(r"(_\{[^}]+\})\}", r"\1", v)
+
+        # Auto-fix unbalanced braces inside $...$ spans by appending missing }
+        # e.g., $\sigma_{\mathrm{DNA}$ → $\sigma_{\mathrm{DNA}}$
+        def _fix_latex_braces(m: re.Match[str]) -> str:
+            content = m.group(1)
+            depth = sum(1 if c == "{" else -1 if c == "}" else 0 for c in content)
+            if depth > 0:
+                return "$" + content + "}" * depth + "$"
+            return m.group(0)
+
+        v = re.sub(r"\$([^$]+)\$", _fix_latex_braces, v)
+
+        # Auto-wrap bare subscript+superscript patterns in $ delimiters
+        # e.g., V_{i}^{\max} → $V_{i}^{\max}$
+        v = re.sub(
+            r"(?<!\$)(\b[A-Za-z]_\{[^}]+\}\^\{[^}]+\})(?!\$)",
+            r"$\1$",
+            v,
+        )
+        # Auto-wrap bare subscript-only patterns in $ delimiters
+        # e.g., V_{i} → $V_{i}$ (only uppercase letter + subscript)
+        v = re.sub(
+            r"(?<!\$)(\b[A-Z]_\{[^}]+\})(?![^$]*\$)(?!\^)",
+            r"$\1$",
+            v,
+        )
+
         # Then, remove already properly formatted LaTeX to avoid false positives
         # Also remove any LaTeX commands that might remain
 
@@ -400,7 +430,7 @@ class CardContent(BaseModel):
         # Common mathematical patterns that should be in LaTeX
         math_issues = []
 
-        # Check brace balance inside LaTeX spans
+        # Check brace balance inside LaTeX spans ($...$ and \(...\))
         for latex_match in re.finditer(r"\$([^$]+)\$", v):
             latex_content = latex_match.group(1)
             depth = 0
@@ -411,6 +441,17 @@ class CardContent(BaseModel):
                     depth -= 1
             if depth != 0:
                 math_issues.append(f"Unbalanced braces in LaTeX: ${latex_content}$")
+
+        for latex_match in re.finditer(r"\\\((.+?)\\\)", v, flags=re.DOTALL):
+            latex_content = latex_match.group(1)
+            depth = 0
+            for ch in latex_content:
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+            if depth != 0:
+                math_issues.append(f"Unbalanced braces in LaTeX: \\({latex_content}\\)")
 
         # Pattern 1: Subscripted variables with two-stage matching
         # Stage 1: Match subscript+superscript combinations (e.g., M_{m}^{(s)})
@@ -558,21 +599,28 @@ class CardContent(BaseModel):
                     "denotes",
                     "where",
                     "let",
+                    "learn",
+                    "adjacency",
+                    "weight",
+                    "graph",
+                    "node",
+                    "edge",
+                    "constraint",
+                    "acyclic",
+                    "optimize",
+                    "parameter",
+                    "vector",
+                    "scalar",
+                    "coefficient",
+                    "distribution",
+                    "predictor",
+                    "estimator",
                 ]
             ):
                 math_issues.append(f"Variable '{letter}' should be ${letter}$")
 
         if math_issues:
-            # Only raise error if there are many issues or they look serious
-            # For 1 issue, likely auto-fixed, just log warning
-            # For 2-5 issues, let Instructor's retry mechanism handle it
-            # For >5 issues, raise a detailed error
-            if len(math_issues) == 1:
-                # Single issue - likely auto-fixed above, just log warning and allow
-                logger.warning(
-                    f"Single LaTeX issue detected (auto-fix may have corrected): {math_issues[0]}"
-                )
-            elif len(math_issues) > 5:
+            if len(math_issues) > 5:
                 # Too many issues - this is likely a real problem
                 issues_to_show = math_issues[:3]
                 issues_to_show.append(f"...and {len(math_issues) - 3} more issues")
