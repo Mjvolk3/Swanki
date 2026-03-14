@@ -59,6 +59,11 @@ created: 1773142434234
 - [x] Replaced lookbehind-based LaTeX auto-wrap with span-aware approach and changed validation to auto-fix bare math instead of crashing the pipeline after 3 failed LLM retries [[swanki.models.cards#20260313---span-based-latex-auto-wrap-prevents-pipeline-crashes]]
 - [x] Audio quality overhaul: added section-aware assembly with real silence, bookend announcements (START/END for transcript/summary, lecture-specific intro/outro), metadata filtering for reading, no-filler section breaks, figure announce pattern, acronym extraction+injection, lecture structure enforcement, and analogy rule. Also created Zotero annotation extraction script+skill. [[swanki.audio._common#20260313---section-aware-audio-infrastructure-for-quality-improvements]] [[swanki.audio.reading#20260313---section-aware-assembly-metadata-filtering-no-filler-pauses-bookends-acronyms]] [[swanki.audio.summary#20260313---section-aware-assembly-bookends-acronym-injection]] [[swanki.audio.lecture#20260313---lecture-structure-enforcement-analogy-rule-section-aware-assembly-bookends-acronyms]] [[tests.test_audio_common#20260313---tests-for-section-aware-audio-infrastructure]] [[scripts.zotero_annotations#20260313---zotero-pdf-annotation-extraction-by-highlight-color]]
 
+## 2026.03.14
+
+- [x] Fixed bookend audio files being left as separate MP3s instead of baked into the combined output -- now only 3 final audio files are produced per paper (summary, reading, lecture)
+- [x] Organized audio quality criticism and vision from scratch note into a structured plan note covering learning workflow, lecture/transcript/summary design principles, and future possibilities [[plan.audio-quality-vision]]
+
 ***
 
 - [ ] Cite pydantic in paper.
