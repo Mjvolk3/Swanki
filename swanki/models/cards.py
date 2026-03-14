@@ -379,20 +379,45 @@ class CardContent(BaseModel):
 
         v = re.sub(r"\$([^$]+)\$", _fix_latex_braces, v)
 
-        # Auto-wrap bare subscript+superscript patterns in $ delimiters
-        # e.g., V_{i}^{\max} → $V_{i}^{\max}$
-        v = re.sub(
-            r"(?<!\$)(\b[A-Za-z]_\{[^}]+\}\^\{[^}]+\})(?!\$)",
-            r"$\1$",
+        # Auto-wrap bare math using span-aware checking (not lookbehind/lookahead)
+        # to handle cases like $V_{i}^{\min}=$V_{i}^{\max}$=0$ where broken $
+        # delimiters leave expressions bare but adjacent to $
+        def _get_latex_spans(text: str) -> list[tuple[int, int]]:
+            """Find all $...$ span positions in text."""
+            spans: list[tuple[int, int]] = []
+            for m in re.finditer(r"\$[^$]+\$", text):
+                spans.append((m.start(), m.end()))
+            for m in re.finditer(r"\\\(.*?\\\)", text, flags=re.DOTALL):
+                spans.append((m.start(), m.end()))
+            for m in re.finditer(r"\\\[.*?\\\]", text, flags=re.DOTALL):
+                spans.append((m.start(), m.end()))
+            return spans
+
+        def _in_latex_span(pos: int, spans: list[tuple[int, int]]) -> bool:
+            return any(start <= pos < end for start, end in spans)
+
+        def _wrap_bare_math(text: str, pattern: str) -> str:
+            """Wrap bare math expressions not inside existing $...$ spans."""
+            spans = _get_latex_spans(text)
+            result = []
+            last_end = 0
+            for m in re.finditer(pattern, text):
+                if _in_latex_span(m.start(), spans):
+                    continue
+                result.append(text[last_end : m.start()])
+                result.append(f"${m.group(0)}$")
+                last_end = m.end()
+            result.append(text[last_end:])
+            return "".join(result)
+
+        # Wrap subscript+superscript: V_{i}^{\max}, V_{i}^\max, V_{i}^max
+        v = _wrap_bare_math(
             v,
+            r"\b[A-Za-z]_\{[^}]+\}\^(?:\{[^}]+\}|\\[a-zA-Z]+|[a-z0-9]+)",
         )
-        # Auto-wrap bare subscript-only patterns in $ delimiters
-        # e.g., V_{i} → $V_{i}$ (only uppercase letter + subscript)
-        v = re.sub(
-            r"(?<!\$)(\b[A-Z]_\{[^}]+\})(?![^$]*\$)(?!\^)",
-            r"$\1$",
-            v,
-        )
+        # Wrap subscript-only (uppercase letter): V_{i}
+        # but not if followed by ^ (would be caught by sub+super pattern)
+        v = _wrap_bare_math(v, r"\b[A-Z]_\{[^}]+\}(?!\^)")
 
         # Then, remove already properly formatted LaTeX to avoid false positives
         # Also remove any LaTeX commands that might remain
@@ -427,229 +452,131 @@ class CardContent(BaseModel):
             r"\{\{c\d+::[^}]+\}\}", "CLOZE_PLACEHOLDER", text_without_latex
         )
 
-        # Common mathematical patterns that should be in LaTeX
-        math_issues = []
+        # Detect bare math in text_without_latex and auto-fix in v
+        # This is the safety net: anything the auto-wrap above missed gets
+        # fixed here instead of raising a ValueError that crashes the pipeline.
+        _skip_contexts = [
+            ".com",
+            ".org",
+            ".edu",
+            ".io",
+            ".pdf",
+            ".png",
+            ".jpg",
+            "LATEX_PLACEHOLDER",
+            "CLOZE_PLACEHOLDER",
+        ]
 
-        # Check brace balance inside LaTeX spans ($...$ and \(...\))
+        def _context_ok(match: re.Match[str]) -> bool:
+            ctx = match.string[max(0, match.start() - 10) : match.end() + 10]
+            return not any(x in ctx for x in _skip_contexts)
+
+        auto_fixed_exprs: list[str] = []
+
+        # Pattern 1a: subscript+superscript
+        pattern_sub_super = r"\b([A-Z])_\{?([a-z0-9]+)\}?\^\{?[^}]+\}?"
+        for match in re.finditer(pattern_sub_super, text_without_latex):
+            if _context_ok(match):
+                expr = match.group(0)
+                # Wrap this expression in v (outside existing $ spans)
+                v = _wrap_bare_math(v, re.escape(expr))
+                auto_fixed_exprs.append(expr)
+
+        # Pattern 1b: subscript-only
+        pattern_sub_only = r"\b([A-Z])_\{?([a-z0-9]+)\}?\b"
+        for match in re.finditer(pattern_sub_only, text_without_latex):
+            end_pos = match.end()
+            if end_pos < len(text_without_latex) and text_without_latex[end_pos] == "^":
+                continue
+            if _context_ok(match):
+                expr = match.group(0)
+                if not expr.endswith("("):
+                    v = _wrap_bare_math(v, re.escape(expr))
+                    auto_fixed_exprs.append(expr)
+
+        # Pattern 2: Function notation
+        function_pattern = r"\b([a-z](?:_[a-z0-9]+)?)\(([A-Z][^)]*?)\)"
+        _english = {
+            "a",
+            "an",
+            "the",
+            "of",
+            "in",
+            "on",
+            "at",
+            "to",
+            "by",
+            "as",
+            "is",
+            "or",
+            "and",
+        }
+        for match in re.finditer(function_pattern, text_without_latex):
+            if match.group(1) not in _english and _context_ok(match):
+                expr = match.group(0)
+                v = _wrap_bare_math(v, re.escape(expr))
+                auto_fixed_exprs.append(expr)
+
+        # Pattern 3: Equations with single letters
+        equation_pattern = r"\b([A-Z])\s*(=|≠|≤|≥|!=|<=|>=|<|>)\s*([0-9A-Z]+)"
+        for match in re.finditer(equation_pattern, text_without_latex):
+            if _context_ok(match):
+                expr = match.group(0)
+                v = _wrap_bare_math(v, re.escape(expr))
+                auto_fixed_exprs.append(expr)
+
+        # Pattern 4: Matrix operations
+        matrix_pattern = r"\(([A-Z])\s*([-+×])\s*([A-Z])\)"
+        for match in re.finditer(matrix_pattern, text_without_latex):
+            if match.group(1) not in ["I"] or match.group(3) in [
+                "W",
+                "X",
+                "Y",
+                "A",
+                "B",
+            ]:
+                if _context_ok(match):
+                    expr = match.group(0)
+                    v = _wrap_bare_math(v, re.escape(expr))
+                    auto_fixed_exprs.append(expr)
+
+        # Pattern 5: Greek letters written out
+        greek_pattern = r"\b(alpha|beta|gamma|delta|epsilon|theta|lambda|mu|sigma|omega|Alpha|Beta|Gamma|Delta|Theta|Lambda|Sigma|Omega)\b"
+        for match in re.finditer(greek_pattern, text_without_latex):
+            greek = match.group(0)
+            # Replace bare greek word with LaTeX command in v
+            v = re.sub(rf"(?<!\$)(?<!\\)\b{greek}\b(?!\$)", rf"$\\{greek}$", v)
+            auto_fixed_exprs.append(greek)
+
+        if auto_fixed_exprs:
+            logger.info(
+                f"Auto-fixed {len(auto_fixed_exprs)} bare math expressions: "
+                f"{', '.join(auto_fixed_exprs[:5])}"
+            )
+
+        # Check brace balance inside LaTeX spans — this we still raise on
+        # because unbalanced braces can't be auto-fixed reliably
+        math_issues: list[str] = []
         for latex_match in re.finditer(r"\$([^$]+)\$", v):
             latex_content = latex_match.group(1)
-            depth = 0
-            for ch in latex_content:
-                if ch == "{":
-                    depth += 1
-                elif ch == "}":
-                    depth -= 1
+            depth = sum(1 if c == "{" else -1 if c == "}" else 0 for c in latex_content)
             if depth != 0:
                 math_issues.append(f"Unbalanced braces in LaTeX: ${latex_content}$")
 
         for latex_match in re.finditer(r"\\\((.+?)\\\)", v, flags=re.DOTALL):
             latex_content = latex_match.group(1)
-            depth = 0
-            for ch in latex_content:
-                if ch == "{":
-                    depth += 1
-                elif ch == "}":
-                    depth -= 1
+            depth = sum(1 if c == "{" else -1 if c == "}" else 0 for c in latex_content)
             if depth != 0:
                 math_issues.append(f"Unbalanced braces in LaTeX: \\({latex_content}\\)")
 
-        # Pattern 1: Subscripted variables with two-stage matching
-        # Stage 1: Match subscript+superscript combinations (e.g., M_{m}^{(s)})
-        # Stage 2: Match subscript-only (e.g., M_{m})
-        # This prevents incomplete matches when superscripts follow subscripts
-
-        # Stage 1: Check for subscript+superscript combinations first
-        pattern_sub_super = r"\b([A-Z])_\{?([a-z0-9]+)\}?\^\{?[^}]+\}?"
-        for match in re.finditer(pattern_sub_super, text_without_latex):
-            full_expr = match.group(0)
-            context = match.string[max(0, match.start() - 10) : match.end() + 10]
-            # Skip if it looks like a URL, filename, or is near a placeholder
-            if not any(
-                x in context
-                for x in [
-                    ".com",
-                    ".org",
-                    ".edu",
-                    ".io",
-                    ".pdf",
-                    ".png",
-                    ".jpg",
-                    "LATEX_PLACEHOLDER",
-                    "CLOZE_PLACEHOLDER",
-                ]
-            ):
-                math_issues.append(
-                    f"Mathematical expression '{full_expr}' with subscript and superscript "
-                    f"should be wrapped in $ delimiters: ${full_expr}$"
-                )
-
-        # Stage 2: Check for subscript-only patterns (only if not already caught by stage 1)
-        # We need to avoid re-flagging parts of expressions already caught above
-        pattern_sub_only = r"\b([A-Z])_\{?([a-z0-9]+)\}?\b"
-        for match in re.finditer(pattern_sub_only, text_without_latex):
-            var = match.group(0)
-            # Check if this overlaps with any subscript+superscript match
-            # by seeing if there's a ^ immediately after
-            end_pos = match.end()
-            if end_pos < len(text_without_latex) and text_without_latex[end_pos] == "^":
-                # This is part of a subscript+superscript, skip it (already caught in stage 1)
-                continue
-
-            # Check context to avoid false positives
-            context = match.string[max(0, match.start() - 10) : match.end() + 10]
-            # Skip if it looks like a URL, filename, or is near a LATEX_PLACEHOLDER
-            if not any(
-                x in context
-                for x in [
-                    ".com",
-                    ".org",
-                    ".edu",
-                    ".io",
-                    ".pdf",
-                    ".png",
-                    ".jpg",
-                    "LATEX_PLACEHOLDER",
-                    "CLOZE_PLACEHOLDER",
-                ]
-            ):
-                # Also skip if the subscript ends with an open parenthesis (likely part of a function)
-                if not var.endswith("("):
-                    # Ensure the suggestion has balanced braces
-                    var_corrected = var
-                    # Fix incomplete braces in the variable for the suggestion
-                    if "_{" in var and not var.endswith("}"):
-                        var_corrected = var + "}"
-                    elif "_" in var and "{" not in var:
-                        # Add braces if missing: X_0 → X_{0}
-                        var_corrected = re.sub(r"_([a-z0-9]+)", r"_{\1}", var)
-                    math_issues.append(
-                        f"Subscripted variable '{var}' should be ${var_corrected}$"
-                    )
-
-        # Pattern 2: Function notation (e.g., h(W), f(X), g_j(X))
-        function_pattern = r"\b([a-z](?:_[a-z0-9]+)?)\(([A-Z][^)]*?)\)"
-        for match in re.finditer(function_pattern, text_without_latex):
-            func = match.group(0)
-            # Avoid common English phrases
-            if match.group(1) not in [
-                "a",
-                "an",
-                "the",
-                "of",
-                "in",
-                "on",
-                "at",
-                "to",
-                "by",
-                "as",
-                "is",
-                "or",
-                "and",
-            ]:
-                math_issues.append(f"Function '{func}' should be ${func}$")
-
-        # Pattern 3: Equations and inequalities with single letters
-        equation_pattern = r"\b([A-Z])\s*(=|≠|≤|≥|!=|<=|>=|<|>)\s*([0-9A-Z]+)"
-        for match in re.finditer(equation_pattern, text_without_latex):
-            eq = match.group(0)
-            math_issues.append(f"Equation '{eq}' should be wrapped in $ delimiters")
-
-        # Pattern 4: Matrix operations like (I - W)
-        matrix_pattern = r"\(([A-Z])\s*([-+×])\s*([A-Z])\)"
-        for match in re.finditer(matrix_pattern, text_without_latex):
-            expr = match.group(0)
-            if (
-                match.group(1) not in ["I"]
-                or match.group(1) == "I"
-                and match.group(3) in ["W", "X", "Y", "A", "B"]
-            ):
-                math_issues.append(f"Matrix expression '{expr}' should be ${expr}$")
-
-        # Pattern 5: Greek letters written out
-        # We've already removed LaTeX commands above, so any remaining Greek letter names are problematic
-        greek_pattern = r"\b(alpha|beta|gamma|delta|epsilon|theta|lambda|mu|sigma|omega|Alpha|Beta|Gamma|Delta|Theta|Lambda|Sigma|Omega)\b"
-        for match in re.finditer(greek_pattern, text_without_latex):
-            greek = match.group(0)
-            math_issues.append(f"Greek letter '{greek}' should be $\\{greek}$")
-
-        # Pattern 6: Unicode Greek symbols
-        unicode_greek = re.findall(r"[α-ωΑ-Ω≠≤≥]", text_without_latex)
-        if unicode_greek:
-            unique_symbols = list(set(unicode_greek))[:3]
-            math_issues.append(
-                f"Unicode math symbols found: {', '.join(unique_symbols)}. Use LaTeX commands instead"
-            )
-
-        # Pattern 7: Isolated capital letters that are likely variables (context-dependent)
-        # This is tricky - we need to be smart about it
-        isolated_letter_pattern = r"(?:^|[^a-zA-Z])([WXYZFGHPQR])(?:[^a-zA-Z]|$)"
-        for match in re.finditer(isolated_letter_pattern, text_without_latex):
-            letter = match.group(1)
-            # Check surrounding context
-            context = text_without_latex[max(0, match.start() - 20) : match.end() + 20]
-            # Look for mathematical context clues
-            if any(
-                word in context.lower()
-                for word in [
-                    "matrix",
-                    "variable",
-                    "function",
-                    "equation",
-                    "represents",
-                    "denotes",
-                    "where",
-                    "let",
-                    "learn",
-                    "adjacency",
-                    "weight",
-                    "graph",
-                    "node",
-                    "edge",
-                    "constraint",
-                    "acyclic",
-                    "optimize",
-                    "parameter",
-                    "vector",
-                    "scalar",
-                    "coefficient",
-                    "distribution",
-                    "predictor",
-                    "estimator",
-                ]
-            ):
-                math_issues.append(f"Variable '{letter}' should be ${letter}$")
-
         if math_issues:
-            if len(math_issues) > 5:
-                # Too many issues - this is likely a real problem
-                issues_to_show = math_issues[:3]
-                issues_to_show.append(f"...and {len(math_issues) - 3} more issues")
-
-                raise ValueError(
-                    "Mathematical content must use LaTeX formatting.\n"
-                    "Issues found:\n"
-                    + "\n".join(f"  - {issue}" for issue in issues_to_show)
-                    + "\n"
-                    "Remember: ALL mathematical variables and expressions need $ delimiters for proper rendering in Anki.\n"
-                    "IMPORTANT: Wrap all math in $ or $$ delimiters. For example: $P_k$, $\\alpha$, $\\beta$"
-                )
-            else:
-                # Few issues - provide helpful feedback for the retry
-                logger.info(
-                    f"Minor LaTeX formatting issues detected ({len(math_issues)} issues), allowing retry to fix"
-                )
-                # Provide VERY specific guidance showing the exact issues found
-                # This helps the LLM fix the exact problematic text
-
-                # Show the first 3 specific issues found
-                issues_to_show = math_issues[:3]
-
-                raise ValueError(
-                    f"Please ensure ALL mathematical content uses proper LaTeX formatting with $ delimiters. "
-                    f"Specific fixes needed: {'; '.join(issues_to_show)}. "
-                    f"IMPORTANT: Always use brackets after underscores: write $X_{{0}}$ not $X_0$, "
-                    f"write $X_{{p}}$ not $X_p$. Every subscript must be wrapped in $ AND use brackets like _{{...}}."
-                )
+            logger.info(
+                f"LaTeX brace issues detected ({len(math_issues)} issues), allowing retry to fix"
+            )
+            raise ValueError(
+                f"LaTeX brace balance errors: {'; '.join(math_issues[:3])}. "
+                f"Fix unbalanced braces inside $...$ delimiters."
+            )
 
         # Check if cloze card ends with a question mark
         if "{{c1::" in v and v.strip().endswith("?"):

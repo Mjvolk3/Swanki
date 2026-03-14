@@ -59,6 +59,8 @@ created: 1773142434234
 
 - [x] Added auto-fix for recurring LaTeX issues (unbalanced braces, bare subscripts/superscripts, double closing braces) that caused pipeline crashes when LLM retries couldn't resolve them; also extended brace-balance validation to `\(...\)` delimiters and tightened single-issue pass-through [[swanki.models.cards#20260313---auto-fix-latex-issues-instead-of-relying-on-llm-retries]]
 - [x] Increased default `target_chars` from 4000 to 6000 to reduce segment count and bring card totals closer to old page-based counts (~28 vs ~39)
+- [x] Replaced lookbehind-based LaTeX auto-wrap with span-aware approach and changed validation to auto-fix bare math instead of crashing the pipeline after 3 failed LLM retries [[swanki.models.cards#20260313---span-based-latex-auto-wrap-prevents-pipeline-crashes]]
+- [ ] [[plan.start-end-audio-queue-non-complementary-audio.plan-0]] Make sure each audio lecture, transcript, summary has some standard start and end as audio queues for auto play and to help remember citation key. We want it humanized like for complementary audio citation key at beginning of each question.
 
 ***
 

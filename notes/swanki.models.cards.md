@@ -35,3 +35,18 @@ LLM-generated cards had recurring LaTeX problems that the validator caught but t
 - Extended brace-balance check to `\(...\)` delimiters (previously only `$...$`)
 - Single math issue now triggers retry (removed pass-through that only logged a warning)
 - Added 14 context words to Pattern 7 (isolated variable detection) for better coverage of mathematical prose
+
+## 2026.03.13 - Span-based LaTeX auto-wrap prevents pipeline crashes
+
+LLM-generated cards with broken `$` delimiters (e.g. `$V_{i}^{\min}=$V_{i}^{\max}$=0$`) caused unwinnable retry loops. The bare expression `V_{i}^{\max}` sat between two `$` spans, and the old lookbehind/lookahead-based auto-wrap skipped it because `$` was adjacent -- even though it belonged to a different span. After 3 retries, pydantic-ai crashed the entire pipeline.
+
+### Span-based auto-wrap
+
+- Replaced `(?<!\$)`/`(?!\$)` lookbehind/lookahead with span-position checking: compute all `$...$` span intervals, only wrap expressions whose start position falls outside every span
+- Extended subscript+superscript pattern to handle partially-braced forms: `V_{i}^\max`, `V_{i}^max` (not just `V_{i}^{\max}`)
+
+### Validation auto-fixes instead of ValueError
+
+- Bare math detected in validation (patterns 1-5: sub+super, sub-only, functions, equations, matrix ops, Greek letters) is now auto-wrapped in `$` instead of raising `ValueError`
+- Only unbalanced braces inside existing `$...$` spans still raise errors (these cannot be fixed programmatically)
+- Removed patterns 6 (Unicode Greek) and 7 (isolated capital letters) -- these had high false-positive rates and were causing unnecessary retries
