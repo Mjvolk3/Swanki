@@ -22,7 +22,10 @@ from ._common import (
     DEFAULT_VOICE_ID,
     chunk_text,
     clean_markdown_for_tts,
-    combine_audio,
+    combine_audio_with_section_pauses,
+    extract_acronyms,
+    generate_bookend_audio,
+    split_transcript_by_sections,
     text_to_speech,
 )
 
@@ -322,6 +325,7 @@ def generate_lecture_audio(
     lecture_prompt_config: dict | None = None,
     speed: float = 1.0,
     si_start_page: int | None = None,
+    paper_title: str | None = None,
 ) -> str:
     """Generate an educational lecture from document content.
 
@@ -338,6 +342,7 @@ def generate_lecture_audio(
         speed: Audio playback speed multiplier.
         si_start_page: Page index where SI begins in markdown_files.
             When set, main paper and SI are processed separately.
+        paper_title: Paper title for lecture bookend announcements.
 
     Returns:
         Filename of the generated audio file.
@@ -400,6 +405,15 @@ def generate_lecture_audio(
     if si_content:
         logger.info(f"SI content length: {len(si_content)} characters")
 
+    # Extract acronyms for injection into prompt
+    acronym_map = extract_acronyms(main_content)
+    acronym_instruction = ""
+    if acronym_map:
+        pairs = ", ".join(f"{a} = {f}" for a, f in acronym_map.items())
+        acronym_instruction = (
+            f"\n\n9. ACRONYM EXPANSION: Expand these acronyms on first use: {pairs}"
+        )
+
     # Get instructions
     if lecture_prompt_config:
         system_instructions = lecture_prompt_config.get("lecture_system", "")
@@ -413,7 +427,9 @@ def generate_lecture_audio(
     humanized_key = (
         humanize_citation_key(citation_key) if citation_key else "this academic work"
     )
-    full_system_prompt = f"{system_instructions}\n\nCitation: {humanized_key}"
+    full_system_prompt = (
+        f"{system_instructions}{acronym_instruction}\n\nCitation: {humanized_key}"
+    )
 
     # Append SI instructions when SI is present
     if si_start_page is not None:
@@ -579,24 +595,66 @@ def generate_lecture_audio(
             f.write(f"Citation Key: {citation_key}\n\n")
         f.write(f"Generated Transcript:\n\n{tts_transcript}\n")
 
-    # Generate audio
-    audio_chunks = chunk_text(tts_transcript, max_chars=2000)
-    chunk_paths: list[Path] = []
-
-    for i, chunk in enumerate(audio_chunks):
-        prefix = (
-            f"{citation_key}_{output_path.stem}" if citation_key else output_path.stem
+    # Generate bookends
+    bookend_start = None
+    bookend_end = None
+    if citation_key:
+        bookend_start = generate_bookend_audio(
+            citation_key,
+            "lecture",
+            "start",
+            output_path.parent,
+            elevenlabs_api_key,
+            voice_id,
+            speed,
+            paper_title=paper_title,
         )
-        chunk_path = output_path.parent / f"{prefix}_chunk{i}.mp3"
-        text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed)
-        chunk_paths.append(chunk_path)
-        time.sleep(1)
+        bookend_end = generate_bookend_audio(
+            citation_key,
+            "lecture",
+            "end",
+            output_path.parent,
+            elevenlabs_api_key,
+            voice_id,
+            speed,
+        )
 
-    if len(chunk_paths) == 1:
-        chunk_paths[0].rename(output_path)
-    else:
-        combine_audio(chunk_paths, output_path)
-        for p in chunk_paths:
+    # Section-aware audio assembly
+    sections_text = split_transcript_by_sections(tts_transcript)
+    if not sections_text:
+        sections_text = [tts_transcript]
+
+    all_section_chunks: list[list[Path]] = []
+    chunk_counter = 0
+
+    for section in sections_text:
+        audio_chunks = chunk_text(section, max_chars=2000)
+        section_paths: list[Path] = []
+
+        for chunk in audio_chunks:
+            prefix = (
+                f"{citation_key}_{output_path.stem}"
+                if citation_key
+                else output_path.stem
+            )
+            chunk_path = output_path.parent / f"{prefix}_chunk{chunk_counter}.mp3"
+            text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed)
+            section_paths.append(chunk_path)
+            chunk_counter += 1
+            time.sleep(1)
+
+        all_section_chunks.append(section_paths)
+
+    combine_audio_with_section_pauses(
+        all_section_chunks,
+        output_path,
+        bookend_start=bookend_start,
+        bookend_end=bookend_end,
+    )
+
+    # Clean up chunk files
+    for section_paths in all_section_chunks:
+        for p in section_paths:
             p.unlink()
 
     return output_path.name
@@ -610,6 +668,14 @@ _DEFAULT_LECTURE_SYSTEM_PROMPT = """You are an expert educator creating an audio
 
 YOUR TASK:
 Transform the provided academic text into an engaging, conversational audio lecture.
+
+STRUCTURE:
+Organize your lecture into these labeled sections, separated by ---SECTION_BREAK--- markers:
+- Introduction: Set context and motivation
+- 2-4 Results/Discussion sections: Cover key findings and their significance
+- Conclusion and Future Directions: Summarize takeaways and open questions
+
+Insert ---SECTION_BREAK--- on its own line between each section.
 
 CRITICAL OUTPUT RULES:
 1. NO LISTS: Never use numbered lists (1., 2., 3.) or bullet points (-)
@@ -642,7 +708,16 @@ CRITICAL OUTPUT RULES:
    - Aim for roughly 40-60% of source manuscript length
    - Let the content drive section lengths
    - Be selective: key concepts only, skip exhaustive details
-   - Focus on WHY and HOW, not just WHAT"""
+   - Focus on WHY and HOW, not just WHAT
+
+7. ANALOGIES:
+   - Use analogies to illuminate, not replace
+   - Every analogy must be followed by the precise technical statement
+   - Example: "Think of it like a lock and key — specifically, the enzyme's active site binds the substrate with high stereoselectivity"
+
+8. SECTION BREAKS:
+   - Insert ---SECTION_BREAK--- on its own line between lecture sections
+   - This creates real silence in the audio for natural pacing"""
 
 
 def _split_large_section(content: str, max_tokens: int) -> list[str]:

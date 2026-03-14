@@ -3,7 +3,7 @@ swanki/audio/summary.py
 [[swanki.audio.summary]]
 https://github.com/Mjvolk3/Swanki/tree/main/swanki/audio/summary.py
 
-Document summary narration with citation announcements and SSML pauses.
+Document summary narration with section pauses, bookend announcements, and acronym expansion.
 """
 
 import logging
@@ -16,7 +16,10 @@ from ._common import (
     DEFAULT_VOICE_ID,
     chunk_text,
     clean_markdown_for_tts,
-    combine_audio,
+    combine_audio_with_section_pauses,
+    extract_acronyms,
+    generate_bookend_audio,
+    split_transcript_by_sections,
     text_to_speech,
 )
 
@@ -48,6 +51,13 @@ def generate_summary_audio(
     """
     voice_id = voice_id or DEFAULT_VOICE_ID
 
+    # Extract acronyms for injection into prompt
+    acronym_map = extract_acronyms(summary_text)
+    acronym_instruction = ""
+    if acronym_map:
+        pairs = ", ".join(f"{a} = {f}" for a, f in acronym_map.items())
+        acronym_instruction = f"\n8. Expand these acronyms on first use: {pairs}\n"
+
     system_prompt = (
         "You are converting a document summary to audio format. "
         "Follow these rules precisely:\n"
@@ -57,10 +67,11 @@ def generate_summary_audio(
         "4. Read acronyms naturally with their full form, e.g. 'the FSEOF algorithm, "
         "flux scanning based on enforced objective function' -- never add phrases like "
         "'on first use' or 'which stands for'\n"
-        '5. To add pauses between main points, insert a <break time="1.0s" /> tag '
-        "(up to 3s) -- never say the word 'pause' aloud or write [pause]\n"
+        "5. Between main points, insert ---SECTION_BREAK--- on its own line for a "
+        "pause -- never say the word 'pause' aloud or write [pause]\n"
         "6. Keep the content informative but accessible\n"
         "7. Never include phrases like 'Summary:' or 'This document...'\n"
+        + acronym_instruction
     )
 
     user_content = summary_text
@@ -106,33 +117,71 @@ def generate_summary_audio(
             f.write(f"Citation Key: {citation_key}\n\n")
         f.write(f"Generated Transcript:\n\n{tts_transcript}\n")
 
-    # Generate audio
-    chunks = chunk_text(tts_transcript)
-
-    if not chunks:
-        logger.error(
-            f"No chunks generated from transcript. Transcript length: {len(transcript)}"
+    # Generate bookends
+    bookend_start = None
+    bookend_end = None
+    if citation_key:
+        bookend_start = generate_bookend_audio(
+            citation_key,
+            "summary",
+            "start",
+            output_path.parent,
+            elevenlabs_api_key,
+            voice_id,
+            speed,
         )
-        logger.debug(f"Transcript content: {transcript[:200]}...")
+        bookend_end = generate_bookend_audio(
+            citation_key,
+            "summary",
+            "end",
+            output_path.parent,
+            elevenlabs_api_key,
+            voice_id,
+            speed,
+        )
+
+    # Section-aware audio assembly
+    sections_text = split_transcript_by_sections(tts_transcript)
+    if not sections_text:
+        sections_text = [tts_transcript]
+
+    if not sections_text or not any(s.strip() for s in sections_text):
+        logger.error(
+            f"No sections generated from transcript. Transcript length: {len(transcript)}"
+        )
         return output_path.name
 
-    if len(chunks) == 1:
-        text_to_speech(chunks[0], voice_id, output_path, elevenlabs_api_key, speed)
-    else:
-        chunk_paths: list[Path] = []
-        for i, chunk in enumerate(chunks):
+    all_section_chunks: list[list[Path]] = []
+    chunk_counter = 0
+
+    for section in sections_text:
+        chunks = chunk_text(section)
+        section_paths: list[Path] = []
+
+        for chunk in chunks:
             prefix = (
                 f"{citation_key}_{output_path.stem}"
                 if citation_key
                 else output_path.stem
             )
-            chunk_path = output_path.parent / f"{prefix}_chunk{i}.mp3"
+            chunk_path = output_path.parent / f"{prefix}_chunk{chunk_counter}.mp3"
             text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed)
-            chunk_paths.append(chunk_path)
+            section_paths.append(chunk_path)
+            chunk_counter += 1
             time.sleep(1)
 
-        combine_audio(chunk_paths, output_path)
-        for p in chunk_paths:
+        all_section_chunks.append(section_paths)
+
+    combine_audio_with_section_pauses(
+        all_section_chunks,
+        output_path,
+        bookend_start=bookend_start,
+        bookend_end=bookend_end,
+    )
+
+    # Clean up chunk files
+    for section_paths in all_section_chunks:
+        for p in section_paths:
             p.unlink()
 
     return output_path.name

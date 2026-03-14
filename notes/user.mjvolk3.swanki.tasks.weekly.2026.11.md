@@ -5,9 +5,6 @@ desc: ''
 updated: 1773622820303
 updated: 1773322944373
 updated: 1773337846654
-updated: 1773269920361
-updated: 1773322264312
-updated: 1773333750152
 created: 1773142434234
 ---
 ## 2026.03.10
@@ -60,7 +57,7 @@ created: 1773142434234
 - [x] Added auto-fix for recurring LaTeX issues (unbalanced braces, bare subscripts/superscripts, double closing braces) that caused pipeline crashes when LLM retries couldn't resolve them; also extended brace-balance validation to `\(...\)` delimiters and tightened single-issue pass-through [[swanki.models.cards#20260313---auto-fix-latex-issues-instead-of-relying-on-llm-retries]]
 - [x] Increased default `target_chars` from 4000 to 6000 to reduce segment count and bring card totals closer to old page-based counts (~28 vs ~39)
 - [x] Replaced lookbehind-based LaTeX auto-wrap with span-aware approach and changed validation to auto-fix bare math instead of crashing the pipeline after 3 failed LLM retries [[swanki.models.cards#20260313---span-based-latex-auto-wrap-prevents-pipeline-crashes]]
-- [ ] [[plan.start-end-audio-queue-non-complementary-audio.plan-0]] Make sure each audio lecture, transcript, summary has some standard start and end as audio queues for auto play and to help remember citation key. We want it humanized like for complementary audio citation key at beginning of each question.
+- [x] Audio quality overhaul: added section-aware assembly with real silence, bookend announcements (START/END for transcript/summary, lecture-specific intro/outro), metadata filtering for reading, no-filler section breaks, figure announce pattern, acronym extraction+injection, lecture structure enforcement, and analogy rule. Also created Zotero annotation extraction script+skill. [[swanki.audio._common#20260313---section-aware-audio-infrastructure-for-quality-improvements]] [[swanki.audio.reading#20260313---section-aware-assembly-metadata-filtering-no-filler-pauses-bookends-acronyms]] [[swanki.audio.summary#20260313---section-aware-assembly-bookends-acronym-injection]] [[swanki.audio.lecture#20260313---lecture-structure-enforcement-analogy-rule-section-aware-assembly-bookends-acronyms]] [[tests.test_audio_common#20260313---tests-for-section-aware-audio-infrastructure]] [[scripts.zotero_annotations#20260313---zotero-pdf-annotation-extraction-by-highlight-color]]
 
 ***
 

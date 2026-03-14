@@ -13,3 +13,7 @@ Extracted from monolithic audio module. Generates narration-style audio from doc
 ## 2026.03.12 - Migrate from OpenAI client to pydantic-ai agents
 
 Replaced direct `OpenAI` client call with shared `text_agent` from `swanki.llm.agents`. Removed `openai_client` parameter from `generate_summary_audio` -- now accepts `model: str` in pydantic-ai format. Manual retry loop replaced by agent-level `retries=3`. Part of Step 5 ([[plan.major-refactor-sequence.plan-0]]).
+
+## 2026.03.13 - Section-aware assembly, bookends, acronym injection
+
+Replaced SSML `<break time="1.0s"/>` tags with `---SECTION_BREAK---` markers for real silence between summary points. Added START/END bookend announcements via `generate_bookend_audio`. Acronyms extracted from source text and injected into the LLM prompt for reliable first-use expansion.

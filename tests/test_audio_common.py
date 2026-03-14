@@ -13,7 +13,11 @@ from swanki.audio._common import (
     chunk_text,
     clean_markdown_for_tts,
     combine_audio,
+    combine_audio_with_section_pauses,
+    extract_acronyms,
     filter_metadata,
+    generate_silence,
+    split_transcript_by_sections,
     validate_audio_file,
 )
 
@@ -153,3 +157,145 @@ def test_validate_audio_file_too_small(tmp_path):
     tiny = tmp_path / "tiny.mp3"
     tiny.write_bytes(b"x" * 100)
     assert validate_audio_file(tiny) is False
+
+
+# ---------------------------------------------------------------------------
+# generate_silence
+# ---------------------------------------------------------------------------
+
+
+def test_generate_silence(tmp_path):
+    out = tmp_path / "silence.mp3"
+    result = generate_silence(2000, out)
+    assert result == out
+    assert out.exists()
+    audio = AudioSegment.from_mp3(str(out))
+    assert abs(len(audio) - 2000) < 100  # ~2s within tolerance
+
+
+def test_generate_silence_short(tmp_path):
+    out = tmp_path / "short.mp3"
+    generate_silence(500, out)
+    audio = AudioSegment.from_mp3(str(out))
+    assert abs(len(audio) - 500) < 100
+
+
+# ---------------------------------------------------------------------------
+# split_transcript_by_sections
+# ---------------------------------------------------------------------------
+
+
+def test_split_transcript_by_sections_basic():
+    transcript = "Section one.\n\n---SECTION_BREAK---\n\nSection two."
+    sections = split_transcript_by_sections(transcript)
+    assert sections == ["Section one.", "Section two."]
+
+
+def test_split_transcript_by_sections_empty_between():
+    transcript = "A\n---SECTION_BREAK---\n---SECTION_BREAK---\nB"
+    sections = split_transcript_by_sections(transcript)
+    assert sections == ["A", "B"]
+
+
+def test_split_transcript_by_sections_no_marker():
+    transcript = "No breaks here, just text."
+    sections = split_transcript_by_sections(transcript)
+    assert sections == ["No breaks here, just text."]
+
+
+def test_split_transcript_by_sections_custom_marker():
+    transcript = "First<<SEP>>Second<<SEP>>Third"
+    sections = split_transcript_by_sections(transcript, marker="<<SEP>>")
+    assert sections == ["First", "Second", "Third"]
+
+
+# ---------------------------------------------------------------------------
+# combine_audio_with_section_pauses
+# ---------------------------------------------------------------------------
+
+
+def test_combine_audio_with_section_pauses_basic(tmp_path):
+    # Create two sections, each with one chunk
+    f1 = tmp_path / "s1_c0.mp3"
+    f2 = tmp_path / "s2_c0.mp3"
+    AudioSegment.silent(duration=1000).export(str(f1), format="mp3")
+    AudioSegment.silent(duration=1000).export(str(f2), format="mp3")
+
+    out = tmp_path / "combined.mp3"
+    combine_audio_with_section_pauses([[f1], [f2]], out, section_pause_ms=2000)
+
+    assert out.exists()
+    audio = AudioSegment.from_mp3(str(out))
+    # 1s + 2s pause + 1s = ~4s
+    assert len(audio) > 3500
+
+
+def test_combine_audio_with_section_pauses_bookends(tmp_path):
+    chunk = tmp_path / "chunk.mp3"
+    start = tmp_path / "start.mp3"
+    end = tmp_path / "end.mp3"
+    AudioSegment.silent(duration=1000).export(str(chunk), format="mp3")
+    AudioSegment.silent(duration=500).export(str(start), format="mp3")
+    AudioSegment.silent(duration=500).export(str(end), format="mp3")
+
+    out = tmp_path / "combined.mp3"
+    combine_audio_with_section_pauses(
+        [[chunk]],
+        out,
+        bookend_start=start,
+        bookend_end=end,
+        bookend_pause_ms=500,
+    )
+
+    assert out.exists()
+    audio = AudioSegment.from_mp3(str(out))
+    # 500ms start + 500ms pause + 1000ms chunk + 500ms pause + 500ms end = ~3000ms
+    assert len(audio) > 2500
+
+
+def test_combine_audio_with_section_pauses_empty(tmp_path):
+    out = tmp_path / "empty.mp3"
+    combine_audio_with_section_pauses([], out)
+    assert not out.exists()
+
+
+# ---------------------------------------------------------------------------
+# extract_acronyms
+# ---------------------------------------------------------------------------
+
+
+def test_extract_acronyms_parenthetical():
+    text = (
+        "We used the FSEOF (flux scanning based on enforced objective function) method."
+    )
+    result = extract_acronyms(text)
+    assert "FSEOF" in result
+    assert "flux scanning" in result["FSEOF"].lower()
+
+
+def test_extract_acronyms_reverse_pattern():
+    text = "The flux balance analysis (FBA) is commonly used."
+    result = extract_acronyms(text)
+    assert "FBA" in result
+
+
+def test_extract_acronyms_multiple():
+    text = (
+        "We applied CRISPR (clustered regularly interspaced short palindromic repeats) "
+        "and genome-scale metabolic models (GEMs) to the problem."
+    )
+    result = extract_acronyms(text)
+    assert "CRISPR" in result
+    assert "GEMs" not in result  # lowercase 's' makes it <2 uppercase
+    assert "GEM" not in result  # only 3-char acronym inside parens is "GEMs"
+
+
+def test_extract_acronyms_empty():
+    assert extract_acronyms("No acronyms here.") == {}
+
+
+def test_extract_acronyms_skips_all_caps_expansion():
+    text = "The ABC (DEF) transporter."
+    result = extract_acronyms(text)
+    # "DEF" is all-caps so should be skipped as not a real expansion
+    assert "ABC" not in result

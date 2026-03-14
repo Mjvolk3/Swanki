@@ -8,7 +8,9 @@ Shared TTS utilities: chunking, speech synthesis, audio combination, and metadat
 
 import logging
 import re
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Literal
 
 import httpx
 from elevenlabs import ElevenLabs, VoiceSettings
@@ -316,3 +318,178 @@ def filter_metadata(content: str) -> str:
                 filtered_lines.append(line)
 
     return "\n".join(filtered_lines)
+
+
+# ---------------------------------------------------------------------------
+# Section-aware audio infrastructure
+# ---------------------------------------------------------------------------
+
+SECTION_BREAK_MARKER = "---SECTION_BREAK---"
+
+
+def generate_silence(duration_ms: int, output_path: Path) -> Path:
+    """Create a silent MP3 file.
+
+    Args:
+        duration_ms: Duration of silence in milliseconds.
+        output_path: Path for the output MP3 file.
+
+    Returns:
+        The output path.
+    """
+    AudioSegment.silent(duration=duration_ms).export(str(output_path), format="mp3")
+    return output_path
+
+
+def split_transcript_by_sections(
+    transcript: str, marker: str = SECTION_BREAK_MARKER
+) -> list[str]:
+    """Split transcript text on a marker, stripping whitespace and filtering empties.
+
+    Args:
+        transcript: Transcript text with section break markers.
+        marker: The marker string to split on.
+
+    Returns:
+        List of non-empty section strings.
+    """
+    return [s.strip() for s in transcript.split(marker) if s.strip()]
+
+
+def combine_audio_with_section_pauses(
+    sections: Sequence[list[Path]],
+    output: Path,
+    section_pause_ms: int = 2000,
+    chunk_crossfade_ms: int = 200,
+    bookend_start: Path | None = None,
+    bookend_end: Path | None = None,
+    bookend_pause_ms: int = 500,
+) -> None:
+    """Combine audio chunks grouped by section with real silence between sections.
+
+    Args:
+        sections: List of chunk-path lists, one list per section.
+        output: Path for the combined output file.
+        section_pause_ms: Silence duration between sections.
+        chunk_crossfade_ms: Crossfade duration between chunks within a section.
+        bookend_start: Optional start bookend audio file.
+        bookend_end: Optional end bookend audio file.
+        bookend_pause_ms: Silence after start bookend / before end bookend.
+    """
+    if not sections:
+        logger.error("No sections provided to combine_audio_with_section_pauses")
+        return
+
+    combined: AudioSegment | None = None
+
+    # Start bookend
+    if bookend_start and bookend_start.exists():
+        combined = AudioSegment.from_mp3(str(bookend_start))
+        combined += AudioSegment.silent(duration=bookend_pause_ms)
+
+    for sec_idx, section_chunks in enumerate(sections):
+        if not section_chunks:
+            continue
+
+        # Build section audio from chunks with crossfade
+        section_audio = AudioSegment.from_mp3(str(section_chunks[0]))
+        for chunk_path in section_chunks[1:]:
+            section_audio = section_audio.append(
+                AudioSegment.from_mp3(str(chunk_path)), crossfade=chunk_crossfade_ms
+            )
+
+        # Append section with silence gap (except before first section)
+        if combined is None:
+            combined = section_audio
+        else:
+            combined += AudioSegment.silent(duration=section_pause_ms)
+            combined += section_audio
+
+    if combined is None:
+        logger.error("No audio content to combine")
+        return
+
+    # End bookend
+    if bookend_end and bookend_end.exists():
+        combined += AudioSegment.silent(duration=bookend_pause_ms)
+        combined += AudioSegment.from_mp3(str(bookend_end))
+
+    combined.export(str(output), format="mp3", bitrate="192k")
+
+
+def generate_bookend_audio(
+    citation_key: str,
+    audio_type: Literal["transcript", "summary", "lecture"],
+    position: Literal["start", "end"],
+    output_dir: Path,
+    elevenlabs_api_key: str,
+    voice_id: str,
+    speed: float = 1.0,
+    paper_title: str | None = None,
+) -> Path:
+    """Generate a short bookend announcement audio clip.
+
+    Args:
+        citation_key: Raw citation key (will be humanized).
+        audio_type: Type of audio being bookended.
+        position: Whether this is a start or end bookend.
+        output_dir: Directory to cache the bookend file.
+        elevenlabs_api_key: ElevenLabs API key.
+        voice_id: ElevenLabs voice ID.
+        speed: Playback speed multiplier.
+        paper_title: Paper title for lecture start bookends.
+
+    Returns:
+        Path to the generated bookend MP3.
+    """
+    from ..utils.formatting import humanize_citation_key
+
+    humanized = humanize_citation_key(citation_key)
+    cache_path = output_dir / f"{citation_key}_{audio_type}_{position}.mp3"
+
+    if cache_path.exists():
+        logger.info(f"Reusing cached bookend: {cache_path}")
+        return cache_path
+
+    if audio_type == "lecture":
+        if position == "start":
+            title_part = f" We are covering: {paper_title}." if paper_title else ""
+            text = f"Today's lecture is posted as: {humanized}.{title_part}"
+        else:
+            text = f"And with that we conclude: {humanized}."
+    else:
+        label = position.upper()
+        text = f"{label}: {humanized}."
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    text_to_speech(text, voice_id, cache_path, elevenlabs_api_key, speed)
+    return cache_path
+
+
+def extract_acronyms(text: str) -> dict[str, str]:
+    """Extract acronym definitions from text.
+
+    Scans for patterns like ``ACRONYM (Full Form)`` and ``Full Form (ACRONYM)``.
+
+    Args:
+        text: Source text to scan.
+
+    Returns:
+        Dict mapping acronym to its expansion, e.g. ``{"FSEOF": "flux scanning..."}``.
+    """
+    acronyms: dict[str, str] = {}
+
+    # Pattern 1: ACRONYM (Full Form)  e.g. "FSEOF (flux scanning based on ...)"
+    for m in re.finditer(r"\b([A-Z]{2,})\s*\(([^)]{5,})\)", text):
+        acr, full = m.group(1), m.group(2).strip()
+        # Skip if the "full form" is all-caps (not really an expansion)
+        if not full.isupper():
+            acronyms[acr] = full
+
+    # Pattern 2: Full Form (ACRONYM)  e.g. "flux scanning ... (FSEOF)"
+    for m in re.finditer(r"([A-Za-z][^(]{4,}?)\s*\(([A-Z]{2,})\)", text):
+        full, acr = m.group(1).strip(), m.group(2)
+        if acr not in acronyms and not full.isupper():
+            acronyms[acr] = full
+
+    return acronyms

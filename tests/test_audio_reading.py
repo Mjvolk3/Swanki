@@ -23,7 +23,7 @@ def test_generate_reading_audio_mocked(tmp_audio_dir, mock_elevenlabs_api_key):
     with (
         patch("swanki.audio.reading.text_agent") as mock_agent,
         patch("swanki.audio.reading.text_to_speech") as mock_tts,
-        patch("swanki.audio.reading.combine_audio") as mock_combine,
+        patch("swanki.audio.reading.combine_audio_with_section_pauses") as mock_combine,
     ):
         mock_agent.run_sync.return_value = mock_result
 
@@ -31,7 +31,7 @@ def test_generate_reading_audio_mocked(tmp_audio_dir, mock_elevenlabs_api_key):
             AudioSegment.silent(duration=1000).export(str(output_path), format="mp3")
 
         mock_tts.side_effect = fake_tts
-        mock_combine.side_effect = lambda files, output, **kw: AudioSegment.silent(
+        mock_combine.side_effect = lambda sections, output, **kw: AudioSegment.silent(
             duration=2000
         ).export(str(output), format="mp3")
 

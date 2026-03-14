@@ -18,7 +18,11 @@ from ._common import (
     DEFAULT_VOICE_ID,
     chunk_text,
     clean_markdown_for_tts,
-    combine_audio,
+    combine_audio_with_section_pauses,
+    extract_acronyms,
+    filter_metadata,
+    generate_bookend_audio,
+    split_transcript_by_sections,
     text_to_speech,
 )
 
@@ -38,6 +42,8 @@ def generate_reading_audio(
 
     Uses two-pass LLM processing: (1) LaTeX humanization, (2) audio
     optimization. Audio chunks are limited to 2000 chars for quality.
+    Sections are separated by real silence and bookended with citation
+    key announcements.
 
     Args:
         full_content: The full document content.
@@ -53,6 +59,13 @@ def generate_reading_audio(
     """
     voice_id = voice_id or DEFAULT_VOICE_ID
 
+    # Extract acronyms for injection into prompt
+    acronym_map = extract_acronyms(full_content)
+    acronym_instruction = ""
+    if acronym_map:
+        pairs = ", ".join(f"{a} = {f}" for a, f in acronym_map.items())
+        acronym_instruction = f"\n\n8. Expand these acronyms on first use: {pairs}\n"
+
     system_prompt = (
         "You are converting a full document to audio format for reading aloud. "
         "The content has already been preprocessed to remove LaTeX notation. "
@@ -61,18 +74,25 @@ def generate_reading_audio(
         "2. When an acronym appears, read it naturally with its full form, e.g. "
         "'the FSEOF algorithm, flux scanning based on enforced objective function' "
         "-- never add meta-commentary like 'on first use' or 'which stands for'\n\n"
-        "3. Skip any remaining image references, URLs, or figure/table blocks entirely\n\n"
-        '4. Between sections, insert a <break time="2.0s" /> tag for a pause, then '
-        "start with a brief transition -- never say the word 'pause' aloud or write [pause]\n\n"
+        "3. When encountering a figure, insert ---SECTION_BREAK--- on its own line, "
+        "then say 'Figure X' (using the figure number), then insert another "
+        "---SECTION_BREAK--- on its own line, then read the figure description\n\n"
+        "4. Between sections, insert ---SECTION_BREAK--- on its own line. Do NOT add "
+        "any filler text, transitions, or commentary between sections -- just the marker. "
+        "Never say the word 'pause' aloud or write [pause]\n\n"
         "5. Maintain academic tone but make it listenable\n\n"
-        "6. Read all prose exactly as written - preserve the author's words and meaning\n\n"
+        "6. Read all prose exactly as written - preserve the author's words and meaning. "
+        "Do NOT add your own words, summaries, or transitions between sections\n\n"
         "7. Make the text flow naturally for listening, not reading\n"
+        + acronym_instruction
     )
 
-    user_content = full_content
+    # Filter metadata (affiliations, emails, dates, references) before processing
+    user_content = filter_metadata(full_content)
+
     if citation_key:
         humanized_key = humanize_citation_key(citation_key)
-        user_content = f"Citation: {humanized_key}\n\n{full_content}"
+        user_content = f"Citation: {humanized_key}\n\n{user_content}"
 
     # Pass 1: Humanize LaTeX notation
     logger.info("Humanizing LaTeX notation in content...")
@@ -129,23 +149,66 @@ def generate_reading_audio(
             f.write(f"Citation Key: {citation_key}\n\n")
         f.write(f"Generated Transcript:\n\n{tts_transcript}\n")
 
-    # Generate audio
-    audio_chunks = chunk_text(tts_transcript, max_chars=2000)
-    chunk_paths: list[Path] = []
-
-    for i, chunk in enumerate(audio_chunks):
-        prefix = (
-            f"{citation_key}_{output_path.stem}" if citation_key else output_path.stem
+    # Generate bookends
+    bookend_start = None
+    bookend_end = None
+    if citation_key:
+        bookend_start = generate_bookend_audio(
+            citation_key,
+            "transcript",
+            "start",
+            output_path.parent,
+            elevenlabs_api_key,
+            voice_id,
+            speed,
         )
-        chunk_path = output_path.parent / f"{prefix}_chunk{i}.mp3"
-        text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed)
-        chunk_paths.append(chunk_path)
-        time.sleep(1)
+        bookend_end = generate_bookend_audio(
+            citation_key,
+            "transcript",
+            "end",
+            output_path.parent,
+            elevenlabs_api_key,
+            voice_id,
+            speed,
+        )
 
-    combine_audio(chunk_paths, output_path)
+    # Section-aware audio assembly
+    sections_text = split_transcript_by_sections(tts_transcript)
+    if not sections_text:
+        sections_text = [tts_transcript]
 
-    for p in chunk_paths:
-        p.unlink()
+    all_section_chunks: list[list[Path]] = []
+    chunk_counter = 0
+
+    for sec_idx, section in enumerate(sections_text):
+        audio_chunks = chunk_text(section, max_chars=2000)
+        section_paths: list[Path] = []
+
+        for chunk in audio_chunks:
+            prefix = (
+                f"{citation_key}_{output_path.stem}"
+                if citation_key
+                else output_path.stem
+            )
+            chunk_path = output_path.parent / f"{prefix}_chunk{chunk_counter}.mp3"
+            text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed)
+            section_paths.append(chunk_path)
+            chunk_counter += 1
+            time.sleep(1)
+
+        all_section_chunks.append(section_paths)
+
+    combine_audio_with_section_pauses(
+        all_section_chunks,
+        output_path,
+        bookend_start=bookend_start,
+        bookend_end=bookend_end,
+    )
+
+    # Clean up chunk files
+    for section_paths in all_section_chunks:
+        for p in section_paths:
+            p.unlink()
 
     return output_path.name
 

@@ -24,3 +24,13 @@ Major overhaul addressing two problems: false mid-lecture conclusions when SI pa
 ## 2026.03.12 - Migrate from instructor/OpenAI to pydantic-ai agents
 
 Replaced dual-client pattern (`instructor.from_openai()` + `instructor.patch()`) with `lecture_critic_agent` and shared `text_agent` from `swanki.llm.agents`. Removed `openai_client` and `instructor_client` parameters from all functions. Three structured call sites now use `lecture_critic_agent.run_sync()` for critique and `text_agent.run_sync()` for generation/refinement. Critique-regenerate loop preserved identically. Part of Step 5 ([[plan.major-refactor-sequence.plan-0]]).
+
+## 2026.03.13 - Lecture structure enforcement, analogy rule, section-aware assembly, bookends, acronyms
+
+Addresses quality issues identified from listening to merzbacher paper lecture: meandering structure, over-analogizing, no section pauses, no bookend announcements.
+
+- **Structure enforcement**: System prompt now mandates labeled sections (Introduction, 2-4 Results/Discussion, Conclusion and Future Directions) separated by `---SECTION_BREAK---` markers
+- **Analogy rule**: New rule 7 -- "Use analogies to illuminate, not replace. Every analogy must be followed by the precise technical statement"
+- **Section-aware assembly**: Replaced flat `combine_audio` with `combine_audio_with_section_pauses` for real silence between lecture sections
+- **Bookends**: Generates lecture-specific bookends ("Today's lecture is posted as: ..." / "And with that we conclude: ...") via new `paper_title` parameter
+- **Acronyms**: `extract_acronyms()` scans source content and injects definitions into the system prompt
