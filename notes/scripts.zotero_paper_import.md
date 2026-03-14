@@ -37,3 +37,11 @@ Support keeping multiple non-contiguous page ranges in a single PDF -- needed fo
 - `TAIL_CUT_PATTERNS` detects Nature Portfolio reporting summaries appended by the publisher
 - `END_MATTER_PATTERNS` expanded with Online content, Author contributions, Declaration/Competing interests
 - `_labels_to_ranges()` converts per-page keep/cut labels into multi-range tuples for cutting
+
+## 2026.03.14 - Fix attachment ordering and qpdf warning tolerance
+
+Zotero can return PDF attachments in arbitrary order, causing the SI PDF to be saved as the main article and vice versa. Added `_is_main_article()` heuristic that inspects the attachment `title` and `filename` fields to sort the main article first. Also made `cut_pdf` tolerate qpdf exit code 3 (warnings with successful output), which some structurally imperfect PDFs trigger.
+
+- `_is_main_article()` checks for "Full Text PDF" in title and SI indicators ("supplement", "moesm", "esm") in title/filename
+- `get_pdf_attachments()` now sorts results so main article comes before supplementary PDFs
+- `cut_pdf()` accepts exit code 3 (qpdf warnings) instead of raising `CalledProcessError`

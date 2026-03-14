@@ -34,6 +34,11 @@ created: 1773142434234
 - [x] Added multi-range PDF cutting to zotero import script so Extended Data (Nature) and STAR Methods/SI figures (Cell) are preserved while refs and publisher reporting summaries are cut; migrated from broken `swanki-cut` to `qpdf` [[scripts.zotero_paper_import#20260312---multi-range-pdf-cutting-and-qpdf-migration]]
 - [x] Fixed worktree `.claude/settings.json` relative paths breaking by adding a rewrite step to `setup-worktree.sh` that adjusts `../` prefixes to the correct depth [[scripts.setup-worktree]]
 
+## 2026.03.14
+
+- [x] Fixed Zotero import script mis-ordering attachments (SI downloaded as main article) by adding title/filename heuristic, and tolerate qpdf exit-code-3 warnings [[scripts.zotero_paper_import#20260314---fix-attachment-ordering-and-qpdf-warning-tolerance]]
+- [x] Drafted 12-slide lit review outline for Merzbacher et al. 2025 Flux Cone Learning paper [[scratch.2026.03.13.134811-outline]]
+
 ***
 
 - [ ] Cite pydantic in paper.

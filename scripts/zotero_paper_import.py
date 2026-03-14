@@ -163,14 +163,30 @@ def find_item_by_citation_key(zot: zotero.Zotero, citation_key: str) -> dict:
     raise LookupError(f"No Zotero item found for citation key: {citation_key}")
 
 
+def _is_main_article(att: dict) -> bool:
+    """Heuristic: return True if attachment looks like the main article PDF."""
+    data = att["data"]
+    title = (data.get("title") or "").lower()
+    filename = (data.get("filename") or "").lower()
+    # Zotero auto-imports typically title the main PDF "Full Text PDF"
+    if "full text" in title:
+        return True
+    # SI/supplementary indicators in title or filename
+    si_indicators = ("supplement", "si", "moesm", "esm", "supporting info")
+    if any(s in title for s in si_indicators):
+        return False
+    if any(s in filename for s in si_indicators):
+        return False
+    return True
+
+
 def get_pdf_attachments(zot: zotero.Zotero, item_key: str) -> list[dict]:
-    """Return PDF attachment items for a parent item."""
+    """Return PDF attachment items for a parent item, main article first."""
     children = zot.children(item_key)
-    return [
-        c
-        for c in children
-        if c["data"].get("contentType") == "application/pdf"
-    ]
+    pdfs = [c for c in children if c["data"].get("contentType") == "application/pdf"]
+    # Sort so main article comes first, SI/supplementary after
+    pdfs.sort(key=lambda a: (0 if _is_main_article(a) else 1))
+    return pdfs
 
 
 def download_pdfs(
@@ -265,10 +281,12 @@ def _labels_to_ranges(labels: list[str]) -> list[tuple[int, int]]:
 def cut_pdf(input_pdf: Path, output_pdf: Path, start: int, end: int) -> None:
     """Cut a PDF using qpdf (0-based start, end-exclusive)."""
     # qpdf uses 1-based inclusive page ranges
-    subprocess.run(
+    # Exit code 3 = warnings (e.g. minor PDF structural issues) but success
+    result = subprocess.run(
         [QPDF, str(input_pdf), "--pages", ".", f"{start + 1}-{end}", "--", str(output_pdf)],
-        check=True,
     )
+    if result.returncode not in (0, 3):
+        result.check_returncode()
 
 
 def unite_pdfs(inputs: list[Path], output: Path) -> None:
