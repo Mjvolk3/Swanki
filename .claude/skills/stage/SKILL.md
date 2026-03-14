@@ -1,7 +1,7 @@
 ---
 name: stage
 description: "Smart staging with auto-detected file blocks and interactive override. Use before /commit."
-args: "[all]"
+args: "[blocks]"
 ---
 
 # Smart Stage
@@ -69,7 +69,7 @@ Detected file blocks:
 
 ## Step 4: User picks blocks (interactive mode only)
 
-**Skip this step if the user passed `all`.** Jump straight to Step 5.
+**Skip this step unless the user passed `blocks`.** Jump straight to Step 5.
 
 Use `AskUserQuestion` with `multiSelect: true` to let the user choose which blocks to stage. Options:
 
@@ -104,7 +104,7 @@ Run `git diff --cached --name-status` to show what is now staged.
 
 ## Example Invocations
 
-- `/stage` -- interactive staging with block selection
-- `/stage all` -- non-interactive, stage everything immediately
+- `/stage` -- stage everything immediately (default, non-interactive)
+- `/stage blocks` -- interactive staging with block selection
 - "stage my changes"
 - "stage files for commit"
