@@ -447,10 +447,6 @@ def generate_bookend_audio(
     humanized = humanize_citation_key(citation_key)
     cache_path = output_dir / f"{citation_key}_{audio_type}_{position}.mp3"
 
-    if cache_path.exists():
-        logger.info(f"Reusing cached bookend: {cache_path}")
-        return cache_path
-
     if audio_type == "lecture":
         if position == "start":
             title_part = f" We are covering: {paper_title}." if paper_title else ""

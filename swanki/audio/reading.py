@@ -205,10 +205,14 @@ def generate_reading_audio(
         bookend_end=bookend_end,
     )
 
-    # Clean up chunk files
+    # Clean up chunk and bookend files
     for section_paths in all_section_chunks:
         for p in section_paths:
             p.unlink()
+    if bookend_start and bookend_start.exists():
+        bookend_start.unlink()
+    if bookend_end and bookend_end.exists():
+        bookend_end.unlink()
 
     return output_path.name
 
