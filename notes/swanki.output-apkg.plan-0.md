@@ -2,14 +2,14 @@
 id: mwn6hgqre5zhbpw0ma60q8n
 title: Plan 0
 desc: ''
-updated: 1772222376192
+updated: 1773622853100
 created: 1772221934152
 ---
 Direct .apkg Export (No External Dependency)
 
 ## Context
 
-Currently, Swanki generates cards as markdown and sends them to Anki via AnkiConnect (requires a running Anki instance). Users then review, prune, and manually export to `.apkg` for sharing. This is becoming unnecessary overhead. Adding direct `.apkg` output lets the pipeline produce a portable, shareable file without Anki running. Although we still like to do this for our own personal usage. We would like to simultaneously send via ankiconnect but also save the raw `.apkg` locally. The idea is If I run swanki with anki open on some paper I will see cards in anki on completion but will also already have the `.apkg` for easy sharing. 
+Currently, Swanki generates cards as markdown and sends them to Anki via AnkiConnect (requires a running Anki instance). Users then review, prune, and manually export to `.apkg` for sharing. This is becoming unnecessary overhead. Adding direct `.apkg` output lets the pipeline produce a portable, shareable file without Anki running. Although we still like to do this for our own personal usage. We would like to simultaneously send via ankiconnect but also save the raw `.apkg` locally. The idea is If I run swanki with anki open on some paper I will see cards in anki on completion but will also already have the `.apkg` for easy sharing.
 
 We implement the `.apkg` format directly using `sqlite3` + `zipfile` (both stdlib) -- no `genanki` dependency. The `.apkg` file goes in the pipeline output directory alongside `cards-plain.md` and other outputs, named `{citation_key}.apkg`. The output directory structure is `Swanki_Data/{citation_key}/{citation_key}/` (the inner dir is the pipeline run output; on reruns it gets suffixed `{citation_key}_2/`, etc.):
 

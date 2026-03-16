@@ -13,15 +13,15 @@ If no branch name is given, list active worktrees and ask the user to pick one.
 
 ## Prerequisites
 
-You MUST be running from the main repo (`~/projects/Swanki`), NOT from inside a worktree. If the current working directory is a worktree, tell the user to switch to the main repo window.
+You MUST be running from the main repo, NOT from inside a worktree. If the current working directory is a worktree, tell the user to switch to the main repo window.
 
 ## Step 1: Validate
 
-1. Run `git worktree list` to confirm the branch exists as a worktree.
+1. Run `git worktree list` to confirm the branch exists as a worktree. **Parse the worktree path from this output** -- do not hardcode paths. The output format is `<path> <hash> [<branch>]`.
 2. If the branch arg doesn't match any worktree, show the list and stop.
 3. Check for uncommitted changes in the worktree:
    ```
-   git -C ~/projects/Swanki.worktrees/<branch> status --short
+   git -C <worktree-path> status --short
    ```
    If there are uncommitted changes, warn the user and stop. They need to commit or discard first.
 

@@ -2,7 +2,7 @@
 id: jw01iia69oz5lqyr1yz7ifh
 title: '11'
 desc: ''
-updated: 1773322944373
+updated: 1773622820303
 created: 1773142434234
 ---
 ## 2026.03.10
@@ -38,6 +38,10 @@ created: 1773142434234
 
 - [x] Fixed Zotero import script mis-ordering attachments (SI downloaded as main article) by adding title/filename heuristic, and tolerate qpdf exit-code-3 warnings [[scripts.zotero_paper_import#20260314---fix-attachment-ordering-and-qpdf-warning-tolerance]]
 - [x] Drafted 12-slide lit review outline for Merzbacher et al. 2025 Flux Cone Learning paper [[scratch.2026.03.13.134811-outline]]
+
+## 2026.03.15
+
+- [ ] Planned Reveal.js presentation generation feature for creating academic slide decks from Swanki-processed paper data with LLM-driven content, figure extraction, and mermaid diagram support [[plan.presentation-generation-revealjs]]
 
 ***
 
