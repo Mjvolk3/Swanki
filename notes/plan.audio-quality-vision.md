@@ -1,57 +1,58 @@
 ---
-id: n8kperg63xb0ryfw7t3cyif
+id: 9ksk7m7mblhl3onc5hja5om
 title: Audio Quality Vision
 desc: ''
-updated: 1773521388020
-created: 1773521388020
+updated: 1773523431051
+created: 1773523431051
 ---
+/Users/michaelvolk/Documents/projects/Swanki_Data/merzbacherAccuratePredictionGene2025/merzbacherAccuratePredictionGene2025_0
 
-Audio quality design principles, learning workflow vision, and ongoing improvement areas for non-complementary audio (transcript, lecture, summary). Originated from [[scratch.2026.03.13.205400-]].
+on the most recent successful run.for merzbacher... I do not like the transcript. query eleven labs api we need better spacing. In fact if you could write me a skill to fetch the pink highlights from zotero I have left comments on areas where I detect issues in the transcript. See how we are pulling data from our zotero with the citation key. Then you will find 2 pdfs. see if you can just query the pink comments this is where there are mistakes in the reading transcript. They are of the kind. In general I think I will start marking up pdfs with orange, grey, and magenta for indicating information for use to improve on. Maybe just magenta for now. i called it pink earlier I looked it is magenta.
 
-## Learning Workflow Vision
+## Transcript
 
-The audio types serve different stages of the study cycle:
+- Says words between sections that are unnecessary. filler not in the text - instead just pause (see how eleven labs can create pauses between sessions). In fact we also need to use this in lecture.
+- The addresses were in the paper were read. There is some jumping around from reading figure to not reading it. This was very confusing. I think on figures we give `pause`, `figure x`, `pause` then read. This helps reader to jump to figure to crank through it. For actual inspection of the image I just do quick pausing of audio so we don't need to create pauses for this. It is too unpredictable. Pauses for sections are so important for reading here we must get them right.
+- There are some small issues with pronunciation.
+- Also we previously had some mechanism where acronym cache or something like it where if acronymns are introduced, especially for ones just created, but that we would read these aloud. This is very helpful to a new or unskilled reader like me 😊. Helps us link acronymns to concept while reading and actual can provide read enhancement to the experience.
+- The goal of using transcript is to reduce pausing. Pausing is necessary for understanding and reviewing figures. Some people only read the figures, but we have always believed that science is more than data. It is also about its stories.
 
-- **Lecture** is the hook. It draws the reader into the field, the study, the experiments. It is borderline performance -- a sort of solo podcast derived from published work. Scientists are often too busy to deliver such a thing to the public because they have to go back to working on the next project, to get the next grant. Lecture is the ticket winner of the audio formats.
-- **Transcript** is for deep dive. If the lecture hooks interest, the reader follows up with the transcript for full paper immersion. The goal of using transcript is to reduce pausing. Pausing is necessary for understanding and reviewing figures.
-- **Summary** is for teleportation through mind-time. For refreshing a topic from things already read -- quickly compile a list of papers, collect audio files, put them in a dir, zip, import to Book Player. Sit down in a dark room and jam it all. Summary follows paper structure with nice spacing, pauses between sections.
+## Lecture Criticism
 
-## Lecture Design Principles
+The lecture is a bit sloppy. We want lecture to be the highlight of the provided audios that are disconnected from cards. `transcript`, `lecture`, `summary`. I listened to the lecture and it was a bit meandering it seemed. We previously cited popular science, philisophical, but pretty technical writers who like to analogize, express, etc. But it can turn into the land of wiggeldy worp. Gibberish. I've found analogy helps but only up to a point and for a highly technical audience if we are warping language to obscure important truth it will be an issue. There are also no natural pauses and movements between sections. This lecture is borderline performance of sorts. It is a bit of a new category I imagine. Not podcast. Maybe a sort of solo podcast. But it is derived from published work. Scientists are often too busy to deliver such a thing to the public because they have to go back to working on the next project, to get the next grant. It would be even better if the author gave a thumbs up on the transcript. If they created a voice clone it could just always be put in their own voice. Probably worth getting some professional recording. Lecture is the ticket winner of the audio formats. The hook and the closer. We want them to be Classic. Personally I have found that I don't love changing narrators but I actually don't know what is better for learning. Sometimes mispronunciations trip me up and I loose the thread on more abstract points. You gt used to a voice and their pronunciations, and this actually helps improve delivery of information. We will make it up to people what they want, but for now I expect to stick with one lecturer. One teacher. You do want to find the right teacher, and once you do things should be a breeze.
 
-- Analogies help memory but must illuminate, not obscure. Every analogy must be followed by the precise technical statement. Over-analogizing turns into "the land of wiggeldy worp."
-- Needs clear structure: intro (longer, colorful), results sections (combined into a story, punchy, adventurous, detective-like), then conclusion and discussion with research opportunities to facilitate the possibility of related or additional research.
-- Don't overdo the humanizing. People are sensitive to AI acting human, and too much makes us a nonplussed cipher.
-- One voice, one teacher. You get used to a voice and their pronunciations, and this actually helps improve delivery of information. Mispronunciations trip up and lose the thread on abstract points.
+So the first issues was sloppy writing. anal-ogizing. But we still must analogize. This is another one of the primary features. From listening to lectures there have been times where I thought there was some clever, or creative analogy. I found these stick in my head longer. This is maybe when in one of those author's books that I read he warns of analogizing, but we love them because they actually are good for memory.
 
-## Transcript Design Principles
+We need more structures. It was like getting hit by a wave of prose then end. We need sections and we need more pauses. I suspect this should be less than the total number of sections because this must be shorter than a straight reading of the transcript I think we said approximately <50% or something like that. Maybe sections can be combined. intro can be longer and colorful. results sections could be combined into the story, be a bit punchy, a bit adventurous, detective like, sometimes taking the stance of what it might of been like. But don't over due it. People are sensitive to AI acting human, and tool much of this will make us a nonplussed cipher. The lecture is hooking the reader into the field, into the study, the experiments, then basically we want to formulate conclusion and discussion with research opportunities. We want to facilitate the possibility related or additional research. This could evolve as we add some more parts to the config st the user could steer this a bit. Actually default integration - if you provide your zotero api key you gives permission to read and write to your lib. We suggest doing it on a collection to get used to. Maybe config collection. I don't I do it on main bc it makes dev easier for me. This would be able to be enriched if the AI just new current project collection. or give it a git repo. can do check if zendron is enabled.
 
-- No filler between sections -- just real silence. The pauses are the feature.
-- Figures: pause, "Figure X", pause, then read the description. Helps reader jump to figure to crank through it.
-- Acronyms expanded on first use -- helps link acronyms to concepts while reading. Provides read enhancement to the experience.
-- Metadata (addresses, dates, emails) must be filtered before processing.
+I just realized comments are kind of dead in zendron. maybe they create too much complexity. Like if we just make it import period delimited annotation graphs with comments. This is great!!!! This is great for the writing environment. This is more easily transportable. We just have to keep them synced. I think we need some better syncing method bc the current one is a bit slow on full import maybe it is faster without.. No I change my mind comments are still needed. Bc I forgot the whole point was to write a lot about a paper in a particular place that would get synced with zotero. I don't think our solution to this was great, but maybe we can fix it. Also read only on annotations. The major feature I really wanted was if we could make the links clickable with uri st that would open that comment in the zotero window. This would make the whole package complete. We would have a complete writing, developing, learning, publishing environment. Maybe this belongs in zendron repo. proably copy this to there.
 
-## Bookend Announcements
+## Summary
 
-All non-complementary audio types have bookend announcements with humanized citation key. Same pattern as complementary audio where citation key is read at the beginning of each question -- helps audio-only learners quickly gain context.
+I kind of hate summary, but you really aren't supposed to like it. Summary is basically for teleportation. But through mind-time. I imagine the cycle being used like this. You listen lecture for interest, if actually interesting read the papers with transcript, that is really for deep dive. Then if we want to add it to the canon of knowledge we practice the cards and had them in the mix. If want to do a refresh of a particular topic from things we have already read we quickly compile a list of papers with the content we have queried over collect all audio files which we plan to put on zotero, then we collect all this put them in dir, zip, import to Book Player. Then sit down in dark room and jam it all. Its SW light speed traveling back to a previous world. This is the complete vision. So obviously summary is important, but it needs to follow paper structure have nice spacing, with pauses between reading sections and getting into them.
 
-- Summary/Transcript: "START: citation_key" / "END: citation_key"
-- Lecture: "Today's lecture is posted as: citation_key" / "And with that we conclude: citation_key"
+## All Audio
 
-## Implemented (2026.03.13)
+In complementary audio we always read the citation key and in the case of a book we append the chapter. This helps an audio only learner quickly gain context when cards are pooled so it can be difficult to quickly understand what materials are being discussed. I have found this tremendously helpful it helps me keep an index in my mind of papers. I want the same thing done for the other audio forms. I think for all of these it can take the same form, but I really don't want to get tired of it because this is a sort of standard formatting type thing. The first thing that came to mind is.
 
-- Section-aware assembly with real silence between sections
-- Bookend announcements for all 3 audio types
-- Metadata filtering in reading pipeline
-- No-filler section breaks (reading)
-- Figure announce pattern (reading)
-- Acronym extraction and injection
-- Lecture structure enforcement (Intro, Results, Conclusion)
-- Analogy rule tightened in lecture prompt
-- Zotero annotation extraction script + skill
+summary and transcript
 
-## Future Possibilities
+```
+"START : <citation_key>"
 
-- Voice cloning -- if the author created a voice clone it could always be in their own voice
-- Config options to let users steer lecture style
-- Zotero integration -- if you provide your Zotero API key, AI could know current project collection for context enrichment
-- Author approval of transcript for quality assurance
+reading
+
+"END : <citation_key>"
+```
+
+lecture
+
+```
+"Today's lecture is posted as : <citation_key>"
+
+reading
+
+"And with that we conclude : <citation_key>" #don't love it
+```
+
+If we hate the lecture idea we can make them all start and end.

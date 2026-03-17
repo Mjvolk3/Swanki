@@ -368,13 +368,22 @@ class CardContent(BaseModel):
         # The LLM sometimes generates extra } after subscripts
         v = re.sub(r"(_\{[^}]+\})\}", r"\1", v)
 
-        # Auto-fix unbalanced braces inside $...$ spans by appending missing }
-        # e.g., $\sigma_{\mathrm{DNA}$ → $\sigma_{\mathrm{DNA}}$
+        # Auto-fix unbalanced braces inside $...$ spans
+        # Missing }: $\sigma_{\mathrm{DNA}$ → $\sigma_{\mathrm{DNA}}$
+        # Excess }:  $\mathrm{IPP}}$ → $\mathrm{IPP}$
         def _fix_latex_braces(m: re.Match[str]) -> str:
             content = m.group(1)
             depth = sum(1 if c == "{" else -1 if c == "}" else 0 for c in content)
             if depth > 0:
                 return "$" + content + "}" * depth + "$"
+            if depth < 0:
+                # Strip excess closing braces from the end
+                fixed = content
+                for _ in range(-depth):
+                    idx = fixed.rfind("}")
+                    if idx >= 0:
+                        fixed = fixed[:idx] + fixed[idx + 1 :]
+                return "$" + fixed + "$"
             return m.group(0)
 
         v = re.sub(r"\$([^$]+)\$", _fix_latex_braces, v)
@@ -554,29 +563,54 @@ class CardContent(BaseModel):
                 f"{', '.join(auto_fixed_exprs[:5])}"
             )
 
-        # Check brace balance inside LaTeX spans — this we still raise on
-        # because unbalanced braces can't be auto-fixed reliably
-        math_issues: list[str] = []
-        for latex_match in re.finditer(r"\$([^$]+)\$", v):
-            latex_content = latex_match.group(1)
-            depth = sum(1 if c == "{" else -1 if c == "}" else 0 for c in latex_content)
-            if depth != 0:
-                math_issues.append(f"Unbalanced braces in LaTeX: ${latex_content}$")
+        # Final brace-balance pass — auto-fix any remaining issues
+        # instead of crashing the pipeline after LLM retries are exhausted.
+        def _final_brace_fix(pattern: str, v_text: str) -> str:
+            def _fix(m: re.Match[str]) -> str:
+                content = m.group(1)
+                depth = sum(1 if c == "{" else -1 if c == "}" else 0 for c in content)
+                if depth > 0:
+                    fixed = m.group(0).replace(
+                        "$" + content + "$", "$" + content + "}" * depth + "$"
+                    )
+                    logger.info(
+                        f"Auto-fixed missing braces: {m.group(0)[:40]} → {fixed[:40]}"
+                    )
+                    return fixed
+                if depth < 0:
+                    fixed_content = content
+                    for _ in range(-depth):
+                        idx = fixed_content.rfind("}")
+                        if idx >= 0:
+                            fixed_content = (
+                                fixed_content[:idx] + fixed_content[idx + 1 :]
+                            )
+                    logger.info(
+                        f"Auto-fixed excess braces: {m.group(0)[:40]} → ${fixed_content}$"
+                    )
+                    return "$" + fixed_content + "$"
+                return m.group(0)
 
-        for latex_match in re.finditer(r"\\\((.+?)\\\)", v, flags=re.DOTALL):
-            latex_content = latex_match.group(1)
-            depth = sum(1 if c == "{" else -1 if c == "}" else 0 for c in latex_content)
-            if depth != 0:
-                math_issues.append(f"Unbalanced braces in LaTeX: \\({latex_content}\\)")
+            return re.sub(pattern, _fix, v_text)
 
-        if math_issues:
-            logger.info(
-                f"LaTeX brace issues detected ({len(math_issues)} issues), allowing retry to fix"
-            )
-            raise ValueError(
-                f"LaTeX brace balance errors: {'; '.join(math_issues[:3])}. "
-                f"Fix unbalanced braces inside $...$ delimiters."
-            )
+        v = _final_brace_fix(r"\$([^$]+)\$", v)
+
+        # Also fix \(...\) delimiters
+        def _fix_paren_braces(m: re.Match[str]) -> str:
+            content = m.group(1)
+            depth = sum(1 if c == "{" else -1 if c == "}" else 0 for c in content)
+            if depth > 0:
+                return "\\(" + content + "}" * depth + "\\)"
+            if depth < 0:
+                fixed = content
+                for _ in range(-depth):
+                    idx = fixed.rfind("}")
+                    if idx >= 0:
+                        fixed = fixed[:idx] + fixed[idx + 1 :]
+                return "\\(" + fixed + "\\)"
+            return m.group(0)
+
+        v = re.sub(r"\\\((.+?)\\\)", _fix_paren_braces, v, flags=re.DOTALL)
 
         # Check if cloze card ends with a question mark
         if "{{c1::" in v and v.strip().endswith("?"):

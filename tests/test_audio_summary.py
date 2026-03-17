@@ -27,7 +27,7 @@ def test_generate_summary_audio_mocked(tmp_audio_dir, mock_elevenlabs_api_key):
     ):
         mock_agent.run_sync.return_value = mock_result
 
-        def fake_tts(text, voice_id, output_path, api_key, speed=1.0):
+        def fake_tts(text, voice_id, output_path, api_key, speed=1.0, **kwargs):
             AudioSegment.silent(duration=1000).export(str(output_path), format="mp3")
 
         mock_tts.side_effect = fake_tts
@@ -65,7 +65,7 @@ def test_summary_with_citation(tmp_audio_dir, mock_elevenlabs_api_key):
     ):
         mock_agent.run_sync.return_value = mock_result
 
-        def fake_tts(text, voice_id, output_path, api_key, speed=1.0):
+        def fake_tts(text, voice_id, output_path, api_key, speed=1.0, **kwargs):
             AudioSegment.silent(duration=1000).export(str(output_path), format="mp3")
 
         mock_tts.side_effect = fake_tts

@@ -162,6 +162,25 @@ def detect_tags_from_text(text: str) -> list[str]:
     return unique_tags
 
 
+def _split_camel_case(text: str) -> str:
+    """Split camelCase and digit/letter boundaries into spaces."""
+    result = ""
+    for i, char in enumerate(text):
+        if i > 0:
+            prev = text[i - 1]
+            if (prev.isalpha() and char.isdigit()) or (
+                prev.isdigit() and char.isalpha()
+            ):
+                result += " "
+            elif char.isupper():
+                prev_is_lower = prev.islower()
+                next_is_lower = i + 1 < len(text) and text[i + 1].islower()
+                if prev_is_lower or (not prev_is_lower and next_is_lower):
+                    result += " "
+        result += char
+    return result
+
+
 def humanize_citation_key(citation_key: str) -> str:
     """Convert a citation key to human-readable format for audio.
 
@@ -199,73 +218,80 @@ def humanize_citation_key(citation_key: str) -> str:
     if citation_key.startswith("@"):
         citation_key = citation_key[1:]
 
-    # Replace underscores with spaces
-    citation_key = citation_key.replace("_", " ")
+    # Split on underscores first (separates suffix like _deep-learning-revolution)
+    parts = citation_key.split("_")
+    main_part = parts[0]
+    suffix_parts = [p.replace("-", " ") for p in parts[1:]]
 
-    # Replace hyphens with spaces
-    citation_key = citation_key.replace("-", " ")
+    # Extract trailing year from main part (e.g., "Virtual2024" → "Virtual", "2024")
+    # Also handle "50MCells2025" → strip year from end
+    year_match = re.search(r"(\d{4})$", main_part)
+    year = year_match.group(1) if year_match else ""
+    if year:
+        main_part = main_part[: -len(year)]
 
-    # Split camelCase by inserting spaces before capitals
-    # But preserve consecutive capitals (like "USA" or "CNN")
-    result = ""
-    for i, char in enumerate(citation_key):
-        if i > 0 and char.isupper():
-            # Check if previous char is lowercase or if next char is lowercase
-            prev_is_lower = citation_key[i - 1].islower()
-            next_is_lower = i + 1 < len(citation_key) and citation_key[i + 1].islower()
-
-            if prev_is_lower or (not prev_is_lower and next_is_lower):
-                result += " "
-        result += char
-
-    # Clean up multiple spaces
-    result = " ".join(result.split())
-
-    # Simple capitalization - just capitalize first letter of each word
+    # Split camelCase — preserve consecutive capitals (like "USA", "CNN", "CRISPR")
+    result = _split_camel_case(main_part)
     words = result.split()
-    capitalized_words = []
+    if not words:
+        return citation_key
 
-    # Track if we've seen a year to add proper punctuation
-    year_pattern = re.compile(r"^\d{4}$")
-    author_found = False
+    # Detect hyphenated author names at the start of main_part
+    # e.g., "ahlmann-eltzeDeeplearning..." → author="Ahlmann-Eltze", rest="Deeplearning..."
+    # Match: lowercase-lowercase followed by an uppercase letter starting the title
+    hyphen_match = re.match(r"^([a-z]+-[a-z]+)([A-Z].*)?$", main_part)
+    if hyphen_match:
+        raw_author = hyphen_match.group(1)
+        remaining_text = hyphen_match.group(2) or ""
+        author = "-".join(
+            p[0].upper() + p[1:] if len(p) > 1 else p.upper()
+            for p in raw_author.split("-")
+        )
+        # Run the same camelCase splitter on remaining text
+        words = _split_camel_case(remaining_text).split()
+        title_start = 0
+    else:
+        raw_author = words[0]
+        author = (
+            raw_author[0].upper() + raw_author[1:]
+            if len(raw_author) > 1
+            else raw_author.upper()
+        )
+        title_start = 1
 
-    for i, word in enumerate(words):
-        if word.lower() == "et" and i + 1 < len(words) and words[i + 1].lower() == "al":
-            # Keep "et al" lowercase and together
-            capitalized_words.append("et al")
+    # Handle "et al" and build title words
+    title_words = []
+    i = title_start
+    while i < len(words):
+        w = words[i]
+        if w.lower() == "et" and i + 1 < len(words) and words[i + 1].lower() == "al":
+            title_words.append("et al")
+            i += 2
             continue
-        elif word.lower() == "al" and i > 0 and words[i - 1].lower() == "et":
-            # Skip "al" as it's already handled above
-            continue
-        elif year_pattern.match(word):
-            # This is a year
-            if author_found and len(capitalized_words) > 0:
-                # Add comma before year
-                capitalized_words[-1] = capitalized_words[-1] + ","
-            capitalized_words.append(word)
-            # If there's more content after the year, add comma
-            if i + 1 < len(words):
-                capitalized_words[-1] = word + ","
+        # Keep short all-caps as acronyms (CRISPR, DNA, GPT, PRINT)
+        if w.isupper() and len(w) >= 2:
+            title_words.append(w)
+        elif len(w) > 1:
+            title_words.append(w[0].upper() + w[1:])
         else:
-            # Regular word
-            if not author_found:
-                # First word is author
-                author_found = True
-                capitalized = (
-                    word[0].upper() + word[1:].lower()
-                    if len(word) > 1
-                    else word.upper()
-                )
-                # Add comma after author if there's more content
-                if len(words) > 1:
-                    capitalized += ","
-                capitalized_words.append(capitalized)
-            else:
-                # Other words
-                capitalized_words.append(
-                    word[0].upper() + word[1:].lower()
-                    if len(word) > 1
-                    else word.upper()
-                )
+            title_words.append(w.upper())
+        i += 1
 
-    return " ".join(capitalized_words)
+    # Assemble: Author, Title Words, Year, suffix
+    # "et al" goes right after author without extra comma separation
+    if title_words and title_words[0] == "et al":
+        segments = [f"{author} et al"]
+        remaining_title = title_words[1:]
+        if remaining_title:
+            segments.append(" ".join(remaining_title))
+    else:
+        segments = [author]
+        if title_words:
+            segments.append(" ".join(title_words))
+    if year:
+        segments.append(year)
+    for s in suffix_parts:
+        if s.strip():
+            segments.append(s.strip())
+
+    return ", ".join(segments)

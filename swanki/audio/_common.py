@@ -19,6 +19,8 @@ from pydub import AudioSegment
 logger = logging.getLogger(__name__)
 
 DEFAULT_VOICE_ID = "7p1Ofvcwsv7UBPoFNcpI"
+DEFAULT_TTS_MODEL = "eleven_flash_v2_5"
+LECTURE_TTS_MODEL = "eleven_multilingual_v2"
 
 
 def clean_markdown_for_tts(text: str) -> str:
@@ -43,6 +45,35 @@ def clean_markdown_for_tts(text: str) -> str:
     cleaned = re.sub(r"^>\s+", "", cleaned, flags=re.MULTILINE)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
+
+
+def add_tts_pauses(text: str) -> str:
+    """Insert SSML break tags for natural TTS pacing.
+
+    Adds ``<break>`` tags at paragraph boundaries and after
+    section transition sentences. Works with ElevenLabs v2 models
+    which support ``<break time="X.Xs" />``.
+
+    Args:
+        text: Cleaned transcript text (already TTS-ready).
+
+    Returns:
+        Text with SSML break tags inserted.
+    """
+    # Add short pause between paragraphs (0.7s — noticeable but not jarring)
+    text = re.sub(r"\n\n+", '\n\n<break time="0.7s" />\n\n', text)
+
+    # Add pause after colon at end of a line (often introduces a list or concept)
+    text = re.sub(r":\s*\n", ':\n<break time="0.4s" />\n', text)
+
+    # Collapse any double breaks that got stacked
+    text = re.sub(
+        r'(<break time="[^"]*" />\s*){2,}',
+        '<break time="0.7s" />\n\n',
+        text,
+    )
+
+    return text
 
 
 def chunk_text(text: str, max_chars: int = 3000) -> list[str]:
@@ -86,12 +117,47 @@ def chunk_text(text: str, max_chars: int = 3000) -> list[str]:
     return chunks
 
 
+def chunk_text_paragraphs(text: str, max_chars: int = 4500) -> list[str]:
+    """Split text at paragraph boundaries only — never mid-sentence.
+
+    Designed for lecture TTS where prosody continuity within paragraphs
+    is critical. Each paragraph stays intact; only paragraph breaks are
+    used as split points. Uses a larger default max_chars to keep
+    coherent passages together.
+
+    Args:
+        text: Text to split into chunks.
+        max_chars: Maximum characters per chunk.
+
+    Returns:
+        List of text chunks, each containing one or more full paragraphs.
+    """
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    chunks: list[str] = []
+    current = ""
+
+    for p in paragraphs:
+        if not current:
+            current = p
+        elif len(current) + len(p) + 2 <= max_chars:
+            current = current + "\n\n" + p
+        else:
+            chunks.append(current)
+            current = p
+
+    if current:
+        chunks.append(current)
+
+    return chunks
+
+
 def text_to_speech(
     text: str,
     voice_id: str,
     output_path: Path,
     api_key: str,
     speed: float = 1.0,
+    tts_model: str = DEFAULT_TTS_MODEL,
 ) -> None:
     """Convert text to speech via ElevenLabs and save as MP3.
 
@@ -101,6 +167,8 @@ def text_to_speech(
         output_path: Path for the output MP3 file.
         api_key: ElevenLabs API key.
         speed: Playback speed multiplier (uses FFmpeg atempo).
+        tts_model: ElevenLabs model ID. Defaults to flash_v2_5 (cheap, fast).
+            Use LECTURE_TTS_MODEL for premium quality.
     """
     httpx_client = httpx.Client(timeout=httpx.Timeout(300.0, connect=60.0))
 
@@ -116,7 +184,7 @@ def text_to_speech(
     stream = client.text_to_speech.convert(
         text=text,
         voice_id=voice_id,
-        model_id="eleven_multilingual_v2",
+        model_id=tts_model,
         output_format="mp3_44100_192",
         voice_settings=settings,
     )

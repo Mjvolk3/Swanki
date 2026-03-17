@@ -50,3 +50,7 @@ LLM-generated cards with broken `$` delimiters (e.g. `$V_{i}^{\min}=$V_{i}^{\max
 - Bare math detected in validation (patterns 1-5: sub+super, sub-only, functions, equations, matrix ops, Greek letters) is now auto-wrapped in `$` instead of raising `ValueError`
 - Only unbalanced braces inside existing `$...$` spans still raise errors (these cannot be fixed programmatically)
 - Removed patterns 6 (Unicode Greek) and 7 (isolated capital letters) -- these had high false-positive rates and were causing unnecessary retries
+
+## 2026.03.14 - Robust LaTeX brace auto-fix replaces crash-on-retry
+
+The LaTeX brace validator was crashing the pipeline when LLMs generated patterns like `$\mathrm{IPP}}$` (excess braces) or `$N_{\mathrm{chem}$` (missing braces) that persisted through all 3 retries. Changed the final brace-balance check from raising `ValueError` to auto-fixing: strips excess closing braces (`depth < 0`) and appends missing ones (`depth > 0`). Both the early fix pass and the final validation pass now handle both directions. This unblocked merzbacherModelingHostPathway2025 and martiPredictionMetabolicDynamics2025 which were failing on `\mathrm{}` patterns.

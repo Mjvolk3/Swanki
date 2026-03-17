@@ -7,6 +7,7 @@ models:
   tts:
     provider: elevenlabs
     voice_id: onwK4e9ZLuTAKqWW03F9
-    model: eleven_monolingual_v2
+    model: eleven_flash_v2_5
+    lecture_model: eleven_multilingual_v2
     stability: 0.5
     similarity_boost: 0.5

@@ -17,3 +17,12 @@ Replaced direct `OpenAI` client call with shared `text_agent` from `swanki.llm.a
 ## 2026.03.13 - Section-aware assembly, bookends, acronym injection
 
 Replaced SSML `<break time="1.0s"/>` tags with `---SECTION_BREAK---` markers for real silence between summary points. Added START/END bookend announcements via `generate_bookend_audio`. Acronyms extracted from source text and injected into the LLM prompt for reliable first-use expansion.
+
+## 2026.03.15 - Summary length cap, anti-pause prompt, flash TTS, SSML pauses
+
+Four changes to improve summary audio quality and reduce costs.
+
+- **Length cap**: Added "STRICT LENGTH LIMIT: Keep under 1200 words" instruction and reduced `max_tokens` from 1500 to 1200. Ensures summaries stay under 10 minutes.
+- **Anti-pause/spelling prompt**: Explicitly bans `[pause]`, `[Pause]`, `Pause.` and letter-by-letter spelling in the system prompt. Old summaries literally said these words aloud.
+- **Flash TTS model**: Now uses `eleven_flash_v2_5` (default) instead of `eleven_multilingual_v2` -- 0.5x credit cost.
+- **SSML pauses**: `add_tts_pauses()` inserts `<break>` tags at paragraph boundaries for natural pacing, replacing the old approach of writing pause instructions in the transcript.

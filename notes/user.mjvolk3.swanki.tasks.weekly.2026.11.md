@@ -63,6 +63,18 @@ created: 1773142434234
 
 - [x] Fixed bookend audio files being left as separate MP3s instead of baked into the combined output -- now only 3 final audio files are produced per paper (summary, reading, lecture)
 - [x] Organized audio quality criticism and vision from scratch note into a structured plan note covering learning workflow, lecture/transcript/summary design principles, and future possibilities [[plan.audio-quality-vision]]
+- [x] Robust LaTeX brace auto-fix: changed the final brace-balance validator from crashing to auto-fixing both excess and missing braces, unblocking merzbacher host-pathway and marti papers [[swanki.models.cards#20260314---robust-latex-brace-auto-fix-replaces-crash-on-retry]]
+
+## 2026.03.15
+
+- [x] Great Courses-style lecture overhaul: rewrote system prompt for authoritative-but-modest tone (Sagan/Feynman/Lane influences), mandatory opening roadmap, spoken section transitions instead of markdown headers, banned meta-commentary, tightened length target to 25-35% of source [[swanki.audio.lecture#20260315---great-courses-style-overhaul-methodssi-classification-length-caps-prosody-improvements]]
+- [x] Methods/SI section classification for lecture: added positional cascade classifier that puts STAR Methods, Key Resources, and all subsequent subsections into an enrichment pool rather than lecturing on them; reduced thornburg from 67 lecture sections to 12 main + 55 enrichment, cutting lecture from 39 min to 21 min [[swanki.audio.lecture#20260315---great-courses-style-overhaul-methodssi-classification-length-caps-prosody-improvements]]
+- [x] ElevenLabs TTS model tiering: reading/summary/cards now use `eleven_flash_v2_5` (0.5x credit cost, 40k char limit) while lecture keeps premium `eleven_multilingual_v2`; estimated 40-50% cost reduction per paper [[swanki.audio._common#20260315---tts-model-tiering-paragraph-chunking-and-ssml-pause-injection]]
+- [x] Paragraph-only TTS chunking for lecture and SSML `<break>` tag injection at paragraph boundaries for natural pacing across all audio types [[swanki.audio._common#20260315---tts-model-tiering-paragraph-chunking-and-ssml-pause-injection]]
+- [x] Summary hardened: 1200-word cap for sub-10-minute audio, explicit ban on writing "[pause]" or spelling out words letter-by-letter [[swanki.audio.summary#20260315---summary-length-cap-anti-pause-prompt-flash-tts-ssml-pauses]]
+- [x] Rewrote `humanize_citation_key()` to properly separate year with commas, handle hyphenated author names (Ahlmann-Eltze, Moreno-Paz), and place "et al" naturally [[swanki.utils.formatting#20260315---rewrite-humanize_citation_key-for-proper-tts-rendering]]
+- [x] Imported 8 missing papers from Zotero (bunne, chen, kim-enzyme, li-LLM, malli, palsson, patra, ryu) and generated summaries for all 35 co-biotech papers
+- [x] Upgraded openai SDK from 1.109.1 to 2.28.0 to fix `prompt_cache_retention` incompatibility with pydantic-ai 1.67.0
 
 ***
 

@@ -24,3 +24,7 @@ Addresses issues heard in merzbacher paper audio: university addresses and dates
 - **Section-aware assembly**: Replaced flat `combine_audio` with `combine_audio_with_section_pauses` for real silence between sections
 - **Bookends**: Generates START/END citation key announcements via `generate_bookend_audio`
 - **Acronyms**: `extract_acronyms()` scans source text and injects definitions into the LLM prompt
+
+## 2026.03.15 - Flash TTS model and SSML pause injection
+
+Switched from `eleven_multilingual_v2` (1 credit/char) to `eleven_flash_v2_5` (0.5x credits, 40k char limit) for reading audio -- quality is sufficient for straight readings and costs half as much. Added `add_tts_pauses()` after `clean_markdown_for_tts()` to insert SSML `<break>` tags at paragraph boundaries for natural pacing.

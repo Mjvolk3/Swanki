@@ -16,6 +16,7 @@ from ..llm.agents import text_agent
 from ..utils.formatting import humanize_citation_key
 from ._common import (
     DEFAULT_VOICE_ID,
+    add_tts_pauses,
     chunk_text,
     clean_markdown_for_tts,
     combine_audio_with_section_pauses,
@@ -138,7 +139,7 @@ def generate_reading_audio(
             f.write(f"**Citation Key:** {citation_key}\n\n")
         f.write(f"**Generated Transcript:**\n\n{full_transcript}\n")
 
-    tts_transcript = clean_markdown_for_tts(full_transcript)
+    tts_transcript = add_tts_pauses(clean_markdown_for_tts(full_transcript))
 
     cleaned_path = (
         transcripts_dir / f"{output_path.stem}_transcript_cleaned_markdown.md"

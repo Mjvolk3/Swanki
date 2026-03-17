@@ -14,6 +14,7 @@ from ..llm.agents import text_agent
 from ..utils.formatting import humanize_citation_key
 from ._common import (
     DEFAULT_VOICE_ID,
+    add_tts_pauses,
     chunk_text,
     clean_markdown_for_tts,
     combine_audio_with_section_pauses,
@@ -67,10 +68,15 @@ def generate_summary_audio(
         "4. Read acronyms naturally with their full form, e.g. 'the FSEOF algorithm, "
         "flux scanning based on enforced objective function' -- never add phrases like "
         "'on first use' or 'which stands for'\n"
-        "5. Between main points, insert ---SECTION_BREAK--- on its own line for a "
-        "pause -- never say the word 'pause' aloud or write [pause]\n"
-        "6. Keep the content informative but accessible\n"
-        "7. Never include phrases like 'Summary:' or 'This document...'\n"
+        "5. Between main points, insert ---SECTION_BREAK--- on its own line. "
+        "Use paragraph breaks to create natural pacing.\n"
+        "6. NEVER write [pause], [Pause], 'Pause.', or any pause instruction. "
+        "NEVER try to spell out words letter by letter. "
+        "Pauses are handled automatically by paragraph structure.\n"
+        "7. Keep the content informative but accessible\n"
+        "8. Never include phrases like 'Summary:' or 'This document...'\n"
+        "9. STRICT LENGTH LIMIT: Keep under 1200 words total. The audio must be "
+        "under 10 minutes. Be concise — hit the key points and move on.\n"
         + acronym_instruction
     )
 
@@ -84,7 +90,7 @@ def generate_summary_audio(
             user_content,
             instructions=system_prompt,
             model=model,
-            model_settings={"max_tokens": 1500},
+            model_settings={"max_tokens": 1200},
         )
         transcript = result.output.strip()
     except Exception as e:
@@ -106,7 +112,7 @@ def generate_summary_audio(
         f.write(f"**Generated Transcript:**\n\n{transcript}\n")
 
     # Create TTS-clean version
-    tts_transcript = clean_markdown_for_tts(transcript)
+    tts_transcript = add_tts_pauses(clean_markdown_for_tts(transcript))
 
     cleaned_path = (
         transcripts_dir / f"{output_path.stem}_transcript_cleaned_markdown.md"

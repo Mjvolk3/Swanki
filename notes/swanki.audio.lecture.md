@@ -34,3 +34,12 @@ Addresses quality issues identified from listening to merzbacher paper lecture: 
 - **Section-aware assembly**: Replaced flat `combine_audio` with `combine_audio_with_section_pauses` for real silence between lecture sections
 - **Bookends**: Generates lecture-specific bookends ("Today's lecture is posted as: ..." / "And with that we conclude: ...") via new `paper_title` parameter
 - **Acronyms**: `extract_acronyms()` scans source content and injects definitions into the system prompt
+
+## 2026.03.15 - Great Courses style overhaul, methods/SI classification, length caps, prosody improvements
+
+Major lecture quality pass driven by listening to thornburg (39 min, repetitive methods sections) and docter (lecture longer than reading). Four areas of change.
+
+- **System prompt rewrite**: Replaced generic educator prompt with Great Courses-style instructions. Influences: Sagan, Feynman, Lane. Mandatory opening roadmap ("Today we'll cover three things..."), spoken section transitions (no markdown headers), author-faithful tone (modest, never overselling), ban on meta-commentary ("in the text, an image shows", "for audio purposes"). Length target tightened from 40-60% to 25-35% of source.
+- **Methods/SI section classification**: New `_PREAMBLE_HEADERS` and `_METHODS_SI_HEADERS` regex patterns. After `chunk_by_headers()`, sections are classified into main (drives lecture structure) vs methods/SI (enrichment only). Uses positional cascade: once a methods header (e.g., "KEY RESOURCES TABLE") is seen, all subsequent sections are methods/SI. Methods/SI content is indexed via `build_si_index()` and passed to main sections as enrichment context through the existing `extract_relevant_si()` pipeline. For thornburg: 67 sections reduced to 12 main + 55 enrichment.
+- **Hard length cap**: `_refine_transcript()` now truncates at `min(source_words, 4500)` after refinement, finding the last sentence boundary. Prevents lectures from exceeding ~30 minutes regardless of refinement loop outcome.
+- **Prosody**: Paragraph-only TTS chunking via `chunk_text_paragraphs()` (4500 char max, never mid-sentence). 3-second section pauses (up from 2s). SSML `<break>` tags injected via `add_tts_pauses()`. Premium `eleven_multilingual_v2` model for lecture TTS; all other audio types use cheaper `eleven_flash_v2_5`.

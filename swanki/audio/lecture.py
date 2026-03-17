@@ -20,7 +20,9 @@ from ..models.cards import LectureTranscriptFeedback
 from ..utils.formatting import humanize_citation_key
 from ._common import (
     DEFAULT_VOICE_ID,
-    chunk_text,
+    LECTURE_TTS_MODEL,
+    add_tts_pauses,
+    chunk_text_paragraphs,
     clean_markdown_for_tts,
     combine_audio_with_section_pauses,
     extract_acronyms,
@@ -431,20 +433,71 @@ def generate_lecture_audio(
         f"{system_instructions}{acronym_instruction}\n\nCitation: {humanized_key}"
     )
 
-    # Append SI instructions when SI is present
+    # Append SI instructions when SI is present (either from _meta.json or inline)
+    # (SI instructions added after classification below if methods/SI sections found)
     if si_start_page is not None:
         si_prompt = si_instructions or _DEFAULT_LECTURE_SI_INSTRUCTIONS
         full_system_prompt += f"\n\n{si_prompt}"
 
-    # Chunk main content only by semantic structure
-    semantic_chunks = chunk_by_headers(cleaned_content, max_tokens_per_chunk=15000)
+    # Chunk all content by semantic structure, then classify
+    all_chunks = chunk_by_headers(cleaned_content, max_tokens_per_chunk=15000)
 
-    # Build SI index once (empty if no SI)
-    si_index = build_si_index(si_content) if si_content else {}
+    si_index: dict[str, str] = {}
+
+    # Classify sections into three buckets:
+    # 1. Preamble (Authors, Highlights, etc.) → skip, no cascade
+    # 2. Methods/SI (KEY RESOURCES, METHOD DETAILS, etc.) → enrichment + cascade
+    #    Once a methods/SI header is seen, everything after is also methods/SI
+    #    (subsections like "ODE", "DNA Replication" follow "METHOD DETAILS")
+    # 3. Main content → drives the lecture structure
+    main_chunks: list[tuple[str, str, int]] = []
+    methods_si_chunks: list[tuple[str, str, int]] = []
+    in_methods_si = False
+    for title, content, tokens in all_chunks:
+        stripped = title.strip()
+        if _PREAMBLE_HEADERS.match(stripped):
+            methods_si_chunks.append((title, content, tokens))
+        elif _METHODS_SI_HEADERS.match(stripped):
+            in_methods_si = True
+            methods_si_chunks.append((title, content, tokens))
+        elif in_methods_si:
+            methods_si_chunks.append((title, content, tokens))
+        else:
+            main_chunks.append((title, content, tokens))
+
+    if methods_si_chunks:
+        logger.info(
+            f"Classified {len(main_chunks)} main sections, "
+            f"{len(methods_si_chunks)} methods/SI sections (available as enrichment)"
+        )
+        for title, _, tokens in methods_si_chunks:
+            logger.info(f"  [enrichment] '{title}' ({tokens} tokens)")
+
+        # Build SI index from inline methods/SI sections for enrichment
+        # Only if no page-level SI index already exists from _meta.json
+        methods_si_text = "\n\n".join(c for _, c, _ in methods_si_chunks)
+        if not si_index:
+            si_index = build_si_index(methods_si_text)
+            # If build_si_index found no markers, index the whole pool as one entry
+            if not si_index and methods_si_text.strip():
+                si_index = {"methods_si_pool": methods_si_text}
+                logger.info("Indexed methods/SI as single enrichment pool")
+
+    # Build SI index from page-level split (if available and not already built)
+    if not si_index and si_content:
+        si_index = build_si_index(si_content)
     if si_index:
         logger.info(f"SI index: {len(si_index)} entries: {list(si_index.keys())}")
 
-    logger.info(f"Split content into {len(semantic_chunks)} semantic sections")
+    # Inject SI enrichment instructions if we have enrichment material
+    # (from either inline classification or page-level split)
+    if si_index and si_start_page is None and methods_si_chunks:
+        si_prompt = si_instructions or _DEFAULT_LECTURE_SI_INSTRUCTIONS
+        full_system_prompt += f"\n\n{si_prompt}"
+
+    semantic_chunks = main_chunks
+
+    logger.info(f"Lecture will cover {len(semantic_chunks)} main sections")
     for i, (title, _, tokens) in enumerate(semantic_chunks):
         logger.info(f"  Section {i + 1}: '{title}' ({tokens} tokens)")
 
@@ -584,7 +637,7 @@ def generate_lecture_audio(
             f.write(f"**Citation Key:** {citation_key}\n\n")
         f.write(f"**Generated Transcript:**\n\n{full_transcript}\n")
 
-    tts_transcript = clean_markdown_for_tts(full_transcript)
+    tts_transcript = add_tts_pauses(clean_markdown_for_tts(full_transcript))
 
     cleaned_path = (
         transcripts_dir / f"{output_path.stem}_transcript_cleaned_markdown.md"
@@ -619,7 +672,7 @@ def generate_lecture_audio(
             speed,
         )
 
-    # Section-aware audio assembly
+    # Section-aware audio assembly — paragraph-only chunking for lecture prosody
     sections_text = split_transcript_by_sections(tts_transcript)
     if not sections_text:
         sections_text = [tts_transcript]
@@ -628,7 +681,9 @@ def generate_lecture_audio(
     chunk_counter = 0
 
     for section in sections_text:
-        audio_chunks = chunk_text(section, max_chars=2000)
+        # Lecture uses paragraph-only splitting to avoid mid-sentence breaks
+        # that cause choppy prosody in TTS
+        audio_chunks = chunk_text_paragraphs(section, max_chars=4500)
         section_paths: list[Path] = []
 
         for chunk in audio_chunks:
@@ -638,16 +693,25 @@ def generate_lecture_audio(
                 else output_path.stem
             )
             chunk_path = output_path.parent / f"{prefix}_chunk{chunk_counter}.mp3"
-            text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed)
+            text_to_speech(
+                chunk,
+                voice_id,
+                chunk_path,
+                elevenlabs_api_key,
+                speed,
+                tts_model=LECTURE_TTS_MODEL,
+            )
             section_paths.append(chunk_path)
             chunk_counter += 1
             time.sleep(1)
 
         all_section_chunks.append(section_paths)
 
+    # Lecture uses longer section pauses (3s) for distinct section separation
     combine_audio_with_section_pauses(
         all_section_chunks,
         output_path,
+        section_pause_ms=3000,
         bookend_start=bookend_start,
         bookend_end=bookend_end,
     )
@@ -668,60 +732,58 @@ def generate_lecture_audio(
 # Private helpers
 # ---------------------------------------------------------------------------
 
-_DEFAULT_LECTURE_SYSTEM_PROMPT = """You are an expert educator creating an audio lecture from academic content.
+_DEFAULT_LECTURE_SYSTEM_PROMPT = """You are a world-class science lecturer in the style of The Great Courses series. Your influences include writers like Carl Sagan, Richard Feynman, and Nick Lane — people who make deep science vivid without dumbing it down. You speak with authority, warmth, and intellectual modesty.
 
 YOUR TASK:
-Transform the provided academic text into an engaging, conversational audio lecture.
+Transform the provided academic text into a polished audio lecture — the kind a listener would choose over a podcast.
 
 STRUCTURE:
-Organize your lecture into these labeled sections, separated by ---SECTION_BREAK--- markers:
-- Introduction: Set context and motivation
-- 2-4 Results/Discussion sections: Cover key findings and their significance
-- Conclusion and Future Directions: Summarize takeaways and open questions
+Every lecture follows this arc, with ---SECTION_BREAK--- on its own line between each part:
 
-Insert ---SECTION_BREAK--- on its own line between each section.
+1. OPENING (1-2 paragraphs): State the big question this work addresses. Why should anyone care? Set the intellectual stage. End with a brief roadmap: "Today we'll cover three things: first..., then..., and finally..."
+
+2. BODY (2-4 sections): Each section tells one part of the story. Open each section with a spoken transition that names what's coming — not a bare heading, but a sentence: "Now let's turn to how the authors actually solved this problem." Then dive into the narrative.
+
+3. CLOSING (1 paragraph): A single crisp summary of 3-5 takeaways woven into flowing prose. No new information. End with an intellectually honest forward-looking sentence.
 
 CRITICAL OUTPUT RULES:
-1. NO LISTS: Never use numbered lists (1., 2., 3.) or bullet points (-)
-   - Convert to flowing narrative: "The main types include X, which does A, Y, which does B, and Z, which does C"
 
-2. NO LATEX: Convert ALL LaTeX to natural language
-   - Tables: Summarize with a few examples, don't read every row
-   - Math: Convert to spoken form (e.g., "x squared" not "x^2")
-   - Figures: Describe narratively
+1. LENGTH — STRICTLY 25-35% of source manuscript word count.
+   - This is a LECTURE, not a second reading of the paper.
+   - Cover the key ideas, skip exhaustive details. Be selective and confident.
+   - If the source is 5000 words, your lecture is 1250-1750 words. No more.
+   - NEVER repeat or re-explain a concept you've already covered.
+   - One pass through the material. No "let's revisit" or "as we said earlier."
 
-3. SKIP METADATA: Completely omit any remaining:
-   - References sections
-   - "Competing interests"
-   - Author affiliations
-   - Email addresses
-   - "Published online" dates
+2. NO META-COMMENTARY — Never mention the format or medium.
+   - FORBIDDEN phrases: "for audio purposes", "in the text, an image shows",
+     "the source material", "this lecture", "in our discussion", "as we noted"
+   - When describing a figure or result, just describe it directly:
+     WRONG: "In the text, an image shows a pathway diagram..."
+     RIGHT: "The pathway branches at glucose-6-phosphate, where..."
+   - The listener knows this is a lecture. Never remind them.
 
-4. CONVERSATIONAL TONE:
-   - Write as if explaining to a curious student
-   - Use transitions: "Let's turn to...", "This connects to...", "The key insight here is..."
-   - Vary sentence structure for natural rhythm
-   - Ask rhetorical questions to engage: "Why does this matter? Because..."
+3. NO LISTS — Convert to flowing narrative prose.
 
-5. CONCLUDE WITH SUMMARY:
-   - End with 3-5 main takeaways
-   - Brief, clear recap
-   - No new information
+4. NO LATEX — Convert ALL math to natural spoken form.
 
-6. TARGET LENGTH:
-   - Aim for roughly 40-60% of source manuscript length
-   - Let the content drive section lengths
-   - Be selective: key concepts only, skip exhaustive details
-   - Focus on WHY and HOW, not just WHAT
+5. SKIP METADATA — Omit references, acknowledgments, affiliations, emails.
 
-7. ANALOGIES:
-   - Use analogies to illuminate, not replace
-   - Every analogy must be followed by the precise technical statement
-   - Example: "Think of it like a lock and key — specifically, the enzyme's active site binds the substrate with high stereoselectivity"
+6. TONE — Authoritative but modest, like a tenured professor who loves the subject.
+   - Adopt the authors' own level of confidence. If they hedge, you hedge.
+   - Never oversell: "trivially easy", "obviously", "simply" are banned.
+   - Express genuine intellectual excitement where the science warrants it.
+   - Use analogies to illuminate, then immediately give the precise technical statement.
+   - Vary sentence length. Short sentences for emphasis. Longer ones for flow.
 
-8. SECTION BREAKS:
-   - Insert ---SECTION_BREAK--- on its own line between lecture sections
-   - This creates real silence in the audio for natural pacing"""
+7. SECTION TRANSITIONS — No markdown headers. Use spoken transitions:
+   - "Now, the question becomes..." / "This brings us to..." / "Let's turn to..."
+   - After the transition sentence, pause: insert ---SECTION_BREAK--- on its own line.
+   - Then continue with the body of that section.
+
+8. SECTION BREAKS — Insert ---SECTION_BREAK--- between sections.
+   - This creates real silence in the final audio.
+   - Place the break AFTER the transition sentence that introduces the next topic."""
 
 
 def _split_large_section(content: str, max_tokens: int) -> list[str]:
@@ -759,6 +821,37 @@ def _extract_context(transcript: str, max_tokens: int = 300) -> str:
 
     return enc.decode(tokens[-max_tokens:]).strip()
 
+
+# Preamble sections to SKIP (don't trigger positional cascade)
+_PREAMBLE_HEADERS = re.compile(
+    r"(?i)^("
+    r"AUTHORS?$"
+    r"|CORRESPONDENCE$"
+    r"|GRAPHICAL\s+ABSTRACT$"
+    r"|HIGHLIGHTS$"
+    r"|IN\s+BRIEF$"
+    r"|ARTICLE$"
+    r"|DECLARATION\s+OF\s+INTERESTS?"
+    r"|ACKNOWLEDGMENTS?"
+    r")"
+)
+
+# Methods/SI sections — trigger positional cascade (everything after = methods/SI)
+_METHODS_SI_HEADERS = re.compile(
+    r"(?i)^("
+    r"KEY\s+RESOURCES?"
+    r"|EXPERIMENTAL\s+MODEL"
+    r"|METHOD\s+DETAILS?"
+    r"|STAR\s+METHODS?"
+    r"|QUANTIFICATION\s+AND\s+STATISTICAL"
+    r"|SUPPLEMENTA\w*\s+(?:FIGURES?|TABLES?|INFORMATION|DATA|MATERIALS?)"
+    r"|RESOURCE\s+AVAILABILITY"
+    r"|DATA\s+(?:AND\s+CODE\s+)?AVAILABILITY"
+    r"|LEAD\s+CONTACT"
+    r"|MATERIALS?\s+(?:AND\s+)?(?:METHODS?|AVAILABILITY)"
+    r"|(?:SOFTWARE|DOCKER|APPTAINER|GPU)\s"
+    r")"
+)
 
 _SI_MARKER_PATTERNS = [
     r"Extended Data Fig(?:ure)?\.?\s*\d+",
@@ -872,51 +965,51 @@ def _si_keys_match(a: str, b: str) -> bool:
     return a == b or a in b or b in a
 
 
-_CRITIQUE_PROMPT = """Review this section of a lecture transcript for quality issues:
+_CRITIQUE_PROMPT = """Review this lecture transcript for quality issues. The gold standard is The Great Courses lecture series.
 
 Position: {position}
 
 CRITICAL CHECKS:
-1. LIST DETECTION: Does it use numbered lists (1., 2., 3.) or bullet points (- )?
-   - Count occurrences of list patterns
-   - Flag sections that read like enumerated items
 
-2. LATEX DETECTION: Does it contain raw LaTeX commands?
-   - Check for: \\begin{{tabular}}, \\begin{{table}}, \\hline, \\multirow, \\captionsetup, \\caption, \\footnotetext, \\footnote, etc.
-   - LaTeX math symbols: $10 \\%$, $\\boldsymbol{{\\alpha}}$, etc.
-   - LaTeX MUST be converted to natural spoken language
-   - Tables should be brief highlights with 2-3 examples, NEVER read row-by-row
-   - Footnotes should be integrated inline naturally
+1. META-COMMENTARY: Flag ANY of these — they must be removed:
+   - "In the text, an image shows..." / "the source material" / "for audio purposes"
+   - "in our discussion" / "this lecture" / "as we noted" / "as mentioned earlier"
+   - Any reference to the FORMAT or MEDIUM of the content
 
-3. CITATIONS: Does it include author citations or references?
-   - Check for: "(Author et al., YEAR)", "Smith and Jones (2020)", "Fernandez-Martinez and Rout, 2009"
-   - ALL citations must be removed and replaced with "Research has shown..." or similar
+2. REPETITION: Does it re-explain concepts already covered?
+   - Duplicate summaries or conclusions (only ONE closing allowed)
+   - "As we discussed..." followed by re-stating what was already said
+   - Concepts introduced twice with different wording
 
-4. METADATA SECTIONS: Are any of these present?
-   - "Further Reading" sections (MUST be removed)
-   - "References" or "Bibliography" sections (MUST be removed)
-   - Author affiliations or emails (MUST be removed)
-   - "Competing interests" or "Acknowledgments" (MUST be removed)
-
-5. LENGTH CHECK:
+3. LENGTH: Target is 25-35% of source manuscript.
    - Estimate word count
-   - Is it roughly 50% of typical source length?
-   - Too detailed or encyclopedic?
+   - Flag if over 40% — needs aggressive cutting
 
-6. CONVERSATIONAL FLOW:
-   - Does it sound natural when read aloud?
-   - Are there choppy, disconnected statements?
-   - Good use of transitions between ideas?
-   - Complete, flowing sentences?
+4. MARKDOWN HEADERS: Are there bare markdown headers (##, ###)?
+   - These must be converted to spoken transitions
+   - "## Concluding summary" → "Now let's draw this together."
 
-7. FIGURE/TABLE INTEGRATION:
-   - Figures should start with "In the text, an image shows..." or "Looking at a diagram, we can see..."
-   - Tables should be summarized with key highlights, not listed exhaustively
-   - Are descriptions natural and narrative?
+5. LIST DETECTION: Numbered lists, bullet points, or list-like structure?
 
-8. SUMMARY:
-   - Does it end with a clear summary of 3-5 main takeaways?
-   - Missing or weak conclusion?
+6. LATEX DETECTION: Raw LaTeX commands or math symbols?
+
+7. CITATIONS: Author citations or references?
+
+8. METADATA: References, acknowledgments, affiliations?
+
+9. TONE:
+   - Overselling? ("trivially easy", "obviously", "simply")
+   - Salesman-like enthusiasm vs authoritative modesty?
+   - Does it respect the authors' own level of confidence?
+
+10. CONVERSATIONAL FLOW:
+    - Natural when read aloud? Varied sentence lengths?
+    - Choppy or disconnected statements?
+    - Good transitions between sections?
+
+11. SUMMARY:
+    - Single clear closing paragraph with 3-5 takeaways?
+    - Woven into prose, not list-like?
 
 Return structured feedback with:
 - feedback: List of specific issues with position info
@@ -936,10 +1029,12 @@ REVISION INSTRUCTIONS:
 2. Convert ALL LaTeX to natural spoken language
 3. Remove ALL citations and references
 4. Remove metadata sections completely
-5. Improve figure/table integration
-6. Add or strengthen the concluding summary
-7. Improve conversational flow
-8. Reduce length if too detailed (aim for ~50% of original source)
+5. Remove ALL meta-commentary ("in the text, an image shows", "for audio purposes", "in our discussion")
+6. Convert markdown headers to spoken transitions ("Now let's turn to...")
+7. Remove duplicate summaries — keep ONE closing paragraph at the end
+8. Remove ANY re-explanation of concepts already covered. One pass only.
+9. TARGET LENGTH: 25-35% of source. Cut aggressively if over.
+10. Maintain Great Courses lecture style: authoritative, modest, never salesman-like
 
 ORIGINAL TRANSCRIPT:
 $transcript
@@ -963,14 +1058,14 @@ def _refine_transcript(
     current_transcript = full_transcript
     critique_feedback = None
 
-    # Length ratio check before critique loop
+    # Length ratio check before critique loop (target: 25-35% of source)
     if source_words > 0:
         ratio = len(current_transcript.split()) / source_words
-        if ratio > 0.7:
+        if ratio > 0.45:
             logger.warning(
-                f"Transcript is {ratio:.0%} of source length — injecting length-reduction feedback"
+                f"Transcript is {ratio:.0%} of source length (target 25-35%) — injecting length-reduction feedback"
             )
-        elif ratio < 0.3:
+        elif ratio < 0.2:
             logger.warning(
                 f"Transcript is only {ratio:.0%} of source length — potential under-development"
             )
@@ -1029,10 +1124,11 @@ def _refine_transcript(
                 feedback_items = list(critique_feedback.feedback)
                 if source_words > 0:
                     ratio = len(current_transcript.split()) / source_words
-                    if ratio > 0.7:
+                    if ratio > 0.45:
                         feedback_items.append(
-                            f"LENGTH: Transcript is {ratio:.0%} of source. "
-                            "Cut to 40-60% by removing redundancy and excessive detail."
+                            f"LENGTH: Transcript is {ratio:.0%} of source (target 25-35%). "
+                            "Cut aggressively: remove repetition, re-explanations, "
+                            "exhaustive details, and redundant summaries. One pass only."
                         )
                 feedback_text = "\n".join(f"- {issue}" for issue in feedback_items)
 
@@ -1061,6 +1157,21 @@ def _refine_transcript(
 
             current_transcript = "\n\n".join(refined_chunks)
             logger.info("Lecture transcript refinement complete")
+
+    # Hard cap: never exceed source word count or ~30 min (~4500 words at TTS speed)
+    max_lecture_words = min(source_words, 4500) if source_words > 0 else 4500
+    current_words = len(current_transcript.split())
+    if current_words > max_lecture_words:
+        logger.warning(
+            f"Lecture {current_words}w exceeds cap {max_lecture_words}w, truncating to last sentence"
+        )
+        words = current_transcript.split()
+        truncated = " ".join(words[:max_lecture_words])
+        last_period = truncated.rfind(".")
+        if last_period > len(truncated) * 0.7:
+            current_transcript = truncated[: last_period + 1]
+        else:
+            current_transcript = truncated
 
     # Save critique if issues remain
     if critique_feedback and not critique_feedback.done and critique_feedback.feedback:
