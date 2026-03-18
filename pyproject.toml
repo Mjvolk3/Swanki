@@ -48,6 +48,7 @@ swanki = "swanki.__main__:main"
 swanki-cut = "swanki.cut:main"
 swanki-combine-pdf = "swanki.combine_pdf:main"
 swanki-to-anki = "swanki.send_to_anki:main"
+swanki-present = "swanki.presentation:main"
 
 
 [tool.ruff]
@@ -125,11 +126,11 @@ disallow_untyped_calls = false
 disallow_untyped_decorators = false
 
 [[tool.mypy.overrides]]
-module = ["pydub", "pydub.*", "tiktoken", "tiktoken.*", "elevenlabs", "elevenlabs.*", "instructor", "instructor.*"]
+module = ["pydub", "pydub.*", "tiktoken", "tiktoken.*", "elevenlabs", "elevenlabs.*", "instructor", "instructor.*", "PIL", "PIL.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["swanki.audio.*", "swanki.pipeline.*"]
+module = ["swanki.audio.*", "swanki.pipeline.*", "swanki.presentation.*"]
 disallow_untyped_calls = false
 disable_error_code = ["arg-type", "call-arg", "call-overload", "var-annotated", "type-arg", "unused-ignore", "assignment", "attr-defined", "no-any-return", "no-untyped-def"]
 
