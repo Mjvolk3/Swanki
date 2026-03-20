@@ -78,5 +78,6 @@ created: 1773142434234
 
 ***
 
+- [ ] #future Output manifest and incremental regeneration system -- track which `_N` dir has the current version of each output type (cards, lecture, summary, reading) per paper, with prompt hashes for staleness detection. Enable regenerating just one output type without re-running preprocessing by copying shared stages (pdf-singles, md-singles, clean-md-singles, image-summaries) forward. Also powers collection-based export (e.g., zip all co-biotech summaries for BookPlayer).
 - [ ] Cite pydantic in paper.
 - [ ] Integrate edits from @Shekhar-Mishra
