@@ -1,0 +1,10 @@
+output:
+  base_dir: swanki-out
+  formats:
+    cards_plain: cards-plain.md
+    cards_audio: cards-with-audio.md
+    cards_combined: cards-combined.md
+    summary: document-summary.md
+  organize_by_type: true
+  create_anki_deck: true
+  tag_format: slugified

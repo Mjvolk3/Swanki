@@ -1,0 +1,17 @@
+processing:
+  segmentation: char
+  context_radius: 2
+  cards_per_segment: 2
+  cloze_per_segment: 0
+  blocking_audio: true
+  confirm_before_generation: true
+  char_segmentation:
+    target_chars: 6000
+  image_cards:
+    enabled: true
+    cards_per_image: 2
+    image_on_front: true
+    image_on_back: true
+    require_math_content: false
+    placement_strategy: prefer_front
+    front_back_ratio: 0.5

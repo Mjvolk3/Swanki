@@ -1,0 +1,7 @@
+processing:
+  segmentation: char
+  context_radius: 1
+  cards_per_segment: 4
+  cloze_per_segment: 1
+  blocking_audio: true
+  confirm_before_generation: true

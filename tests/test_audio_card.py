@@ -7,7 +7,7 @@ Test file: tests/test_audio_card.py
 Tests for swanki.audio.card -- cloze handling, prompt construction, and mocked generation.
 """
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from pydub import AudioSegment
 
@@ -94,14 +94,18 @@ def test_build_prompt_with_image():
 # ---------------------------------------------------------------------------
 
 
-def test_generate_card_transcript_mocked(mock_openai_client):
+def test_generate_card_transcript_mocked():
     card = _make_card("What is X?")
-    transcript = generate_card_transcript(
-        card, is_front=True, client=mock_openai_client
-    )
-    assert isinstance(transcript, str)
-    assert len(transcript) > 0
-    mock_openai_client.chat.completions.create.assert_called()
+
+    mock_result = MagicMock()
+    mock_result.output = "Mocked transcript text"
+
+    with patch("swanki.audio.card.text_agent") as mock_agent:
+        mock_agent.run_sync.return_value = mock_result
+        transcript = generate_card_transcript(card, is_front=True)
+        assert isinstance(transcript, str)
+        assert len(transcript) > 0
+        mock_agent.run_sync.assert_called()
 
 
 # ---------------------------------------------------------------------------
@@ -109,17 +113,20 @@ def test_generate_card_transcript_mocked(mock_openai_client):
 # ---------------------------------------------------------------------------
 
 
-def test_generate_citation_audio_mocked(
-    tmp_audio_dir, mock_openai_client, mock_elevenlabs_api_key
-):
+def test_generate_citation_audio_mocked(tmp_audio_dir, mock_elevenlabs_api_key):
     output = tmp_audio_dir / "citation.mp3"
 
+    mock_result = MagicMock()
+    mock_result.output = "Smith, Machine Learning, 2023"
+
     with (
+        patch("swanki.audio.card.text_agent") as mock_agent,
         patch("swanki.audio.card.text_to_speech") as mock_tts,
         patch("swanki.audio.card.validate_audio_file", return_value=True),
     ):
+        mock_agent.run_sync.return_value = mock_result
 
-        def fake_tts(text, voice_id, output_path, api_key, speed=1.0):
+        def fake_tts(text, voice_id, output_path, api_key, speed=1.0, **kwargs):
             AudioSegment.silent(duration=1000).export(str(output_path), format="mp3")
 
         mock_tts.side_effect = fake_tts
@@ -128,7 +135,6 @@ def test_generate_citation_audio_mocked(
             citation_key="smithML2023",
             output_path=output,
             elevenlabs_api_key=mock_elevenlabs_api_key,
-            openai_client=mock_openai_client,
         )
         assert result == output
 
@@ -138,14 +144,19 @@ def test_generate_citation_audio_mocked(
 # ---------------------------------------------------------------------------
 
 
-def test_generate_card_audio_mocked(
-    tmp_audio_dir, mock_openai_client, mock_elevenlabs_api_key
-):
+def test_generate_card_audio_mocked(tmp_audio_dir, mock_elevenlabs_api_key):
     card = _make_card("What is ML?", "Machine learning is...")
 
-    with patch("swanki.audio.card.text_to_speech") as mock_tts:
+    mock_result = MagicMock()
+    mock_result.output = "Mocked transcript text"
 
-        def fake_tts(text, voice_id, output_path, api_key, speed=1.0):
+    with (
+        patch("swanki.audio.card.text_agent") as mock_agent,
+        patch("swanki.audio.card.text_to_speech") as mock_tts,
+    ):
+        mock_agent.run_sync.return_value = mock_result
+
+        def fake_tts(text, voice_id, output_path, api_key, speed=1.0, **kwargs):
             AudioSegment.silent(duration=1000).export(str(output_path), format="mp3")
 
         mock_tts.side_effect = fake_tts
@@ -155,7 +166,6 @@ def test_generate_card_audio_mocked(
             card_index=1,
             page_base="page-1",
             audio_dir=tmp_audio_dir,
-            openai_client=mock_openai_client,
             elevenlabs_api_key=mock_elevenlabs_api_key,
         )
 

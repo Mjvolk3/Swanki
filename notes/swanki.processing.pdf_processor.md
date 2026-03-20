@@ -14,3 +14,7 @@ PyPDF2 can fail on certain malformed or non-standard PDFs. The split method now 
 - `_split_pdf_qpdf` uses `subprocess.run` with qpdf, treating exit codes 0 and 3 (warnings) as success
 - Raises `ValueError` if qpdf is not installed or returns a hard error
 - Removed redundant inline comments and cleaned up whitespace
+
+## 2026.03.12 - Ruff formatting pass
+
+Applied ruff formatting: double quotes, import sorting, whitespace cleanup, Google-style docstring headers. No behavioral changes.

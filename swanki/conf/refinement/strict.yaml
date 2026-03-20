@@ -1,0 +1,9 @@
+refinement:
+  enabled: true
+  max_iterations: 5
+  early_exit_on_quality: 0.95
+  content_types:
+  - regular
+  - cloze
+  - image
+  include_audio: true

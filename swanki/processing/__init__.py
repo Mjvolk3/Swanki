@@ -1,21 +1,23 @@
-"""Processing modules for the Swanki pipeline.
-
-This package contains modern, well-documented replacements for legacy
-processing functions, providing clean interfaces for PDF processing,
-markdown conversion, image handling, and Anki integration.
 """
-from .pdf_processor import PDFProcessor
-from .markdown_converter import MarkdownConverter
-from .markdown_cleaner import MarkdownCleaner
-from .image_processor import ImageProcessor
+swanki/processing/__init__.py
+[[swanki.processing.__init__]]
+https://github.com/Mjvolk3/Swanki/tree/main/swanki/processing/__init__.py
+
+Processing modules for the Swanki pipeline.
+"""
+
 from .anki_processor import AnkiProcessor
 from .apkg_exporter import ApkgExporter
+from .image_processor import ImageProcessor
+from .markdown_cleaner import MarkdownCleaner
+from .markdown_converter import MarkdownConverter
+from .pdf_processor import PDFProcessor
 
 __all__ = [
-    'PDFProcessor',
-    'MarkdownConverter',
-    'MarkdownCleaner',
-    'ImageProcessor',
-    'AnkiProcessor',
-    'ApkgExporter',
+    "PDFProcessor",
+    "MarkdownConverter",
+    "MarkdownCleaner",
+    "ImageProcessor",
+    "AnkiProcessor",
+    "ApkgExporter",
 ]

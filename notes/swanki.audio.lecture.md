@@ -9,3 +9,37 @@ created: 1773142603440
 ## 2026.03.10 - Educational lecture generation with semantic chunking and self-refinement
 
 Extracted from monolithic audio module. Implements `chunk_by_headers` for semantic section splitting, `generate_and_validate_chunk` with per-section LLM critique, and an iterative refinement loop (`_refine_transcript`) targeting 50% of source length. Uses `instructor` for structured `LectureTranscriptFeedback` responses.
+
+## 2026.03.11 - Lecture transcript refactor (Step 4)
+
+Major overhaul addressing two problems: false mid-lecture conclusions when SI pages follow the main paper, and broken per-section word budgets causing excessively long lectures. Part of ([[plan.major-refactor-sequence.plan-0]]).
+
+- **Length control refactor**: Removed `section_budget_words` / `section_max_words` params from `generate_and_validate_chunk()`. Critique prompt now checks quality only (LaTeX, citations, lists, tone). Length enforcement moved to `_refine_transcript()` via source-word ratio — injects length-reduction feedback when ratio > 0.7, logs warning when < 0.3. System prompt target changed to "40-60% of source manuscript length".
+- **Broadened `chunk_by_headers()`**: Now matches unnumbered headers (`## Methods`, `## Results`) in addition to numbered (`## 1.0 Introduction`). Uses two regex patterns tried in order: numbered first, unnumbered fallback. Requires h2+ to avoid matching h1 titles.
+- **SI splitting**: `generate_lecture_audio()` accepts `si_start_page` to split `markdown_files` into main and SI. Main content is chunked; SI is indexed separately.
+- **SI indexing**: New `build_si_index()` parses SI content at markers (Extended Data Fig, Supplementary Fig, Table S, Methods headers) into a `dict[str, str]`. New `extract_relevant_si()` scans each main section for SI references and returns matched snippets with fuzzy key normalization.
+- **SI enrichment**: Per-section SI snippets passed to `generate_and_validate_chunk()` via `si_reference_content` param, appended to user message. Single-pass path passes truncated SI directly. SI instructions appended to system prompt.
+- **SI balance constraint**: When SI content is provided, critique prompt includes an SI BALANCE CHECK requiring at least 50% main paper coverage.
+
+## 2026.03.12 - Migrate from instructor/OpenAI to pydantic-ai agents
+
+Replaced dual-client pattern (`instructor.from_openai()` + `instructor.patch()`) with `lecture_critic_agent` and shared `text_agent` from `swanki.llm.agents`. Removed `openai_client` and `instructor_client` parameters from all functions. Three structured call sites now use `lecture_critic_agent.run_sync()` for critique and `text_agent.run_sync()` for generation/refinement. Critique-regenerate loop preserved identically. Part of Step 5 ([[plan.major-refactor-sequence.plan-0]]).
+
+## 2026.03.13 - Lecture structure enforcement, analogy rule, section-aware assembly, bookends, acronyms
+
+Addresses quality issues identified from listening to merzbacher paper lecture: meandering structure, over-analogizing, no section pauses, no bookend announcements.
+
+- **Structure enforcement**: System prompt now mandates labeled sections (Introduction, 2-4 Results/Discussion, Conclusion and Future Directions) separated by `---SECTION_BREAK---` markers
+- **Analogy rule**: New rule 7 -- "Use analogies to illuminate, not replace. Every analogy must be followed by the precise technical statement"
+- **Section-aware assembly**: Replaced flat `combine_audio` with `combine_audio_with_section_pauses` for real silence between lecture sections
+- **Bookends**: Generates lecture-specific bookends ("Today's lecture is posted as: ..." / "And with that we conclude: ...") via new `paper_title` parameter
+- **Acronyms**: `extract_acronyms()` scans source content and injects definitions into the system prompt
+
+## 2026.03.15 - Great Courses style overhaul, methods/SI classification, length caps, prosody improvements
+
+Major lecture quality pass driven by listening to thornburg (39 min, repetitive methods sections) and docter (lecture longer than reading). Four areas of change.
+
+- **System prompt rewrite**: Replaced generic educator prompt with Great Courses-style instructions. Influences: Sagan, Feynman, Lane. Mandatory opening roadmap ("Today we'll cover three things..."), spoken section transitions (no markdown headers), author-faithful tone (modest, never overselling), ban on meta-commentary ("in the text, an image shows", "for audio purposes"). Length target tightened from 40-60% to 25-35% of source.
+- **Methods/SI section classification**: New `_PREAMBLE_HEADERS` and `_METHODS_SI_HEADERS` regex patterns. After `chunk_by_headers()`, sections are classified into main (drives lecture structure) vs methods/SI (enrichment only). Uses positional cascade: once a methods header (e.g., "KEY RESOURCES TABLE") is seen, all subsequent sections are methods/SI. Methods/SI content is indexed via `build_si_index()` and passed to main sections as enrichment context through the existing `extract_relevant_si()` pipeline. For thornburg: 67 sections reduced to 12 main + 55 enrichment.
+- **Hard length cap**: `_refine_transcript()` now truncates at `min(source_words, 4500)` after refinement, finding the last sentence boundary. Prevents lectures from exceeding ~30 minutes regardless of refinement loop outcome.
+- **Prosody**: Paragraph-only TTS chunking via `chunk_text_paragraphs()` (4500 char max, never mid-sentence). 3-second section pauses (up from 2s). SSML `<break>` tags injected via `add_tts_pauses()`. Premium `eleven_multilingual_v2` model for lecture TTS; all other audio types use cheaper `eleven_flash_v2_5`.

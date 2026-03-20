@@ -8,20 +8,26 @@ and iterative self-refinement.
 """
 
 import logging
+import re
 import time
 from pathlib import Path
 from string import Template
 
 import tiktoken
-from openai import OpenAI
 
+from ..llm.agents import lecture_critic_agent, text_agent
 from ..models.cards import LectureTranscriptFeedback
 from ..utils.formatting import humanize_citation_key
 from ._common import (
     DEFAULT_VOICE_ID,
-    chunk_text,
+    LECTURE_TTS_MODEL,
+    add_tts_pauses,
+    chunk_text_paragraphs,
     clean_markdown_for_tts,
-    combine_audio,
+    combine_audio_with_section_pauses,
+    extract_acronyms,
+    generate_bookend_audio,
+    split_transcript_by_sections,
     text_to_speech,
 )
 
@@ -31,22 +37,18 @@ logger = logging.getLogger(__name__)
 def critique_transcript_chunks(
     transcript: str,
     critique_prompt: str,
-    instructor_client: OpenAI,
-    model: str = "gpt-5",
+    model: str = "openai:gpt-5",
     chunk_size: int = 8000,
     max_chunks: int = 5,
-    max_retries: int = 3,
 ) -> LectureTranscriptFeedback:
     """Critique transcript by sampling multiple chunks for comprehensive feedback.
 
     Args:
         transcript: Full transcript to critique.
         critique_prompt: Prompt template with {transcript} and {position} placeholders.
-        instructor_client: OpenAI client patched with instructor.
-        model: Model to use for critique.
+        model: pydantic-ai model string.
         chunk_size: Characters per chunk.
         max_chunks: Maximum chunks to sample.
-        max_retries: Retries per chunk.
 
     Returns:
         Combined feedback with done=False if any chunk has issues.
@@ -67,24 +69,15 @@ def critique_transcript_chunks(
         chunk_escaped = chunk.replace("{", "{{").replace("}", "}}")
 
         try:
-            critique = instructor_client.chat.completions.create(
+            result = lecture_critic_agent.run_sync(
+                critique_prompt.format(
+                    transcript=chunk_escaped,
+                    position=f"Characters {start_pos}-{start_pos + len(chunk)}",
+                ),
+                instructions="You are an expert educational content reviewer.",
                 model=model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert educational content reviewer.",
-                    },
-                    {
-                        "role": "user",
-                        "content": critique_prompt.format(
-                            transcript=chunk_escaped,
-                            position=f"Characters {start_pos}-{start_pos + len(chunk)}",
-                        ),
-                    },
-                ],
-                response_model=LectureTranscriptFeedback,
-                max_retries=max_retries,
             )
+            critique = result.output
 
             if not critique.done:
                 all_done = False
@@ -118,10 +111,9 @@ def chunk_by_headers(
     Returns:
         List of (section_title, section_content, token_count) tuples.
     """
-    import re
-
     enc = tiktoken.get_encoding("cl100k_base")
-    header_pattern = r"^(#+)\s+([0-9.]+)(?:\s*\\\\)?\s*(.*)$"
+    numbered_pattern = r"^(#{2,})\s+([0-9.]+)(?:\s*\\\\)?\s*(.*)$"
+    unnumbered_pattern = r"^(#{2,})\s+([A-Z][A-Za-z\s,]+)$"
 
     chunks: list[tuple[str, str, int]] = []
     current_section: dict[str, str | int] = {
@@ -133,7 +125,11 @@ def chunk_by_headers(
     lines = content.split("\n")
 
     for line_idx, line in enumerate(lines):
-        match = re.match(header_pattern, line, re.MULTILINE)
+        numbered = re.match(numbered_pattern, line, re.MULTILINE)
+        unnumbered = (
+            re.match(unnumbered_pattern, line, re.MULTILINE) if not numbered else None
+        )
+        match = numbered or unnumbered
 
         if match:
             if current_section["content"]:
@@ -156,10 +152,20 @@ def chunk_by_headers(
                         )
                     )
 
-            number = match.group(2)
-            title = match.group(3).strip() if match.group(3) else f"Section {number}"
+            if numbered:
+                number = numbered.group(2)
+                title = (
+                    numbered.group(3).strip()
+                    if numbered.group(3)
+                    else f"Section {number}"
+                )
+                title = title or f"Section {number}"
+            else:
+                assert unnumbered is not None
+                title = unnumbered.group(2).strip()
+
             current_section = {
-                "title": title or f"Section {number}",
+                "title": title,
                 "content": line + "\n",
                 "start_line": line_idx,
             }
@@ -187,12 +193,9 @@ def generate_and_validate_chunk(
     previous_context: str,
     system_prompt: str,
     citation_key: str,
-    openai_client: OpenAI,
-    instructor_client: OpenAI,
     model: str,
     max_retries: int = 2,
-    section_budget_words: int = 0,
-    section_max_words: int = 0,
+    si_reference_content: str | None = None,
 ) -> str:
     """Generate a section transcript with immediate self-criticism validation.
 
@@ -202,12 +205,9 @@ def generate_and_validate_chunk(
         previous_context: Context from previous section.
         system_prompt: System prompt with lecture instructions.
         citation_key: Humanized citation key.
-        openai_client: Regular OpenAI client for generation.
-        instructor_client: Instructor-patched client for validation.
-        model: Model for generation and critique.
+        model: pydantic-ai model string.
         max_retries: Maximum retry attempts.
-        section_budget_words: Allocated word budget for this section.
-        section_max_words: Maximum words with tolerance.
+        si_reference_content: Relevant SI content for this section.
 
     Returns:
         Validated lecture transcript for this section.
@@ -222,28 +222,20 @@ Check for:
 5. Cross-references ("see Figure X", "Table Y") - Should be removed or integrated naturally
 6. Conversational tone maintained throughout
 
-7. LENGTH CHECK (CRITICAL - GLOBAL BUDGET):
-   Section: {section_title}
-   Source: {source_words} words
-
-   This section's ALLOCATED budget from global 50% target:
-   Target: {budget_words} words (allocated share)
-   Maximum: {max_words} words (with 20% tolerance)
-
-   Count words in transcript: {word_count}
-
-   If {word_count} exceeds {max_words}, set done=False and meets_length_target=False with feedback:
-   "Section exceeds ALLOCATED budget ({word_count} words vs {max_words} max)"
-
-   Otherwise set meets_length_target=True.
-
-   NOTE: This budget is calculated from the TOTAL document target, not just this section.
-   Each section must stay within its share to meet the global 50% reduction goal.
-
 Transcript to review:
 {transcript}
 
 If issues found, list them specifically. Set done=False if refinement needed, done=True if acceptable."""
+
+    if si_reference_content:
+        critique_prompt += """
+
+SI BALANCE CHECK:
+- At least 50% of the section must cover main paper content.
+- At most 50% may be SI enrichment.
+- If SI dominates, set done=False and si_balance=False with feedback:
+  "SI content dominates this section — rebalance toward main paper."
+"""
 
     chunk_transcript = ""
 
@@ -263,80 +255,48 @@ If issues found, list them specifically. Set done=False if refinement needed, do
                 f"Content:\n{content_chunk}"
             )
 
-        # Calculate token limit
-        if section_max_words > 0:
-            section_max_tokens = int(section_max_words * 1.33)
-            max_completion_tokens = max(section_max_tokens * 3, 4000)
-        else:
-            max_completion_tokens = 10000
+        if si_reference_content:
+            user_message += (
+                "\n\n---\nRELEVANT SUPPLEMENTARY INFORMATION (use to enrich your discussion, "
+                "but keep the main paper as the primary focus):\n"
+                f"{si_reference_content}"
+            )
 
-        response = openai_client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-            ],
-            max_completion_tokens=max_completion_tokens,
-        )
+        max_completion_tokens = 10000
 
-        chunk_transcript = (
-            response.choices[0].message.content.strip()
-            if response.choices[0].message.content
-            else ""
-        )
-        finish_reason = response.choices[0].finish_reason
+        try:
+            gen_result = text_agent.run_sync(
+                user_message,
+                instructions=system_prompt,
+                model=model,
+                model_settings={"max_tokens": max_completion_tokens},
+            )
+            chunk_transcript = gen_result.output.strip()
+        except Exception as e:
+            logger.error(f"Section '{section_title}' generation failed: {e}")
+            chunk_transcript = ""
 
         logger.info(
             f"Section '{section_title}' response: "
             f"content_length={len(chunk_transcript)}, "
-            f"finish_reason={finish_reason}, "
             f"max_completion_tokens={max_completion_tokens}"
         )
 
         if not chunk_transcript:
-            logger.error(
-                f"Section '{section_title}' returned EMPTY content! "
-                f"finish_reason={finish_reason}, "
-                f"has_refusal={hasattr(response.choices[0].message, 'refusal') and response.choices[0].message.refusal is not None}"
-            )
-            if (
-                hasattr(response.choices[0].message, "refusal")
-                and response.choices[0].message.refusal
-            ):
-                logger.error(f"Refusal reason: {response.choices[0].message.refusal}")
+            logger.error(f"Section '{section_title}' returned EMPTY content!")
 
         # Immediate critique
         try:
             chunk_escaped = chunk_transcript.replace("{", "{{").replace("}", "}}")
-            section_source_words = len(content_chunk.split())
-            section_word_count = len(chunk_transcript.split())
 
-            critique = instructor_client.chat.completions.create(
+            critique_result = lecture_critic_agent.run_sync(
+                critique_prompt.format(
+                    transcript=chunk_escaped,
+                ),
+                instructions="You are an expert educational content reviewer.",
                 model=model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert educational content reviewer.",
-                    },
-                    {
-                        "role": "user",
-                        "content": critique_prompt.format(
-                            section_title=section_title,
-                            transcript=chunk_escaped,
-                            source_words=section_source_words,
-                            budget_words=section_budget_words
-                            if section_budget_words > 0
-                            else int(section_source_words * 0.5),
-                            max_words=section_max_words
-                            if section_max_words > 0
-                            else int(section_source_words * 0.6),
-                            word_count=section_word_count,
-                        ),
-                    },
-                ],
-                response_model=LectureTranscriptFeedback,
-                max_retries=2,
             )
+            critique = critique_result.output
 
             if critique.done:
                 logger.info(f"Section '{section_title}' passed validation")
@@ -360,90 +320,184 @@ def generate_lecture_audio(
     markdown_files: list[Path],
     image_summaries: list[str],
     output_path: Path,
-    openai_client: OpenAI,
     elevenlabs_api_key: str,
     voice_id: str | None = None,
-    model: str = "gpt-5-mini",
+    model: str = "openai:gpt-5-mini",
     citation_key: str | None = None,
     lecture_prompt_config: dict | None = None,
     speed: float = 1.0,
+    si_start_page: int | None = None,
+    paper_title: str | None = None,
 ) -> str:
     """Generate an educational lecture from document content.
-
-    Creates an engaging audio lecture with semantic chunking, per-section
-    validation, and iterative refinement. Targets 50% of source length.
 
     Args:
         markdown_files: Cleaned markdown file paths in order.
         image_summaries: Image summary strings to embed.
         output_path: Path for the output MP3 file.
-        openai_client: OpenAI client for transcript generation.
         elevenlabs_api_key: ElevenLabs API key.
         voice_id: Voice ID (defaults to DEFAULT_VOICE_ID).
-        model: OpenAI model to use.
+        model: pydantic-ai model string (e.g. ``"openai:gpt-5-mini"``).
         citation_key: Citation key to include in lecture.
         lecture_prompt_config: Custom prompt config with 'lecture_system'
             and 'lecture_prefix' keys.
         speed: Audio playback speed multiplier.
+        si_start_page: Page index where SI begins in markdown_files.
+            When set, main paper and SI are processed separately.
+        paper_title: Paper title for lecture bookend announcements.
 
     Returns:
         Filename of the generated audio file.
     """
     voice_id = voice_id or DEFAULT_VOICE_ID
 
+    # Guard: si_start_page out of bounds
+    if si_start_page is not None and si_start_page >= len(markdown_files):
+        logger.warning(
+            f"si_start_page={si_start_page} >= {len(markdown_files)} files, "
+            "falling back to no-SI mode"
+        )
+        si_start_page = None
+
+    # Split files into main and SI when boundary is known
+    if si_start_page is not None:
+        main_files = markdown_files[:si_start_page]
+        si_files = markdown_files[si_start_page:]
+        logger.info(f"SI split: {len(main_files)} main pages, {len(si_files)} SI pages")
+    else:
+        main_files = markdown_files
+        si_files = []
+
     # Prepare content with embedded image summaries
-    full_content = ""
     image_idx = 0
 
-    for md_file in markdown_files:
-        content = md_file.read_text()
-
-        while "![" in content and image_idx < len(image_summaries):
-            img_start = content.find("![")
-            img_end = content.find(")", img_start)
-            if img_end > img_start:
-                alt_start = content.find("[", img_start) + 1
-                alt_end = content.find("]", alt_start)
-                alt_text = content[alt_start:alt_end] if alt_end > alt_start else ""
-
-                summary = image_summaries[image_idx]
-
-                if alt_text:
-                    integrated_summary = f"Looking at {alt_text.lower()}, we can see {summary[0].lower()}{summary[1:]}"
+    def _embed_images(files: list[Path]) -> str:
+        nonlocal image_idx
+        result = ""
+        for md_file in files:
+            content = md_file.read_text()
+            while "![" in content and image_idx < len(image_summaries):
+                img_start = content.find("![")
+                img_end = content.find(")", img_start)
+                if img_end > img_start:
+                    alt_start = content.find("[", img_start) + 1
+                    alt_end = content.find("]", alt_start)
+                    alt_text = content[alt_start:alt_end] if alt_end > alt_start else ""
+                    summary = image_summaries[image_idx]
+                    if alt_text:
+                        integrated_summary = f"Looking at {alt_text.lower()}, we can see {summary[0].lower()}{summary[1:]}"
+                    else:
+                        integrated_summary = (
+                            f"The visual here shows {summary[0].lower()}{summary[1:]}"
+                        )
+                    before = content[:img_start]
+                    after = content[img_end + 1 :]
+                    content = f"{before}{integrated_summary}{after}"
+                    image_idx += 1
                 else:
-                    integrated_summary = (
-                        f"The visual here shows {summary[0].lower()}{summary[1:]}"
-                    )
+                    break
+            result += content + "\n\n"
+        return result
 
-                before = content[:img_start]
-                after = content[img_end + 1 :]
-                content = f"{before}{integrated_summary}{after}"
-                image_idx += 1
-            else:
-                break
+    main_content = _embed_images(main_files)
+    si_content = _embed_images(si_files) if si_files else ""
 
-        full_content += content + "\n\n"
+    cleaned_content = main_content
+    logger.info(f"Main content length: {len(main_content)} characters")
+    if si_content:
+        logger.info(f"SI content length: {len(si_content)} characters")
 
-    cleaned_content = full_content
-    logger.info(f"Content length: {len(full_content)} characters")
+    # Extract acronyms for injection into prompt
+    acronym_map = extract_acronyms(main_content)
+    acronym_instruction = ""
+    if acronym_map:
+        pairs = ", ".join(f"{a} = {f}" for a, f in acronym_map.items())
+        acronym_instruction = (
+            f"\n\n9. ACRONYM EXPANSION: Expand these acronyms on first use: {pairs}"
+        )
 
     # Get instructions
     if lecture_prompt_config:
         system_instructions = lecture_prompt_config.get("lecture_system", "")
         content_prefix = lecture_prompt_config.get("lecture_prefix", "")
+        si_instructions = lecture_prompt_config.get("lecture_si_instructions", "")
     else:
         system_instructions = _DEFAULT_LECTURE_SYSTEM_PROMPT
         content_prefix = "Begin your lecture on"
+        si_instructions = ""
 
     humanized_key = (
         humanize_citation_key(citation_key) if citation_key else "this academic work"
     )
-    full_system_prompt = f"{system_instructions}\n\nCitation: {humanized_key}"
+    full_system_prompt = (
+        f"{system_instructions}{acronym_instruction}\n\nCitation: {humanized_key}"
+    )
 
-    # Chunk by semantic structure
-    semantic_chunks = chunk_by_headers(cleaned_content, max_tokens_per_chunk=15000)
+    # Append SI instructions when SI is present (either from _meta.json or inline)
+    # (SI instructions added after classification below if methods/SI sections found)
+    if si_start_page is not None:
+        si_prompt = si_instructions or _DEFAULT_LECTURE_SI_INSTRUCTIONS
+        full_system_prompt += f"\n\n{si_prompt}"
 
-    logger.info(f"Split content into {len(semantic_chunks)} semantic sections")
+    # Chunk all content by semantic structure, then classify
+    all_chunks = chunk_by_headers(cleaned_content, max_tokens_per_chunk=15000)
+
+    si_index: dict[str, str] = {}
+
+    # Classify sections into three buckets:
+    # 1. Preamble (Authors, Highlights, etc.) → skip, no cascade
+    # 2. Methods/SI (KEY RESOURCES, METHOD DETAILS, etc.) → enrichment + cascade
+    #    Once a methods/SI header is seen, everything after is also methods/SI
+    #    (subsections like "ODE", "DNA Replication" follow "METHOD DETAILS")
+    # 3. Main content → drives the lecture structure
+    main_chunks: list[tuple[str, str, int]] = []
+    methods_si_chunks: list[tuple[str, str, int]] = []
+    in_methods_si = False
+    for title, content, tokens in all_chunks:
+        stripped = title.strip()
+        if _PREAMBLE_HEADERS.match(stripped):
+            methods_si_chunks.append((title, content, tokens))
+        elif _METHODS_SI_HEADERS.match(stripped):
+            in_methods_si = True
+            methods_si_chunks.append((title, content, tokens))
+        elif in_methods_si:
+            methods_si_chunks.append((title, content, tokens))
+        else:
+            main_chunks.append((title, content, tokens))
+
+    if methods_si_chunks:
+        logger.info(
+            f"Classified {len(main_chunks)} main sections, "
+            f"{len(methods_si_chunks)} methods/SI sections (available as enrichment)"
+        )
+        for title, _, tokens in methods_si_chunks:
+            logger.info(f"  [enrichment] '{title}' ({tokens} tokens)")
+
+        # Build SI index from inline methods/SI sections for enrichment
+        # Only if no page-level SI index already exists from _meta.json
+        methods_si_text = "\n\n".join(c for _, c, _ in methods_si_chunks)
+        if not si_index:
+            si_index = build_si_index(methods_si_text)
+            # If build_si_index found no markers, index the whole pool as one entry
+            if not si_index and methods_si_text.strip():
+                si_index = {"methods_si_pool": methods_si_text}
+                logger.info("Indexed methods/SI as single enrichment pool")
+
+    # Build SI index from page-level split (if available and not already built)
+    if not si_index and si_content:
+        si_index = build_si_index(si_content)
+    if si_index:
+        logger.info(f"SI index: {len(si_index)} entries: {list(si_index.keys())}")
+
+    # Inject SI enrichment instructions if we have enrichment material
+    # (from either inline classification or page-level split)
+    if si_index and si_start_page is None and methods_si_chunks:
+        si_prompt = si_instructions or _DEFAULT_LECTURE_SI_INSTRUCTIONS
+        full_system_prompt += f"\n\n{si_prompt}"
+
+    semantic_chunks = main_chunks
+
+    logger.info(f"Lecture will cover {len(semantic_chunks)} main sections")
     for i, (title, _, tokens) in enumerate(semantic_chunks):
         logger.info(f"  Section {i + 1}: '{title}' ({tokens} tokens)")
 
@@ -459,48 +513,27 @@ def generate_lecture_audio(
         user_message = (
             f"{content_prefix}: {humanized_key}\n\nContent:\n{section_content}"
         )
+        if si_content:
+            user_message += (
+                "\n\n---\nSUPPLEMENTARY INFORMATION (use to enrich, "
+                "but keep main paper as primary focus):\n"
+                f"{si_content[:3000]}"
+            )
 
-        lecture_transcript = None
-        for attempt in range(max_retries):
-            try:
-                response = openai_client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": full_system_prompt},
-                        {"role": "user", "content": user_message},
-                    ],
-                    max_completion_tokens=10000,
-                )
-
-                if (
-                    response.choices
-                    and len(response.choices) > 0
-                    and response.choices[0].message.content
-                ):
-                    lecture_transcript = response.choices[0].message.content.strip()
-                    if lecture_transcript:
-                        break
-                    else:
-                        logger.warning(
-                            f"Attempt {attempt + 1}: Returned empty lecture transcript"
-                        )
-                else:
-                    logger.warning(
-                        f"Attempt {attempt + 1}: Returned malformed response for lecture"
-                    )
-
-            except Exception as e:
-                logger.warning(
-                    f"Attempt {attempt + 1}: Error generating lecture transcript: {e}"
-                )
-
-            if attempt < max_retries - 1:
-                time.sleep(2**attempt)
+        try:
+            gen_result = text_agent.run_sync(
+                user_message,
+                instructions=full_system_prompt,
+                model=model,
+                model_settings={"max_tokens": 10000},
+            )
+            lecture_transcript = gen_result.output.strip()
+        except Exception as e:
+            logger.error(f"Error generating lecture transcript: {e}")
+            lecture_transcript = ""
 
         if not lecture_transcript:
-            logger.error(
-                f"Failed to generate lecture transcript after {max_retries} attempts, using original"
-            )
+            logger.error("Failed to generate lecture transcript, using original")
             lecture_transcript = section_content
 
         full_transcript = lecture_transcript
@@ -510,45 +543,26 @@ def generate_lecture_audio(
         accumulated_transcript = ""
 
         total_source_words = len(cleaned_content.split())
-        total_target_words = int(total_source_words * 0.5)
-        total_tolerance_words = int(total_source_words * 0.6)
-
-        logger.info(
-            f"Global length target: {total_target_words} words (50% of {total_source_words})"
-        )
-        logger.info(
-            f"Global tolerance: {total_tolerance_words} words (60% of {total_source_words})"
-        )
-
         cumulative_output_words = 0
-
-        import instructor
-
-        instructor_client = instructor.from_openai(openai_client)
 
         for section_idx, (section_title, section_content, _) in enumerate(
             semantic_chunks
         ):
             section_source_words = len(section_content.split())
-            section_fraction = section_source_words / total_source_words
-            section_budget_words = int(total_target_words * section_fraction)
-            section_max_words = int(section_budget_words * 1.2)
 
             logger.info(
                 f"Generating section {section_idx + 1}/{len(semantic_chunks)}: {section_title}"
             )
-            logger.info(
-                f"  Source: {section_source_words} words ({section_fraction * 100:.1f}% of total)"
-            )
-            logger.info(
-                f"  Budget: {section_budget_words} words (allocated from global target)"
-            )
-            logger.info(f"  Max: {section_max_words} words (with 20% tolerance)")
+            logger.info(f"  Source: {section_source_words} words")
 
             previous_context = (
                 _extract_context(accumulated_transcript, max_tokens=300)
                 if section_idx > 0
                 else ""
+            )
+
+            si_ref = (
+                extract_relevant_si(section_content, si_index) if si_index else None
             )
 
             chunk_transcript = generate_and_validate_chunk(
@@ -557,12 +571,9 @@ def generate_lecture_audio(
                 previous_context=previous_context,
                 system_prompt=full_system_prompt,
                 citation_key=humanized_key,
-                openai_client=openai_client,
-                instructor_client=instructor_client,
                 model=model,
                 max_retries=2,
-                section_budget_words=section_budget_words,
-                section_max_words=section_max_words,
+                si_reference_content=si_ref,
             )
 
             section_actual_words = len(chunk_transcript.split())
@@ -570,17 +581,8 @@ def generate_lecture_audio(
 
             logger.info(f"  Generated: {section_actual_words} words")
             logger.info(
-                f"  Cumulative: {cumulative_output_words}/{total_tolerance_words} words "
-                f"({cumulative_output_words / total_tolerance_words * 100:.1f}%)"
+                f"  Cumulative: {cumulative_output_words}/{total_source_words} source words"
             )
-
-            if cumulative_output_words > total_tolerance_words:
-                logger.warning(
-                    f"CUMULATIVE LENGTH EXCEEDED: {cumulative_output_words} > {total_tolerance_words}"
-                )
-                logger.warning(
-                    "Remaining sections must be MORE concise to meet global target"
-                )
 
             accumulated_transcript += "\n\n" + chunk_transcript
             transcript_chunks.append(chunk_transcript)
@@ -618,13 +620,13 @@ def generate_lecture_audio(
     full_transcript = _refine_transcript(
         full_transcript,
         full_system_prompt,
-        openai_client,
         model,
         citation_key,
         transcripts_dir,
         output_path,
         max_retries,
         enc,
+        source_words=len(cleaned_content.split()),
     )
 
     # Save final transcript
@@ -635,7 +637,7 @@ def generate_lecture_audio(
             f.write(f"**Citation Key:** {citation_key}\n\n")
         f.write(f"**Generated Transcript:**\n\n{full_transcript}\n")
 
-    tts_transcript = clean_markdown_for_tts(full_transcript)
+    tts_transcript = add_tts_pauses(clean_markdown_for_tts(full_transcript))
 
     cleaned_path = (
         transcripts_dir / f"{output_path.stem}_transcript_cleaned_markdown.md"
@@ -646,25 +648,82 @@ def generate_lecture_audio(
             f.write(f"Citation Key: {citation_key}\n\n")
         f.write(f"Generated Transcript:\n\n{tts_transcript}\n")
 
-    # Generate audio
-    audio_chunks = chunk_text(tts_transcript, max_chars=2000)
-    chunk_paths: list[Path] = []
-
-    for i, chunk in enumerate(audio_chunks):
-        prefix = (
-            f"{citation_key}_{output_path.stem}" if citation_key else output_path.stem
+    # Generate bookends
+    bookend_start = None
+    bookend_end = None
+    if citation_key:
+        bookend_start = generate_bookend_audio(
+            citation_key,
+            "lecture",
+            "start",
+            output_path.parent,
+            elevenlabs_api_key,
+            voice_id,
+            speed,
+            paper_title=paper_title,
         )
-        chunk_path = output_path.parent / f"{prefix}_chunk{i}.mp3"
-        text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed)
-        chunk_paths.append(chunk_path)
-        time.sleep(1)
+        bookend_end = generate_bookend_audio(
+            citation_key,
+            "lecture",
+            "end",
+            output_path.parent,
+            elevenlabs_api_key,
+            voice_id,
+            speed,
+        )
 
-    if len(chunk_paths) == 1:
-        chunk_paths[0].rename(output_path)
-    else:
-        combine_audio(chunk_paths, output_path)
-        for p in chunk_paths:
+    # Section-aware audio assembly — paragraph-only chunking for lecture prosody
+    sections_text = split_transcript_by_sections(tts_transcript)
+    if not sections_text:
+        sections_text = [tts_transcript]
+
+    all_section_chunks: list[list[Path]] = []
+    chunk_counter = 0
+
+    for section in sections_text:
+        # Lecture uses paragraph-only splitting to avoid mid-sentence breaks
+        # that cause choppy prosody in TTS
+        audio_chunks = chunk_text_paragraphs(section, max_chars=4500)
+        section_paths: list[Path] = []
+
+        for chunk in audio_chunks:
+            prefix = (
+                f"{citation_key}_{output_path.stem}"
+                if citation_key
+                else output_path.stem
+            )
+            chunk_path = output_path.parent / f"{prefix}_chunk{chunk_counter}.mp3"
+            text_to_speech(
+                chunk,
+                voice_id,
+                chunk_path,
+                elevenlabs_api_key,
+                speed,
+                tts_model=LECTURE_TTS_MODEL,
+            )
+            section_paths.append(chunk_path)
+            chunk_counter += 1
+            time.sleep(1)
+
+        all_section_chunks.append(section_paths)
+
+    # Lecture uses longer section pauses (3s) for distinct section separation
+    combine_audio_with_section_pauses(
+        all_section_chunks,
+        output_path,
+        section_pause_ms=3000,
+        bookend_start=bookend_start,
+        bookend_end=bookend_end,
+    )
+
+    # Clean up chunk and bookend files
+    for section_paths in all_section_chunks:
+        for p in section_paths:
             p.unlink()
+    if bookend_start and bookend_start.exists():
+        bookend_start.unlink()
+    if bookend_end and bookend_end.exists():
+        bookend_end.unlink()
 
     return output_path.name
 
@@ -673,42 +732,58 @@ def generate_lecture_audio(
 # Private helpers
 # ---------------------------------------------------------------------------
 
-_DEFAULT_LECTURE_SYSTEM_PROMPT = """You are an expert educator creating an audio lecture from academic content.
+_DEFAULT_LECTURE_SYSTEM_PROMPT = """You are a world-class science lecturer in the style of The Great Courses series. Your influences include writers like Carl Sagan, Richard Feynman, and Nick Lane — people who make deep science vivid without dumbing it down. You speak with authority, warmth, and intellectual modesty.
 
 YOUR TASK:
-Transform the provided academic text into an engaging, conversational audio lecture.
+Transform the provided academic text into a polished audio lecture — the kind a listener would choose over a podcast.
+
+STRUCTURE:
+Every lecture follows this arc, with ---SECTION_BREAK--- on its own line between each part:
+
+1. OPENING (1-2 paragraphs): State the big question this work addresses. Why should anyone care? Set the intellectual stage. End with a brief roadmap: "Today we'll cover three things: first..., then..., and finally..."
+
+2. BODY (2-4 sections): Each section tells one part of the story. Open each section with a spoken transition that names what's coming — not a bare heading, but a sentence: "Now let's turn to how the authors actually solved this problem." Then dive into the narrative.
+
+3. CLOSING (1 paragraph): A single crisp summary of 3-5 takeaways woven into flowing prose. No new information. End with an intellectually honest forward-looking sentence.
 
 CRITICAL OUTPUT RULES:
-1. NO LISTS: Never use numbered lists (1., 2., 3.) or bullet points (-)
-   - Convert to flowing narrative: "The main types include X, which does A, Y, which does B, and Z, which does C"
 
-2. NO LATEX: Convert ALL LaTeX to natural language
-   - Tables: Summarize with a few examples, don't read every row
-   - Math: Convert to spoken form (e.g., "x squared" not "x^2")
-   - Figures: Describe narratively
+1. LENGTH — STRICTLY 25-35% of source manuscript word count.
+   - This is a LECTURE, not a second reading of the paper.
+   - Cover the key ideas, skip exhaustive details. Be selective and confident.
+   - If the source is 5000 words, your lecture is 1250-1750 words. No more.
+   - NEVER repeat or re-explain a concept you've already covered.
+   - One pass through the material. No "let's revisit" or "as we said earlier."
 
-3. SKIP METADATA: Completely omit any remaining:
-   - References sections
-   - "Competing interests"
-   - Author affiliations
-   - Email addresses
-   - "Published online" dates
+2. NO META-COMMENTARY — Never mention the format or medium.
+   - FORBIDDEN phrases: "for audio purposes", "in the text, an image shows",
+     "the source material", "this lecture", "in our discussion", "as we noted"
+   - When describing a figure or result, just describe it directly:
+     WRONG: "In the text, an image shows a pathway diagram..."
+     RIGHT: "The pathway branches at glucose-6-phosphate, where..."
+   - The listener knows this is a lecture. Never remind them.
 
-4. CONVERSATIONAL TONE:
-   - Write as if explaining to a curious student
-   - Use transitions: "Let's turn to...", "This connects to...", "The key insight here is..."
-   - Vary sentence structure for natural rhythm
-   - Ask rhetorical questions to engage: "Why does this matter? Because..."
+3. NO LISTS — Convert to flowing narrative prose.
 
-5. CONCLUDE WITH SUMMARY:
-   - End with 3-5 main takeaways
-   - Brief, clear recap
-   - No new information
+4. NO LATEX — Convert ALL math to natural spoken form.
 
-6. TARGET LENGTH:
-   - Aim for 50% of source content length
-   - Be selective: key concepts only, skip exhaustive details
-   - Focus on WHY and HOW, not just WHAT"""
+5. SKIP METADATA — Omit references, acknowledgments, affiliations, emails.
+
+6. TONE — Authoritative but modest, like a tenured professor who loves the subject.
+   - Adopt the authors' own level of confidence. If they hedge, you hedge.
+   - Never oversell: "trivially easy", "obviously", "simply" are banned.
+   - Express genuine intellectual excitement where the science warrants it.
+   - Use analogies to illuminate, then immediately give the precise technical statement.
+   - Vary sentence length. Short sentences for emphasis. Longer ones for flow.
+
+7. SECTION TRANSITIONS — No markdown headers. Use spoken transitions:
+   - "Now, the question becomes..." / "This brings us to..." / "Let's turn to..."
+   - After the transition sentence, pause: insert ---SECTION_BREAK--- on its own line.
+   - Then continue with the body of that section.
+
+8. SECTION BREAKS — Insert ---SECTION_BREAK--- between sections.
+   - This creates real silence in the final audio.
+   - Place the break AFTER the transition sentence that introduces the next topic."""
 
 
 def _split_large_section(content: str, max_tokens: int) -> list[str]:
@@ -747,51 +822,194 @@ def _extract_context(transcript: str, max_tokens: int = 300) -> str:
     return enc.decode(tokens[-max_tokens:]).strip()
 
 
-_CRITIQUE_PROMPT = """Review this section of a lecture transcript for quality issues:
+# Preamble sections to SKIP (don't trigger positional cascade)
+_PREAMBLE_HEADERS = re.compile(
+    r"(?i)^("
+    r"AUTHORS?$"
+    r"|CORRESPONDENCE$"
+    r"|GRAPHICAL\s+ABSTRACT$"
+    r"|HIGHLIGHTS$"
+    r"|IN\s+BRIEF$"
+    r"|ARTICLE$"
+    r"|DECLARATION\s+OF\s+INTERESTS?"
+    r"|ACKNOWLEDGMENTS?"
+    r")"
+)
+
+# Methods/SI sections — trigger positional cascade (everything after = methods/SI)
+_METHODS_SI_HEADERS = re.compile(
+    r"(?i)^("
+    r"KEY\s+RESOURCES?"
+    r"|EXPERIMENTAL\s+MODEL"
+    r"|METHOD\s+DETAILS?"
+    r"|STAR\s+METHODS?"
+    r"|QUANTIFICATION\s+AND\s+STATISTICAL"
+    r"|SUPPLEMENTA\w*\s+(?:FIGURES?|TABLES?|INFORMATION|DATA|MATERIALS?)"
+    r"|RESOURCE\s+AVAILABILITY"
+    r"|DATA\s+(?:AND\s+CODE\s+)?AVAILABILITY"
+    r"|LEAD\s+CONTACT"
+    r"|MATERIALS?\s+(?:AND\s+)?(?:METHODS?|AVAILABILITY)"
+    r"|(?:SOFTWARE|DOCKER|APPTAINER|GPU)\s"
+    r")"
+)
+
+_SI_MARKER_PATTERNS = [
+    r"Extended Data Fig(?:ure)?\.?\s*\d+",
+    r"Supplementary Fig(?:ure)?\.?\s*S?\d+",
+    r"Figure S\d+",
+    r"Table S\d+",
+    r"Supplementary Table\s*S?\d+",
+    r"#{2,}\s+(?:Methods|Data|Statistical Analysis|Experimental Procedures)",
+]
+_SI_MARKER_RE = re.compile(
+    "|".join(f"({p})" for p in _SI_MARKER_PATTERNS), re.IGNORECASE
+)
+
+_SI_REF_PATTERNS = re.compile(
+    r"(?:"
+    r"Extended Data Fig(?:ure)?\.?\s*\d+"
+    r"|Supplementary Fig(?:ure)?\.?\s*S?\d+"
+    r"|Figure S\d+"
+    r"|Table S\d+"
+    r"|Supplementary Table\s*S?\d+"
+    r")",
+    re.IGNORECASE,
+)
+
+_DEFAULT_LECTURE_SI_INSTRUCTIONS = """\
+SUPPLEMENTARY INFORMATION HANDLING:
+- SI data enriches the main paper but should NOT dominate the lecture.
+- Weave SI details naturally into the narrative where they add depth.
+- At least 50% of each section must cover the main paper content.
+- Reference SI as "additional experiments show..." or "further data confirms..." — avoid "Supplementary Figure S3" labels."""
+
+
+def build_si_index(si_content: str) -> dict[str, str]:
+    """Index SI content by marker (Extended Data Fig 1, Table S2, etc.).
+
+    Args:
+        si_content: Full SI markdown text.
+
+    Returns:
+        Dict mapping normalized marker key to the content following that marker
+        until the next marker (or end of text).
+    """
+    if not si_content.strip():
+        return {}
+
+    splits: list[tuple[str, int]] = []
+    for m in _SI_MARKER_RE.finditer(si_content):
+        key = _normalize_si_key(m.group(0))
+        splits.append((key, m.start()))
+
+    if not splits:
+        return {}
+
+    index: dict[str, str] = {}
+    for i, (key, start) in enumerate(splits):
+        end = splits[i + 1][1] if i + 1 < len(splits) else len(si_content)
+        index[key] = si_content[start:end]
+
+    return index
+
+
+def extract_relevant_si(
+    section_content: str,
+    si_index: dict[str, str],
+    context_chars: int = 500,
+) -> str | None:
+    """Find SI references in a section and return matching SI snippets.
+
+    Args:
+        section_content: Main paper section text.
+        si_index: Index built by build_si_index().
+        context_chars: Max chars per matched snippet.
+
+    Returns:
+        Concatenated relevant SI snippets, or None if no references found.
+    """
+    if not si_index:
+        return None
+
+    refs = _SI_REF_PATTERNS.findall(section_content)
+    if not refs:
+        return None
+
+    matched_snippets: list[str] = []
+    seen_keys: set[str] = set()
+
+    for ref in refs:
+        norm = _normalize_si_key(ref)
+        # Fuzzy match against index keys
+        for key, content in si_index.items():
+            if key in seen_keys:
+                continue
+            if _si_keys_match(norm, key):
+                matched_snippets.append(content[:context_chars])
+                seen_keys.add(key)
+
+    return "\n\n".join(matched_snippets) if matched_snippets else None
+
+
+def _normalize_si_key(raw: str) -> str:
+    """Normalize SI marker to a canonical form for matching."""
+    s = raw.strip()
+    s = re.sub(r"Fig(?:ure)?\.?", "Figure", s, flags=re.IGNORECASE)
+    s = re.sub(r"\s+", " ", s)
+    s = s.rstrip(".:;,")
+    return s.lower()
+
+
+def _si_keys_match(a: str, b: str) -> bool:
+    """Fuzzy match two normalized SI keys."""
+    return a == b or a in b or b in a
+
+
+_CRITIQUE_PROMPT = """Review this lecture transcript for quality issues. The gold standard is The Great Courses lecture series.
 
 Position: {position}
 
 CRITICAL CHECKS:
-1. LIST DETECTION: Does it use numbered lists (1., 2., 3.) or bullet points (- )?
-   - Count occurrences of list patterns
-   - Flag sections that read like enumerated items
 
-2. LATEX DETECTION: Does it contain raw LaTeX commands?
-   - Check for: \\begin{{tabular}}, \\begin{{table}}, \\hline, \\multirow, \\captionsetup, \\caption, \\footnotetext, \\footnote, etc.
-   - LaTeX math symbols: $10 \\%$, $\\boldsymbol{{\\alpha}}$, etc.
-   - LaTeX MUST be converted to natural spoken language
-   - Tables should be brief highlights with 2-3 examples, NEVER read row-by-row
-   - Footnotes should be integrated inline naturally
+1. META-COMMENTARY: Flag ANY of these — they must be removed:
+   - "In the text, an image shows..." / "the source material" / "for audio purposes"
+   - "in our discussion" / "this lecture" / "as we noted" / "as mentioned earlier"
+   - Any reference to the FORMAT or MEDIUM of the content
 
-3. CITATIONS: Does it include author citations or references?
-   - Check for: "(Author et al., YEAR)", "Smith and Jones (2020)", "Fernandez-Martinez and Rout, 2009"
-   - ALL citations must be removed and replaced with "Research has shown..." or similar
+2. REPETITION: Does it re-explain concepts already covered?
+   - Duplicate summaries or conclusions (only ONE closing allowed)
+   - "As we discussed..." followed by re-stating what was already said
+   - Concepts introduced twice with different wording
 
-4. METADATA SECTIONS: Are any of these present?
-   - "Further Reading" sections (MUST be removed)
-   - "References" or "Bibliography" sections (MUST be removed)
-   - Author affiliations or emails (MUST be removed)
-   - "Competing interests" or "Acknowledgments" (MUST be removed)
-
-5. LENGTH CHECK:
+3. LENGTH: Target is 25-35% of source manuscript.
    - Estimate word count
-   - Is it roughly 50% of typical source length?
-   - Too detailed or encyclopedic?
+   - Flag if over 40% — needs aggressive cutting
 
-6. CONVERSATIONAL FLOW:
-   - Does it sound natural when read aloud?
-   - Are there choppy, disconnected statements?
-   - Good use of transitions between ideas?
-   - Complete, flowing sentences?
+4. MARKDOWN HEADERS: Are there bare markdown headers (##, ###)?
+   - These must be converted to spoken transitions
+   - "## Concluding summary" → "Now let's draw this together."
 
-7. FIGURE/TABLE INTEGRATION:
-   - Figures should start with "In the text, an image shows..." or "Looking at a diagram, we can see..."
-   - Tables should be summarized with key highlights, not listed exhaustively
-   - Are descriptions natural and narrative?
+5. LIST DETECTION: Numbered lists, bullet points, or list-like structure?
 
-8. SUMMARY:
-   - Does it end with a clear summary of 3-5 main takeaways?
-   - Missing or weak conclusion?
+6. LATEX DETECTION: Raw LaTeX commands or math symbols?
+
+7. CITATIONS: Author citations or references?
+
+8. METADATA: References, acknowledgments, affiliations?
+
+9. TONE:
+   - Overselling? ("trivially easy", "obviously", "simply")
+   - Salesman-like enthusiasm vs authoritative modesty?
+   - Does it respect the authors' own level of confidence?
+
+10. CONVERSATIONAL FLOW:
+    - Natural when read aloud? Varied sentence lengths?
+    - Choppy or disconnected statements?
+    - Good transitions between sections?
+
+11. SUMMARY:
+    - Single clear closing paragraph with 3-5 takeaways?
+    - Woven into prose, not list-like?
 
 Return structured feedback with:
 - feedback: List of specific issues with position info
@@ -811,10 +1029,12 @@ REVISION INSTRUCTIONS:
 2. Convert ALL LaTeX to natural spoken language
 3. Remove ALL citations and references
 4. Remove metadata sections completely
-5. Improve figure/table integration
-6. Add or strengthen the concluding summary
-7. Improve conversational flow
-8. Reduce length if too detailed (aim for ~50% of original source)
+5. Remove ALL meta-commentary ("in the text, an image shows", "for audio purposes", "in our discussion")
+6. Convert markdown headers to spoken transitions ("Now let's turn to...")
+7. Remove duplicate summaries — keep ONE closing paragraph at the end
+8. Remove ANY re-explanation of concepts already covered. One pass only.
+9. TARGET LENGTH: 25-35% of source. Cut aggressively if over.
+10. Maintain Great Courses lecture style: authoritative, modest, never salesman-like
 
 ORIGINAL TRANSCRIPT:
 $transcript
@@ -825,22 +1045,30 @@ PROVIDE THE COMPLETE REVISED TRANSCRIPT:""")
 def _refine_transcript(
     full_transcript: str,
     full_system_prompt: str,
-    openai_client: OpenAI,
     model: str,
     citation_key: str | None,
     transcripts_dir: Path,
     output_path: Path,
     max_retries: int,
     enc: tiktoken.Encoding,
+    source_words: int = 0,
 ) -> str:
     """Run iterative critique-and-refine loop on the transcript."""
-    import instructor
-
-    instructor_client = instructor.patch(openai_client)
-
     max_iterations = 3
     current_transcript = full_transcript
     critique_feedback = None
+
+    # Length ratio check before critique loop (target: 25-35% of source)
+    if source_words > 0:
+        ratio = len(current_transcript.split()) / source_words
+        if ratio > 0.45:
+            logger.warning(
+                f"Transcript is {ratio:.0%} of source length (target 25-35%) — injecting length-reduction feedback"
+            )
+        elif ratio < 0.2:
+            logger.warning(
+                f"Transcript is only {ratio:.0%} of source length — potential under-development"
+            )
 
     for iteration in range(max_iterations):
         logger.info(f"Lecture critique iteration {iteration + 1}/{max_iterations}")
@@ -848,35 +1076,24 @@ def _refine_transcript(
         transcript_escaped = current_transcript.replace("{", "{{").replace("}", "}}")
 
         try:
-            critique_feedback = instructor_client.chat.completions.create(
+            critique_result = lecture_critic_agent.run_sync(
+                _CRITIQUE_PROMPT.format(
+                    transcript=transcript_escaped,
+                    position="Full document",
+                ),
+                instructions="You are an expert educational content reviewer.",
                 model=model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert educational content reviewer.",
-                    },
-                    {
-                        "role": "user",
-                        "content": _CRITIQUE_PROMPT.format(
-                            transcript=transcript_escaped,
-                            position="Full document",
-                        ),
-                    },
-                ],
-                response_model=LectureTranscriptFeedback,
-                max_retries=max_retries,
             )
+            critique_feedback = critique_result.output
         except Exception as e:
             logger.warning(f"Error critiquing full transcript: {e}")
             logger.info("Falling back to chunked critique...")
             critique_feedback = critique_transcript_chunks(
                 transcript=current_transcript,
                 critique_prompt=_CRITIQUE_PROMPT,
-                instructor_client=instructor_client,
                 model=model,
                 chunk_size=8000,
                 max_chunks=10,
-                max_retries=max_retries,
             )
 
         if critique_feedback.done:
@@ -904,50 +1121,33 @@ def _refine_transcript(
             for start in range(0, len(transcript_tokens), chunk_size):
                 chunk = enc.decode(transcript_tokens[start : start + chunk_size])
 
-                feedback_text = "\n".join(
-                    f"- {issue}" for issue in critique_feedback.feedback
-                )
+                feedback_items = list(critique_feedback.feedback)
+                if source_words > 0:
+                    ratio = len(current_transcript.split()) / source_words
+                    if ratio > 0.45:
+                        feedback_items.append(
+                            f"LENGTH: Transcript is {ratio:.0%} of source (target 25-35%). "
+                            "Cut aggressively: remove repetition, re-explanations, "
+                            "exhaustive details, and redundant summaries. One pass only."
+                        )
+                feedback_text = "\n".join(f"- {issue}" for issue in feedback_items)
 
                 refinement_prompt = _REFINEMENT_TEMPLATE.substitute(
                     critique=feedback_text,
                     transcript=chunk,
                 )
 
-                refined_chunk = None
-
-                for attempt in range(max_retries):
-                    try:
-                        refinement = openai_client.chat.completions.create(
-                            model=model,
-                            messages=[
-                                {"role": "system", "content": full_system_prompt},
-                                {"role": "user", "content": refinement_prompt},
-                            ],
-                            max_completion_tokens=max_output_tokens,
-                        )
-
-                        if (
-                            refinement.choices
-                            and len(refinement.choices) > 0
-                            and refinement.choices[0].message.content
-                        ):
-                            refined_chunk = refinement.choices[
-                                0
-                            ].message.content.strip()
-                            if refined_chunk:
-                                break
-                        else:
-                            logger.warning(
-                                f"Attempt {attempt + 1}: Empty refinement response"
-                            )
-
-                    except Exception as e:
-                        logger.warning(
-                            f"Attempt {attempt + 1}: Error during refinement: {e}"
-                        )
-
-                    if attempt < max_retries - 1:
-                        time.sleep(2**attempt)
+                try:
+                    refine_result = text_agent.run_sync(
+                        refinement_prompt,
+                        instructions=full_system_prompt,
+                        model=model,
+                        model_settings={"max_tokens": max_output_tokens},
+                    )
+                    refined_chunk = refine_result.output.strip()
+                except Exception as e:
+                    logger.warning(f"Error during refinement: {e}")
+                    refined_chunk = ""
 
                 if not refined_chunk:
                     logger.error("Failed to refine chunk, using original")
@@ -957,6 +1157,21 @@ def _refine_transcript(
 
             current_transcript = "\n\n".join(refined_chunks)
             logger.info("Lecture transcript refinement complete")
+
+    # Hard cap: never exceed source word count or ~30 min (~4500 words at TTS speed)
+    max_lecture_words = min(source_words, 4500) if source_words > 0 else 4500
+    current_words = len(current_transcript.split())
+    if current_words > max_lecture_words:
+        logger.warning(
+            f"Lecture {current_words}w exceeds cap {max_lecture_words}w, truncating to last sentence"
+        )
+        words = current_transcript.split()
+        truncated = " ".join(words[:max_lecture_words])
+        last_period = truncated.rfind(".")
+        if last_period > len(truncated) * 0.7:
+            current_transcript = truncated[: last_period + 1]
+        else:
+            current_transcript = truncated
 
     # Save critique if issues remain
     if critique_feedback and not critique_feedback.done and critique_feedback.feedback:

@@ -106,3 +106,7 @@ grep '!\[' output_dir/clean-md-singles/*.md
 The original code assumed Mathpix would always output both markdown AND LaTeX formats. When commit `89493f9` added figure block removal for "cleaner reading audio," it inadvertently broke image extraction for PDFs where Mathpix only outputs LaTeX format.
 
 The fix makes the pipeline robust to both Mathpix output styles by explicitly converting LaTeX figures to markdown before cleanup.
+
+## 2026.03.12 - Ruff formatting pass
+
+Applied ruff formatting: double quotes, import sorting, whitespace cleanup, Google-style docstring headers. No behavioral changes.

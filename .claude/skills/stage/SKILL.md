@@ -1,11 +1,17 @@
 ---
 name: stage
-description: Smart staging with auto-detected file blocks and interactive override. Use before /commit.
+description: "Smart staging with auto-detected file blocks and interactive override. Use before /commit."
+args: "[blocks]"
 ---
 
 # Smart Stage
 
-Stage files for commit using auto-detected logical blocks. The user picks which blocks to stage via interactive selection.
+Stage files for commit using auto-detected logical blocks.
+
+## Mode
+
+- `/stage` (no argument) — **non-interactive** (default): stage everything immediately, no prompts.
+- `/stage blocks` — **interactive**: present auto-detected blocks and let the user choose.
 
 ## Workflow
 
@@ -44,7 +50,9 @@ The weekly note appears in the FIRST Python block only (not duplicated across bl
 
 A file should only appear in one block. If a file could fit multiple blocks, use the highest-priority rule.
 
-## Step 3: Present blocks to user
+## Step 3: Present blocks to user (interactive mode only)
+
+**Skip this step unless the user passed `blocks`.** Jump straight to Step 5.
 
 Display numbered blocks with file lists. Mark the weekly note explicitly so the user sees it:
 
@@ -59,7 +67,9 @@ Detected file blocks:
 [3] Standalone notes: notes/scratch.2026.02.11.*.md (3 files)
 ```
 
-## Step 4: User picks blocks
+## Step 4: User picks blocks (interactive mode only)
+
+**Skip this step unless the user passed `blocks`.** Jump straight to Step 5.
 
 Use `AskUserQuestion` with `multiSelect: true` to let the user choose which blocks to stage. Options:
 
@@ -94,6 +104,7 @@ Run `git diff --cached --name-status` to show what is now staged.
 
 ## Example Invocations
 
-- `/stage` -- interactive staging of all changes
+- `/stage` -- stage everything immediately (default, non-interactive)
+- `/stage blocks` -- interactive staging with block selection
 - "stage my changes"
 - "stage files for commit"

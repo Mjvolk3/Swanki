@@ -1,0 +1,12 @@
+models:
+  llm:
+    provider: anthropic
+    model: claude-sonnet-4-20250514
+    temperature: 0.7
+    max_retries: 3
+  tts:
+    provider: elevenlabs
+    voice_id: onwK4e9ZLuTAKqWW03F9
+    model: eleven_monolingual_v2
+    stability: 0.5
+    similarity_boost: 0.5

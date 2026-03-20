@@ -1,0 +1,5 @@
+anki:
+  enabled: true
+  auto_send: true
+  deck_name: '{deck_name}'
+  card_format: with_audio

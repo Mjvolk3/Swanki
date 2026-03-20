@@ -1,0 +1,13 @@
+models:
+  llm:
+    provider: openai
+    model: gpt-5.2-2025-12-11
+    temperature: 0.7
+    max_retries: 3
+  tts:
+    provider: elevenlabs
+    voice_id: onwK4e9ZLuTAKqWW03F9
+    model: eleven_flash_v2_5
+    lecture_model: eleven_multilingual_v2
+    stability: 0.5
+    similarity_boost: 0.5

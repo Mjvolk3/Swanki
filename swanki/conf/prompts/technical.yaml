@@ -1,0 +1,12 @@
+prompts:
+  summary:
+    system: You are an expert in technical and scientific literature.
+    document_summary: |-
+      Create a technical summary focusing on:
+      1. Mathematical formulations
+      2. Algorithm descriptions
+      3. Technical acronyms and notation
+      4. Implementation details
+      5. Experimental setup
+
+      {content}

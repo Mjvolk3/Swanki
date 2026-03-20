@@ -12,8 +12,8 @@ import time
 from pathlib import Path
 
 import tiktoken
-from openai import OpenAI
 
+from ..llm.agents import text_agent
 from ..models.cards import PlainCard
 from ..utils.formatting import humanize_citation_key
 from ._common import (
@@ -30,8 +30,7 @@ logger = logging.getLogger(__name__)
 def generate_card_transcript(
     card: PlainCard,
     is_front: bool,
-    client: OpenAI,
-    model: str = "gpt-5-mini",
+    model: str = "openai:gpt-5-mini",
     citation_key: str | None = None,
     humanized_citation: str | None = None,
 ) -> str:
@@ -43,8 +42,7 @@ def generate_card_transcript(
     Args:
         card: The card to generate transcript for.
         is_front: Whether this is the front (True) or back (False).
-        client: OpenAI client for transcript generation.
-        model: Model to use for generation.
+        model: pydantic-ai model string (e.g. ``"openai:gpt-5-mini"``).
         citation_key: Raw citation key to include in front transcript.
         humanized_citation: Pre-humanized citation for consistency.
 
@@ -182,47 +180,20 @@ def generate_card_transcript(
             f"  Processing chunk {start // max_chunk + 1}, length: {len(chunk)}"
         )
 
-        max_retries = 3
-        response_content = None
-
-        for attempt in range(max_retries):
-            try:
-                resp = client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": system_content},
-                        {"role": "user", "content": chunk},
-                    ],
-                    max_completion_tokens=2000,
-                )
-
-                if (
-                    resp.choices
-                    and len(resp.choices) > 0
-                    and resp.choices[0].message.content
-                ):
-                    response_content = resp.choices[0].message.content.strip()
-                    if response_content:
-                        break
-                    else:
-                        logger.warning(
-                            f"  Attempt {attempt + 1}: GPT-5 returned empty response"
-                        )
-                else:
-                    logger.warning(
-                        f"  Attempt {attempt + 1}: GPT-5 returned malformed response"
-                    )
-
-            except Exception as e:
-                logger.warning(f"  Attempt {attempt + 1}: Error calling GPT-5: {e}")
-
-            if attempt < max_retries - 1:
-                time.sleep(2**attempt)
+        try:
+            result = text_agent.run_sync(
+                chunk,
+                instructions=system_content,
+                model=model,
+                model_settings={"max_tokens": 2000},
+            )
+            response_content = result.output.strip()
+        except Exception as e:
+            logger.warning(f"  Error calling LLM: {e}")
+            response_content = ""
 
         if not response_content:
-            logger.error(
-                f"  Failed to get response from GPT-5 after {max_retries} attempts"
-            )
+            logger.error("  Failed to get response from LLM")
             response_content = chunk
 
         out_chunks.append(response_content)
@@ -241,8 +212,8 @@ def generate_citation_audio(
     citation_key: str,
     output_path: Path,
     elevenlabs_api_key: str,
-    openai_client: OpenAI,
     voice_id: str | None = None,
+    model: str = "openai:gpt-5-mini",
     speed: float = 1.0,
     use_cache: bool = True,
     max_retries: int = 3,
@@ -256,8 +227,8 @@ def generate_citation_audio(
         citation_key: The citation key to convert to audio.
         output_path: Path for the output MP3 file.
         elevenlabs_api_key: ElevenLabs API key.
-        openai_client: OpenAI client for LLM-based humanization.
         voice_id: Voice ID (defaults to DEFAULT_VOICE_ID).
+        model: pydantic-ai model string.
         speed: Audio playback speed multiplier.
         use_cache: Whether to reuse existing file if valid.
         max_retries: Maximum retry attempts.
@@ -273,7 +244,7 @@ def generate_citation_audio(
     """
     voice_id = voice_id or DEFAULT_VOICE_ID
 
-    humanized = _humanize_citation(citation_key, openai_client, max_retries)
+    humanized = _humanize_citation(citation_key, model, max_retries)
 
     logger.debug(f"Citation audio generation: '{citation_key}' -> '{humanized}'")
 
@@ -344,10 +315,9 @@ def generate_card_audio(
     card_index: int,
     page_base: str,
     audio_dir: Path,
-    openai_client: OpenAI,
     elevenlabs_api_key: str,
     voice_id: str | None = None,
-    model: str = "gpt-5-mini",
+    model: str = "openai:gpt-5-mini",
     citation_key: str | None = None,
     speed: float = 1.0,
     force_regenerate_citation: bool = False,
@@ -363,10 +333,9 @@ def generate_card_audio(
         card_index: 1-based index for naming.
         page_base: Base name for the page (e.g., "page-1").
         audio_dir: Directory to save audio files.
-        openai_client: OpenAI client for transcript generation.
         elevenlabs_api_key: ElevenLabs API key.
         voice_id: Voice ID (defaults to DEFAULT_VOICE_ID).
-        model: OpenAI model to use.
+        model: pydantic-ai model string (e.g. ``"openai:gpt-5-mini"``).
         citation_key: Citation key for file naming and content.
         speed: Audio playback speed multiplier.
         force_regenerate_citation: Force regeneration of citation audio.
@@ -387,7 +356,6 @@ def generate_card_audio(
     front_transcript = generate_card_transcript(
         card,
         is_front=True,
-        client=openai_client,
         model=model,
         citation_key=None,
         humanized_citation=None,
@@ -396,7 +364,6 @@ def generate_card_audio(
     back_transcript = generate_card_transcript(
         card,
         is_front=False,
-        client=openai_client,
         model=model,
         citation_key=None,
         humanized_citation=None,
@@ -405,7 +372,7 @@ def generate_card_audio(
     card.audio_front_transcript = front_transcript
     card.audio_back_transcript = back_transcript
 
-    card_uuid = card.card_id
+    card_uuid = card.card_id or str(card_index)
 
     if citation_key:
         front_filename = f"{citation_key}_{card_uuid}_front.mp3"
@@ -438,8 +405,8 @@ def generate_card_audio(
                 citation_key=citation_key,
                 output_path=citation_audio_path,
                 elevenlabs_api_key=elevenlabs_api_key,
-                openai_client=openai_client,
                 voice_id=voice_id,
+                model=model,
                 speed=speed,
                 use_cache=True,
                 force_regenerate=force_regenerate_citation,
@@ -566,75 +533,45 @@ def _remove_cloze_markers(match: re.Match[str]) -> str:  # type: ignore[type-arg
 
 
 def _humanize_citation(
-    citation_key: str, openai_client: OpenAI, max_retries: int = 3
+    citation_key: str, model: str = "openai:gpt-5-mini", max_retries: int = 3
 ) -> str:
     """Convert a citation key to natural speech via LLM."""
-    humanized = None
+    system_prompt = (
+        "Convert citation keys to natural speech for text-to-speech. "
+        "Make it flow naturally as if speaking. Add appropriate pauses with commas. "
+        "Keep it concise but clear. Do not add extra words like 'from' or 'by'. "
+        "Return ONLY the converted text, no explanation."
+    )
 
-    for attempt in range(max_retries):
-        try:
-            response = openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "Convert citation keys to natural speech for text-to-speech. "
-                            "Make it flow naturally as if speaking. Add appropriate pauses with commas. "
-                            "Keep it concise but clear. Do not add extra words like 'from' or 'by'. "
-                            "Return ONLY the converted text, no explanation."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": (
-                            f"Convert this citation key to natural speech: {citation_key}\n\n"
-                            "Examples:\n"
-                            "smithMachineLearning2023 -> Smith, Machine Learning, 2023\n"
-                            "bishopDeepLearningFoundations2024_deep-learning-revolution -> "
-                            "Bishop, Deep Learning Foundations, 2024, deep learning revolution\n"
-                            "johnsonEtAl2022 -> Johnson et al, 2022\n"
-                            "feldmannYeastMolecularCell2012 -> Feldmann, Yeast Molecular Cell, 2012"
-                        ),
-                    },
-                ],
-                max_completion_tokens=100,
-            )
+    user_prompt = (
+        f"Convert this citation key to natural speech: {citation_key}\n\n"
+        "Examples:\n"
+        "smithMachineLearning2023 -> Smith, Machine Learning, 2023\n"
+        "bishopDeepLearningFoundations2024_deep-learning-revolution -> "
+        "Bishop, Deep Learning Foundations, 2024, deep learning revolution\n"
+        "johnsonEtAl2022 -> Johnson et al, 2022\n"
+        "feldmannYeastMolecularCell2012 -> Feldmann, Yeast Molecular Cell, 2012"
+    )
 
-            if (
-                not response.choices
-                or not response.choices[0].message
-                or not response.choices[0].message.content
-            ):
-                logger.warning(
-                    f"Attempt {attempt + 1}: Empty response for citation humanization"
-                )
-                continue
-
-            humanized = response.choices[0].message.content.strip()
-            if humanized:
-                logger.debug(
-                    f"Successfully humanized citation on attempt {attempt + 1}: '{citation_key}' -> '{humanized}'"
-                )
-                break
-            else:
-                logger.warning(
-                    f"Attempt {attempt + 1}: Humanized citation is empty string"
-                )
-
-        except Exception as e:
-            logger.warning(f"Attempt {attempt + 1}: Error generating citation: {e}")
-
-        if attempt < max_retries - 1:
-            time.sleep(2**attempt)
-
-    if not humanized:
-        logger.error(
-            f"Failed to humanize citation after {max_retries} attempts, using fallback"
+    try:
+        result = text_agent.run_sync(
+            user_prompt,
+            instructions=system_prompt,
+            model=model,
+            model_settings={"max_tokens": 100},
         )
-        humanized = re.sub(r"([a-z])([A-Z])", r"\1 \2", citation_key)
-        humanized = humanized.replace("_", ", ").replace("-", " ")
+        humanized = result.output.strip()
+        if humanized:
+            logger.debug(
+                f"Successfully humanized citation: '{citation_key}' -> '{humanized}'"
+            )
+            return humanized
+    except Exception as e:
+        logger.warning(f"Error generating citation: {e}")
 
+    logger.error("Failed to humanize citation, using fallback")
+    humanized = re.sub(r"([a-z])([A-Z])", r"\1 \2", citation_key)
+    humanized = humanized.replace("_", ", ").replace("-", " ")
     return humanized
 
 

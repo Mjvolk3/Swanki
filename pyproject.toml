@@ -28,7 +28,7 @@ dependencies = [
     "hydra-core",
     "omegaconf",
     "pydantic>=2.0",
-    "instructor",
+    "pydantic-ai>=0.1",
     "pyyaml",
     "elevenlabs",
     "pydub",
@@ -63,7 +63,7 @@ ignore = ["E501"]
 # Frontmatter docstrings (path, dendron link, github URL) aren't Google-style summaries
 "**" = ["D205", "D212", "D415"]
 # Test files: pytest hooks and __init__.py don't need docstrings
-"tests/**" = ["D103", "D104"]
+"tests/**" = ["D100", "D101", "D102", "D103", "D104"]
 # Utility scripts: small single-purpose tools, docstrings optional
 "notes/assets/scripts/**" = ["D100", "D103"]
 
@@ -78,11 +78,14 @@ quote-style = "double"
 dependencies = { file = ["env/requirements.txt"] }
 version = { attr = "swanki.__version__" }
 
+[project.entry-points."hydra_plugins"]
+swanki = "swanki.config.hydra_plugins"
+
 [tool.setuptools.package-data]
-swanki = ["py.typed"]
+swanki = ["py.typed", "conf/**/*.yaml"]
 
 [tool.setuptools.packages.find]
-include = ["swanki*"]
+include = ["swanki*", "hydra_plugins*"]
 
 [tool.semantic_release]
 version_variables = [
@@ -118,6 +121,7 @@ patch_tags = ["BLD", "BUG", "MAINT"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
+plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = "tests.*"
@@ -126,13 +130,13 @@ disallow_untyped_calls = false
 disallow_untyped_decorators = false
 
 [[tool.mypy.overrides]]
-module = ["pydub", "pydub.*", "tiktoken", "tiktoken.*", "elevenlabs", "elevenlabs.*", "instructor", "instructor.*", "PIL", "PIL.*"]
+module = ["pydub", "pydub.*", "tiktoken", "tiktoken.*", "elevenlabs", "elevenlabs.*", "pydantic_ai", "pydantic_ai.*", "PyPDF2", "PyPDF2.*", "PIL", "PIL.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["swanki.audio.*", "swanki.pipeline.*", "swanki.presentation.*"]
+module = ["swanki.audio.*", "swanki.pipeline.*", "swanki.presentation.*", "swanki.models.*"]
 disallow_untyped_calls = false
-disable_error_code = ["arg-type", "call-arg", "call-overload", "var-annotated", "type-arg", "unused-ignore", "assignment", "attr-defined", "no-any-return", "no-untyped-def"]
+disable_error_code = ["call-overload", "var-annotated", "type-arg", "unused-ignore", "assignment", "no-any-return", "no-untyped-def"]
 
 [tool.pytest.ini_options]
 markers = [
