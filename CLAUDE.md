@@ -78,6 +78,10 @@ gh api repos/Mjvolk3/Swanki/git/refs/heads/<branch> --method DELETE
 
 To understand why a code change was made, check the dendron module note (`notes/swanki.<module>.md`). Each dated section documents what changed and why. This is the primary source of decision history for the codebase.
 
+## Dotfiles
+
+Shared dotfiles are managed in `~/Documents/projects/dotfiles` (repo: `Mjvolk3/dotfiles`). Contains tmux config (`tmux/`) and Claude Code status line + keybindings (`claude/`). Run `install.sh` to symlink everything into place. `~/.claude/settings.json` points `statusLine` to `~/.claude/statusline.sh`, which is symlinked to the repo.
+
 ## Change Log
 
 - This is automatically updated. Don't edit it directly.
