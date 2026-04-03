@@ -13,18 +13,60 @@
             }
         },
         {
-            "label": "ruff: format file",
+            "label": "Paper: compile",
             "type": "shell",
-            "command": "ruff",
-            "args": ["format", "${file}"],
-            "problemMatcher": [],
-            "group": { "kind": "build", "isDefault": true }
+            "command": "bash notes/assets/publish/scripts/compile_paper.sh",
+            "problemMatcher": []
+        },
+        {
+            "label": "Pandoc: quick-pdf",
+            "type": "shell",
+            "command": "cd ./notes && pandoc -F mermaid-filter -s ${file} -o ${fileDirname}/assets/pdf-output/${fileBasenameNoExtension}.pdf --pdf-engine=xelatex -V geometry:'top=2cm, bottom=1.5cm, left=2cm, right=2cm' --strip-comments && cd ..",
+            "problemMatcher": []
+        },
+        {
+            "label": "Pandoc: quick-landscape-pdf",
+            "type": "shell",
+            "command": "cd ./notes && pandoc -F mermaid-filter -s ${file} -o ${fileDirname}/assets/pdf-output/${fileBasenameNoExtension}.pdf --pdf-engine=xelatex -V geometry:'top=0.1cm, bottom=0.1cm, left=0.1cm, right=0.1cm,landscape' --strip-comments && cd ..",
+            "problemMatcher": []
+        },
+        {
+            "label": "Pandoc: bib-pdf",
+            "type": "shell",
+            "command": "cd ./notes && pandoc -F mermaid-filter -s ${file} -o ${fileDirname}/assets/pdf-output/${fileBasenameNoExtension}.pdf --pdf-engine=xelatex --citeproc --bibliography assets/publish/bib/bib.bib --metadata csl=assets/publish/bib/nature.csl -V geometry:'top=2cm, bottom=1.5cm, left=2cm, right=2cm' --strip-comments && cd ..",
+            "problemMatcher": []
+        },
+        {
+            "label": "Pandoc: bib-tex-pdf",
+            "type": "shell",
+            "command": "./notes/assets/publish/scripts/bib_tex_pdf.sh ${file} ${fileDirname} ${fileBasenameNoExtension}",
+            "problemMatcher": []
+        },
+        {
+            "label": "Pandoc: bib-tex-pdf-landscape",
+            "type": "shell",
+            "command": "./notes/assets/publish/scripts/bib_tex_pdf_landscape.sh ${file} ${fileDirname} ${fileBasenameNoExtension}",
+            "problemMatcher": []
+        },
+        {
+            "label": "Pandoc: bib-tex-docx",
+            "type": "shell",
+            "command": "./notes/assets/publish/scripts/bib_tex_docx.sh ${file} ${fileDirname} ${fileBasenameNoExtension}",
+            "problemMatcher": []
         },
         {
             "label": "ruff: check file",
             "type": "shell",
             "command": "ruff",
             "args": ["check", "--fix", "${file}"],
+            "problemMatcher": [],
+            "group": { "kind": "build", "isDefault": true }
+        },
+        {
+            "label": "ruff: format file",
+            "type": "shell",
+            "command": "ruff",
+            "args": ["format", "${file}"],
             "problemMatcher": [],
             "group": { "kind": "build", "isDefault": true }
         },
@@ -39,6 +81,31 @@
             "type": "shell",
             "command": "mypy swanki",
             "problemMatcher": []
+        },
+        {
+            "label": "dmypy: restart",
+            "type": "shell",
+            "command": "bash mypy/dmypy_restart.sh",
+            "problemMatcher": []
+        },
+        {
+            "label": "swanki: pyreverse UML class diagram",
+            "type": "shell",
+            "command": "${workspaceFolder}/notes/assets/scripts/run_pyreverse.sh",
+            "args": ["${file}"],
+            "problemMatcher": [],
+            "group": "build"
+        },
+        {
+            "label": "pyreverse: UML class diagram",
+            "type": "shell",
+            "command": "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/python",
+            "args": [
+                "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/pyreverse",
+                "-o", "png", "-p", "uml_temp", "${file}"
+            ],
+            "problemMatcher": [],
+            "group": "build"
         },
         {
             "label": "swk-fm: add frontmatter",
@@ -134,6 +201,12 @@
             "problemMatcher": []
         },
         {
+            "label": "pytest: coverage",
+            "type": "shell",
+            "command": "/Users/michaelvolk/opt/miniconda3/envs/swanki/bin/python /Users/michaelvolk/opt/miniconda3/envs/swanki/bin/pytest --cov=swanki --cov-report html tests/",
+            "problemMatcher": []
+        },
+        {
             "label": "sphinx: build html",
             "type": "shell",
             "command": "make -C docs html",
@@ -152,15 +225,15 @@
             "problemMatcher": []
         },
         {
-            "label": "Pandoc: quick-pdf",
+            "label": "Dendron: export pod md",
             "type": "shell",
-            "command": "cd ./notes && pandoc -F mermaid-filter -s ${file} -o ${fileDirname}/assets/pdf-output/${fileBasenameNoExtension}.pdf --pdf-engine=xelatex -V geometry:'top=2cm, bottom=1.5cm, left=2cm, right=2cm' --strip-comments && cd ..",
+            "command": "bash ./notes/assets/publish/scripts/export_pod_md.sh ${file}",
             "problemMatcher": []
         },
         {
-            "label": "Pandoc: quick-landscape-pdf",
+            "label": "Dendron: export pod md + pdf",
             "type": "shell",
-            "command": "cd ./notes && pandoc -F mermaid-filter -s ${file} -o ${fileDirname}/assets/pdf-output/${fileBasenameNoExtension}.pdf --pdf-engine=xelatex -V geometry:'top=0.1cm, bottom=0.1cm, left=0.1cm, right=0.1cm,landscape' --strip-comments && cd ..",
+            "command": "bash ./notes/assets/publish/scripts/export_pod_md.sh ${file} && ./notes/assets/publish/scripts/bib_tex_pdf.sh ./notes/assets/export-pod-md/${fileBasename} ./notes/assets/export-pod-md ${fileBasenameNoExtension} pdf-pod-output",
             "problemMatcher": []
         },
         {
@@ -172,6 +245,40 @@
                 "reveal": "always",
                 "panel": "shared"
             }
+        },
+        {
+            "label": "Open External Terminal",
+            "type": "shell",
+            "command": "./notes/assets/scripts/open-external-terminal.sh",
+            "problemMatcher": []
+        },
+        {
+            "label": "tcdb: build linux-arm",
+            "type": "shell",
+            "command": "osascript",
+            "args": [
+                "-e",
+                "tell application \"Terminal\" to do script \"bash /Users/michaelvolk/Documents/projects/swanki/database/build/build_linux-arm.sh\""
+            ],
+            "problemMatcher": [],
+            "group": { "kind": "build", "isDefault": true }
+        },
+        {
+            "label": "tcdb: build linux-arm fresh",
+            "type": "shell",
+            "command": "osascript",
+            "args": [
+                "-e",
+                "tell application \"Terminal\" to do script \"bash /Users/michaelvolk/Documents/projects/swanki/database/build/build-image-fresh_linux-arm.sh\""
+            ],
+            "problemMatcher": [],
+            "group": { "kind": "build", "isDefault": true }
+        },
+        {
+            "label": "swanki: publish pypi",
+            "type": "shell",
+            "command": "source ${workspaceFolder}/notes/assets/scripts/swanki_publish_pypi.sh",
+            "problemMatcher": []
         }
     ],
     "inputs": [
