@@ -6,4 +6,4 @@ https://github.com/Mjvolk3/Swanki/tree/main/swanki/__version__.py
 Swanki version string, linked to semantic-release in pyproject.toml.
 """
 
-__version__ = "2.0.1"  # Linked to semantic-release in toml
+__version__ = "2.1.0"  # Linked to semantic-release in toml
