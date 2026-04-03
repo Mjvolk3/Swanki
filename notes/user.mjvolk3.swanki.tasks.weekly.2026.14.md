@@ -13,3 +13,8 @@ created: 1775112114753
 - [ ] Output manifest and incremental regeneration system -- track which `_N` dir has the current version of each output type (cards, lecture, summary, reading) per paper, with prompt hashes for staleness detection [[plan.output-manifest]]
 - [ ] Cite pydantic in paper
 - [ ] Integrate edits from @Shekhar-Mishra
+
+## 2026.04.03
+
+- [x] Added BOOKPLAYER_DB env var to .env.example for programmatic access to BookPlayer audio bookmark notes
+- [x] Created /fetch-bookmarks skill to query BookPlayer SQLite DB for listening notes by citation key or directory
