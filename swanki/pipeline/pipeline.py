@@ -1843,19 +1843,46 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         """
         audio_config = self.config.get("audio", {}).get("audio", {})
 
-        # Get API keys
-        elevenlabs_api_key = os.getenv("ELEVEN_LABS_API_KEY")
-        if not elevenlabs_api_key:
-            raise RuntimeError("ELEVEN_LABS_API_KEY not set in environment.")
-
         # Get model config
         models_config = self.config.get("models", {}).get("models", {})
         llm_config = models_config.get("llm", {})
         model = get_model_string(llm_config)
 
-        # Get voice_id from TTS config in models, not from audio config
+        # Get TTS config and set up provider-specific kwargs
         tts_config = models_config.get("tts", {})
-        voice_id = tts_config.get("voice_id")
+        tts_provider = tts_config.get("provider", "elevenlabs")
+
+        tts_kwargs: dict[str, object] = {}
+        if tts_provider == "fish_speech":
+            from ..audio._common import ensure_fish_speech_reference
+
+            server_url = tts_config.get("server_url", "http://localhost:8080")
+            reference_id = tts_config.get("reference_id")
+            ref_audio_path = tts_config.get("reference_audio_path", "")
+            ref_text = tts_config.get("reference_text", "")
+
+            if reference_id and ref_audio_path:
+                ensure_fish_speech_reference(
+                    server_url=server_url,
+                    reference_id=reference_id,
+                    audio_path=Path(ref_audio_path).expanduser(),
+                    text=ref_text,
+                )
+
+            elevenlabs_api_key = ""  # not used for fish_speech
+            voice_id = ""  # not used for fish_speech
+            tts_kwargs = {
+                "provider": "fish_speech",
+                "server_url": server_url,
+                "reference_id": reference_id,
+                "temperature": tts_config.get("temperature", 0.8),
+                "format": tts_config.get("format", "mp3"),
+            }
+        else:
+            elevenlabs_api_key = os.getenv("ELEVEN_LABS_API_KEY")
+            if not elevenlabs_api_key:
+                raise RuntimeError("ELEVEN_LABS_API_KEY not set in environment.")
+            voice_id = tts_config.get("voice_id")
 
         # Generate complementary audio (card audio)
         if audio_config.get("generate_complementary", False):
@@ -1891,6 +1918,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                         citation_key=self.citation_key,
                         speed=complementary_speed,
                         force_regenerate_citation=force_regenerate_citation,
+                        **tts_kwargs,
                     )
 
                     # Set audio URIs on the card for robust pairing
@@ -1938,6 +1966,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 model=model,
                 citation_key=self.citation_key,
                 speed=summary_speed,
+                **tts_kwargs,
             )
             print(f"Generated summary audio: {summary_audio_path.name}")
 
@@ -1961,6 +1990,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 model=model,
                 citation_key=self.citation_key,
                 speed=reading_speed,
+                **tts_kwargs,
             )
             print(f"Generated reading audio: {reading_audio_path.name}")
 
@@ -2008,6 +2038,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 lecture_prompt_config=lecture_prompt_config,
                 speed=lecture_speed,
                 si_start_page=si_start_page,
+                **tts_kwargs,
             )
             print(f"Generated lecture audio: {lecture_audio_path.name}")
 

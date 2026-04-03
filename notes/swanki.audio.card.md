@@ -17,3 +17,10 @@ Replaced direct `OpenAI` client calls with shared `text_agent` from `swanki.llm.
 ## 2026.03.12 - Add card_id fallback for audio filename generation
 
 `card_uuid` now falls back to `str(card_index)` when `card.card_id` is `None`, preventing blank filenames in audio output. This handles cards generated before UUID assignment.
+
+## 2026.04.03 - Two-pass LaTeX humanization and Fish Speech tts_kwargs passthrough
+
+Added a dedicated LaTeX humanization pass before card transcript generation to prevent raw LaTeX from reaching TTS. Previously the LLM had to simultaneously convert LaTeX AND optimize text for audio in a single pass, causing frequent failures where math notation was read aloud verbatim.
+
+- **Two-pass approach**: If card content contains `$` or `\`, `humanize_latex()` from `_common.py` runs first with a focused LLM prompt that only converts LaTeX to spoken form. The transcript LLM then works with already-clean text.
+- **tts_kwargs passthrough**: `generate_card_audio()`, `generate_citation_audio()`, and all internal `text_to_speech()` calls now accept and forward `**tts_kwargs` for Fish Speech provider support.

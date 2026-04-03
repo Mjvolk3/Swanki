@@ -26,3 +26,7 @@ Four changes to improve summary audio quality and reduce costs.
 - **Anti-pause/spelling prompt**: Explicitly bans `[pause]`, `[Pause]`, `Pause.` and letter-by-letter spelling in the system prompt. Old summaries literally said these words aloud.
 - **Flash TTS model**: Now uses `eleven_flash_v2_5` (default) instead of `eleven_multilingual_v2` -- 0.5x credit cost.
 - **SSML pauses**: `add_tts_pauses()` inserts `<break>` tags at paragraph boundaries for natural pacing, replacing the old approach of writing pause instructions in the transcript.
+
+## 2026.04.03 - Fish Speech tts_kwargs passthrough and provider-aware pauses
+
+Added `**tts_kwargs` parameter to `generate_summary_audio()` for Fish Speech provider support. All `text_to_speech()`, `generate_bookend_audio()`, and `add_tts_pauses()` calls now forward provider info. Pause insertion uses `[pause]`/`[short pause]` tags for Fish Speech instead of SSML `<break>`.

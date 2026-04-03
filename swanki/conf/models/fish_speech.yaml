@@ -1,0 +1,16 @@
+models:
+  llm:
+    provider: openai
+    model: gpt-5.2-2025-12-11
+    temperature: 0.7
+    max_retries: 3
+  tts:
+    provider: fish_speech
+    server_url: http://localhost:8080
+    # Voice cloning: registered via /v1/references/add on the Fish Speech server.
+    # Set to null to use a random voice.
+    reference_id: british-prof
+    reference_audio_path: ""
+    reference_text: ""
+    temperature: 0.8
+    format: mp3

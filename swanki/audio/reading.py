@@ -38,6 +38,7 @@ def generate_reading_audio(
     model: str = "openai:gpt-5-mini",
     citation_key: str | None = None,
     speed: float = 1.0,
+    **tts_kwargs: object,
 ) -> str:
     """Generate complete audio narration of a document.
 
@@ -139,7 +140,10 @@ def generate_reading_audio(
             f.write(f"**Citation Key:** {citation_key}\n\n")
         f.write(f"**Generated Transcript:**\n\n{full_transcript}\n")
 
-    tts_transcript = add_tts_pauses(clean_markdown_for_tts(full_transcript))
+    tts_transcript = add_tts_pauses(
+        clean_markdown_for_tts(full_transcript),
+        provider=str(tts_kwargs.get("provider", "elevenlabs")),
+    )
 
     cleaned_path = (
         transcripts_dir / f"{output_path.stem}_transcript_cleaned_markdown.md"
@@ -162,6 +166,7 @@ def generate_reading_audio(
             elevenlabs_api_key,
             voice_id,
             speed,
+            **tts_kwargs,
         )
         bookend_end = generate_bookend_audio(
             citation_key,
@@ -171,6 +176,7 @@ def generate_reading_audio(
             elevenlabs_api_key,
             voice_id,
             speed,
+            **tts_kwargs,
         )
 
     # Section-aware audio assembly
@@ -192,7 +198,7 @@ def generate_reading_audio(
                 else output_path.stem
             )
             chunk_path = output_path.parent / f"{prefix}_chunk{chunk_counter}.mp3"
-            text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed)
+            text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed, **tts_kwargs)
             section_paths.append(chunk_path)
             chunk_counter += 1
             time.sleep(1)

@@ -156,6 +156,15 @@ def generate_card_transcript(
             f"Card {card.card_id}: Added image summary AFTER content for audio"
         )
 
+    # Pre-process: humanize LaTeX before transcript generation
+    # This dedicated pass converts all math to spoken form so the transcript
+    # LLM doesn't have to handle LaTeX conversion AND audio optimization.
+    if "$" in content or "\\" in content:
+        from ._common import humanize_latex
+
+        logger.info(f"Card {card.card_id} - Humanizing LaTeX before transcript generation")
+        content = humanize_latex(content, model)
+
     # Build system prompt
     system_content = _build_transcript_system_prompt(
         is_front, is_cloze, bool(image_summary_for_audio)
@@ -220,6 +229,7 @@ def generate_citation_audio(
     min_file_size: int = 1024,
     force_regenerate: bool = False,
     citation_speed_override: float | None = None,
+    **tts_kwargs: object,
 ) -> Path:
     """Generate reusable audio for a citation key with validation and caching.
 
@@ -279,6 +289,7 @@ def generate_citation_audio(
                 output_path=output_path,
                 api_key=elevenlabs_api_key,
                 speed=citation_speed,
+                **tts_kwargs,
             )
 
             if validate_audio_file(output_path, min_file_size, humanized):
@@ -321,6 +332,7 @@ def generate_card_audio(
     citation_key: str | None = None,
     speed: float = 1.0,
     force_regenerate_citation: bool = False,
+    **tts_kwargs: object,
 ) -> tuple[str, str | None]:
     """Generate audio files for both sides of a flashcard.
 
@@ -410,6 +422,7 @@ def generate_card_audio(
                 speed=speed,
                 use_cache=True,
                 force_regenerate=force_regenerate_citation,
+                **tts_kwargs,
             )
         except RuntimeError as e:
             logger.error(
@@ -423,7 +436,7 @@ def generate_card_audio(
     needs_combination = citation_audio_path is not None or len(front_chunks) > 1
 
     if not needs_combination:
-        text_to_speech(front_chunks[0], voice_id, front_path, elevenlabs_api_key, speed)
+        text_to_speech(front_chunks[0], voice_id, front_path, elevenlabs_api_key, speed, **tts_kwargs)
     else:
         chunk_paths: list[Path] = []
 
@@ -433,7 +446,7 @@ def generate_card_audio(
         for i, chunk in enumerate(front_chunks):
             prefix = f"{citation_key}_{page_base}" if citation_key else page_base
             chunk_path = audio_dir / f"{prefix}_{card_index}_front_chunk{i}.mp3"
-            text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed)
+            text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed, **tts_kwargs)
             chunk_paths.append(chunk_path)
             time.sleep(1)
 
@@ -450,14 +463,14 @@ def generate_card_audio(
         back_chunks = chunk_text(back_transcript)
         if len(back_chunks) == 1:
             text_to_speech(
-                back_chunks[0], voice_id, back_path, elevenlabs_api_key, speed
+                back_chunks[0], voice_id, back_path, elevenlabs_api_key, speed, **tts_kwargs
             )
         else:
             chunk_paths = []
             for i, chunk in enumerate(back_chunks):
                 prefix = f"{citation_key}_{page_base}" if citation_key else page_base
                 chunk_path = audio_dir / f"{prefix}_{card_index}_back_chunk{i}.mp3"
-                text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed)
+                text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed, **tts_kwargs)
                 chunk_paths.append(chunk_path)
                 time.sleep(1)
 

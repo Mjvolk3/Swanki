@@ -28,3 +28,7 @@ Addresses issues heard in merzbacher paper audio: university addresses and dates
 ## 2026.03.15 - Flash TTS model and SSML pause injection
 
 Switched from `eleven_multilingual_v2` (1 credit/char) to `eleven_flash_v2_5` (0.5x credits, 40k char limit) for reading audio -- quality is sufficient for straight readings and costs half as much. Added `add_tts_pauses()` after `clean_markdown_for_tts()` to insert SSML `<break>` tags at paragraph boundaries for natural pacing.
+
+## 2026.04.03 - Fish Speech tts_kwargs passthrough and provider-aware pauses
+
+Added `**tts_kwargs` parameter to `generate_reading_audio()` for Fish Speech provider support. All `text_to_speech()`, `generate_bookend_audio()`, and `add_tts_pauses()` calls now forward provider info. Pause insertion uses `[pause]`/`[short pause]` tags for Fish Speech instead of SSML `<break>`.

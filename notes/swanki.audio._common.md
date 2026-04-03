@@ -31,3 +31,13 @@ Three changes to reduce ElevenLabs costs and improve audio prosody.
 - **TTS model tiering**: Added `DEFAULT_TTS_MODEL = "eleven_flash_v2_5"` and `LECTURE_TTS_MODEL = "eleven_multilingual_v2"`. The `text_to_speech()` function now accepts a `tts_model` parameter (defaults to flash). Reading, summary, cards, and bookends use the cheaper flash model (0.5x credits, 40k char limit); lecture explicitly passes the premium multilingual model for quality. Previously everything used `eleven_multilingual_v2` at 1 credit/char.
 - **Paragraph-only chunking**: New `chunk_text_paragraphs()` splits only at paragraph boundaries, never mid-sentence. Used for lecture TTS to avoid prosody-breaking mid-sentence splits. Default max 4500 chars (vs 2000-3000 for `chunk_text`).
 - **SSML pause injection**: New `add_tts_pauses()` inserts `<break time="0.7s" />` between paragraphs and `<break time="0.4s" />` after line-ending colons. ElevenLabs v2 models interpret these as natural AI-modeled pauses (not raw silence). Replaces the old approach of writing "[pause]" or "Pause." in transcripts, which the TTS model read aloud.
+
+## 2026.04.03 - Fish Speech provider integration, LaTeX humanization, provider-aware pauses
+
+Added self-hosted Fish Speech S2 Pro as an alternative TTS provider, eliminating ElevenLabs API dependency for audio generation. The core `text_to_speech()` function now dispatches to `_tts_elevenlabs()` or `_tts_fish_speech()` based on a `provider` key in `**tts_kwargs`, keeping all 10+ existing call sites unchanged.
+
+- **Provider dispatch**: Refactored `text_to_speech()` to accept `**tts_kwargs` and route to private backend functions. `_tts_fish_speech()` POSTs to the Fish Speech `/v1/tts` endpoint with optional `reference_id` for voice cloning. Extracted speed adjustment into shared `_apply_speed()` helper.
+- **SSML stripping**: `_strip_ssml()` removes ElevenLabs `<break>` tags before sending text to Fish Speech, which uses its own inline `[tag]` syntax.
+- **Reference voice management**: `ensure_fish_speech_reference()` registers a WAV clip with the Fish Speech server via `/v1/references/add` (multipart upload), checking `/v1/references/list` first to avoid duplicates.
+- **Provider-aware pauses**: `add_tts_pauses()` now accepts a `provider` parameter -- inserts SSML `<break>` tags for ElevenLabs, `[pause]`/`[short pause]` for Fish Speech.
+- **LaTeX humanization**: New public `humanize_latex()` function with a dedicated `_LATEX_SYSTEM_PROMPT` that focuses the LLM solely on converting LaTeX to spoken form. Two-pass approach: humanize first, then generate transcript. Moved from reading.py-only to shared utility so card.py can use it.

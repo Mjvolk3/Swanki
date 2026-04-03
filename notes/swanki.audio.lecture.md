@@ -43,3 +43,11 @@ Major lecture quality pass driven by listening to thornburg (39 min, repetitive 
 - **Methods/SI section classification**: New `_PREAMBLE_HEADERS` and `_METHODS_SI_HEADERS` regex patterns. After `chunk_by_headers()`, sections are classified into main (drives lecture structure) vs methods/SI (enrichment only). Uses positional cascade: once a methods header (e.g., "KEY RESOURCES TABLE") is seen, all subsequent sections are methods/SI. Methods/SI content is indexed via `build_si_index()` and passed to main sections as enrichment context through the existing `extract_relevant_si()` pipeline. For thornburg: 67 sections reduced to 12 main + 55 enrichment.
 - **Hard length cap**: `_refine_transcript()` now truncates at `min(source_words, 4500)` after refinement, finding the last sentence boundary. Prevents lectures from exceeding ~30 minutes regardless of refinement loop outcome.
 - **Prosody**: Paragraph-only TTS chunking via `chunk_text_paragraphs()` (4500 char max, never mid-sentence). 3-second section pauses (up from 2s). SSML `<break>` tags injected via `add_tts_pauses()`. Premium `eleven_multilingual_v2` model for lecture TTS; all other audio types use cheaper `eleven_flash_v2_5`.
+
+## 2026.04.03 - Fish Speech prosody tags and tts_kwargs passthrough
+
+Added Fish Speech inline prosody tag support for lecture audio generation, producing more expressive and natural-sounding lectures when using the self-hosted TTS provider.
+
+- **Prosody tag instructions**: When `provider=fish_speech`, appends `_FISH_SPEECH_TAG_INSTRUCTIONS` to the lecture system prompt. Instructs the LLM to insert `[pause]`, `[short pause]`, `[emphasis]`, `[excited]`, and `[inhale]` tags sparingly (1-3 per section) for natural pacing and emphasis. ElevenLabs path is unchanged.
+- **Provider-aware pauses**: `add_tts_pauses()` call now passes the provider so post-processing uses `[pause]` tags instead of SSML `<break>` for Fish Speech.
+- **tts_kwargs passthrough**: `generate_lecture_audio()`, bookend calls, and all `text_to_speech()` calls forward `**tts_kwargs`.

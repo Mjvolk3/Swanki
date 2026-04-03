@@ -68,3 +68,13 @@ created: 1773142434234
 - [x] Rewrote `humanize_citation_key()` to properly separate year with commas, handle hyphenated author names (Ahlmann-Eltze, Moreno-Paz), and place "et al" naturally [[swanki.utils.formatting#20260315---rewrite-humanize_citation_key-for-proper-tts-rendering]]
 - [x] Imported 8 missing papers from Zotero (bunne, chen, kim-enzyme, li-LLM, malli, palsson, patra, ryu) and generated summaries for all 35 co-biotech papers
 - [x] Upgraded openai SDK from 1.109.1 to 2.28.0 to fix `prompt_cache_retention` incompatibility with pydantic-ai 1.67.0
+
+## 2026.04.03
+
+- [x] Integrated self-hosted Fish Speech S2 Pro as alternative TTS provider with Docker container on Slurm (1x RTX 6000), provider dispatch in text_to_speech(), and fish_speech.yaml Hydra config [[swanki.audio._common#20260403---fish-speech-provider-integration-latex-humanization-provider-aware-pauses]]
+- [x] Registered british-prof voice clone for consistent lecture narration via Fish Speech reference API [[swanki.audio._common#20260403---fish-speech-provider-integration-latex-humanization-provider-aware-pauses]]
+- [x] Added two-pass LaTeX humanization for card audio: dedicated LLM pass converts math to spoken form before transcript generation, fixing raw LaTeX being read aloud [[swanki.audio.card#20260403---two-pass-latex-humanization-and-fish-speech-tts_kwargs-passthrough]]
+- [x] Added Fish Speech inline prosody tags ([pause], [emphasis], [excited]) to lecture system prompt for natural-sounding self-hosted audio [[swanki.audio.lecture#20260403---fish-speech-prosody-tags-and-tts_kwargs-passthrough]]
+- [x] Made pipeline.py provider-aware: reads tts provider from Hydra config, builds provider-specific kwargs, forwards to all audio generators [[swanki.pipeline.pipeline#20260403---multi-provider-tts-dispatch-in-audio-pipeline]]
+- [x] Created swanki conda env on gilahyper (Python 3.13 + all deps + ffmpeg + audioop-lts)
+- [x] Installed tmux and synced dotfiles config from Mjvolk3/dotfiles repo

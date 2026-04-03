@@ -328,6 +328,7 @@ def generate_lecture_audio(
     speed: float = 1.0,
     si_start_page: int | None = None,
     paper_title: str | None = None,
+    **tts_kwargs: object,
 ) -> str:
     """Generate an educational lecture from document content.
 
@@ -432,6 +433,10 @@ def generate_lecture_audio(
     full_system_prompt = (
         f"{system_instructions}{acronym_instruction}\n\nCitation: {humanized_key}"
     )
+
+    # Add Fish Speech inline tag instructions for richer prosody
+    if str(tts_kwargs.get("provider", "")) == "fish_speech":
+        full_system_prompt += f"\n\n{_FISH_SPEECH_TAG_INSTRUCTIONS}"
 
     # Append SI instructions when SI is present (either from _meta.json or inline)
     # (SI instructions added after classification below if methods/SI sections found)
@@ -637,7 +642,10 @@ def generate_lecture_audio(
             f.write(f"**Citation Key:** {citation_key}\n\n")
         f.write(f"**Generated Transcript:**\n\n{full_transcript}\n")
 
-    tts_transcript = add_tts_pauses(clean_markdown_for_tts(full_transcript))
+    tts_transcript = add_tts_pauses(
+        clean_markdown_for_tts(full_transcript),
+        provider=str(tts_kwargs.get("provider", "elevenlabs")),
+    )
 
     cleaned_path = (
         transcripts_dir / f"{output_path.stem}_transcript_cleaned_markdown.md"
@@ -661,6 +669,7 @@ def generate_lecture_audio(
             voice_id,
             speed,
             paper_title=paper_title,
+            **tts_kwargs,
         )
         bookend_end = generate_bookend_audio(
             citation_key,
@@ -670,6 +679,7 @@ def generate_lecture_audio(
             elevenlabs_api_key,
             voice_id,
             speed,
+            **tts_kwargs,
         )
 
     # Section-aware audio assembly — paragraph-only chunking for lecture prosody
@@ -700,6 +710,7 @@ def generate_lecture_audio(
                 elevenlabs_api_key,
                 speed,
                 tts_model=LECTURE_TTS_MODEL,
+                **tts_kwargs,
             )
             section_paths.append(chunk_path)
             chunk_counter += 1
@@ -784,6 +795,28 @@ CRITICAL OUTPUT RULES:
 8. SECTION BREAKS — Insert ---SECTION_BREAK--- between sections.
    - This creates real silence in the final audio.
    - Place the break AFTER the transition sentence that introduces the next topic."""
+
+
+_FISH_SPEECH_TAG_INSTRUCTIONS = """SPEECH PROSODY TAGS:
+You are generating text for Fish Speech TTS, which supports inline [tag] markers.
+Use these tags sparingly but deliberately to make the lecture sound natural and engaging.
+
+Available tags and when to use them:
+- [pause] — Between major ideas or after a key takeaway. Gives the listener a beat.
+- [short pause] — After a colon, before a list-as-prose, or between related ideas.
+- [emphasis] — Before a key term's first introduction or a surprising result.
+- [excited] — When describing a genuine breakthrough or elegant insight (use rarely).
+- [inhale] — Before a long complex sentence to sound natural (use very sparingly).
+
+Do NOT overuse tags. A lecture with a tag every sentence sounds robotic.
+Aim for 1-3 tags per section. Let punctuation and sentence structure do most of the work.
+
+Example:
+"This brings us to the central insight. [pause] [emphasis] The acyclicity constraint
+can be written as a smooth, differentiable function. That single move transforms an
+NP-hard combinatorial search into something gradient descent can handle. [short pause]
+And that changes everything."
+"""
 
 
 def _split_large_section(content: str, max_tokens: int) -> list[str]:

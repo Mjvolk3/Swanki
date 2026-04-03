@@ -47,31 +47,32 @@ def clean_markdown_for_tts(text: str) -> str:
     return cleaned.strip()
 
 
-def add_tts_pauses(text: str) -> str:
-    """Insert SSML break tags for natural TTS pacing.
+def add_tts_pauses(text: str, provider: str = "elevenlabs") -> str:
+    """Insert pause markers for natural TTS pacing.
 
-    Adds ``<break>`` tags at paragraph boundaries and after
-    section transition sentences. Works with ElevenLabs v2 models
-    which support ``<break time="X.Xs" />``.
+    For ElevenLabs, inserts SSML ``<break>`` tags.
+    For Fish Speech, inserts inline ``[pause]`` / ``[short pause]`` tags.
 
     Args:
         text: Cleaned transcript text (already TTS-ready).
+        provider: TTS provider name.
 
     Returns:
-        Text with SSML break tags inserted.
+        Text with pause markers inserted.
     """
-    # Add short pause between paragraphs (0.7s — noticeable but not jarring)
-    text = re.sub(r"\n\n+", '\n\n<break time="0.7s" />\n\n', text)
-
-    # Add pause after colon at end of a line (often introduces a list or concept)
-    text = re.sub(r":\s*\n", ':\n<break time="0.4s" />\n', text)
-
-    # Collapse any double breaks that got stacked
-    text = re.sub(
-        r'(<break time="[^"]*" />\s*){2,}',
-        '<break time="0.7s" />\n\n',
-        text,
-    )
+    if provider == "fish_speech":
+        text = re.sub(r"\n\n+", "\n\n[pause]\n\n", text)
+        text = re.sub(r":\s*\n", ":\n[short pause]\n", text)
+        # Collapse stacked tags
+        text = re.sub(r"(\[pause\]\s*){2,}", "[pause]\n\n", text)
+    else:
+        text = re.sub(r"\n\n+", '\n\n<break time="0.7s" />\n\n', text)
+        text = re.sub(r":\s*\n", ':\n<break time="0.4s" />\n', text)
+        text = re.sub(
+            r'(<break time="[^"]*" />\s*){2,}',
+            '<break time="0.7s" />\n\n',
+            text,
+        )
 
     return text
 
@@ -151,46 +152,13 @@ def chunk_text_paragraphs(text: str, max_chars: int = 4500) -> list[str]:
     return chunks
 
 
-def text_to_speech(
-    text: str,
-    voice_id: str,
-    output_path: Path,
-    api_key: str,
-    speed: float = 1.0,
-    tts_model: str = DEFAULT_TTS_MODEL,
-) -> None:
-    """Convert text to speech via ElevenLabs and save as MP3.
+def _strip_ssml(text: str) -> str:
+    """Remove SSML break tags that Fish Speech cannot handle."""
+    return re.sub(r'<break[^>]*/?\s*>', '', text)
 
-    Args:
-        text: Text to convert to speech.
-        voice_id: ElevenLabs voice ID.
-        output_path: Path for the output MP3 file.
-        api_key: ElevenLabs API key.
-        speed: Playback speed multiplier (uses FFmpeg atempo).
-        tts_model: ElevenLabs model ID. Defaults to flash_v2_5 (cheap, fast).
-            Use LECTURE_TTS_MODEL for premium quality.
-    """
-    httpx_client = httpx.Client(timeout=httpx.Timeout(300.0, connect=60.0))
 
-    client = ElevenLabs(api_key=api_key, httpx_client=httpx_client)
-
-    settings = VoiceSettings(
-        stability=0.5,
-        similarity_boost=0.75,
-        style=0.2,
-        use_speaker_boost=True,
-    )
-
-    stream = client.text_to_speech.convert(
-        text=text,
-        voice_id=voice_id,
-        model_id=tts_model,
-        output_format="mp3_44100_192",
-        voice_settings=settings,
-    )
-
-    data: bytes = b"".join(stream) if hasattr(stream, "__iter__") else stream  # type: ignore[arg-type]
-
+def _apply_speed(data: bytes, output_path: Path, speed: float) -> None:
+    """Write audio bytes to output_path, applying FFmpeg atempo if speed != 1.0."""
     if speed != 1.0:
         temp_path = output_path.with_suffix(".temp.mp3")
         with open(temp_path, "wb") as f:
@@ -235,6 +203,151 @@ def text_to_speech(
     else:
         with open(output_path, "wb") as f:
             f.write(data)
+
+
+def _tts_elevenlabs(
+    text: str,
+    voice_id: str,
+    output_path: Path,
+    api_key: str,
+    speed: float,
+    tts_model: str,
+) -> None:
+    """ElevenLabs TTS backend."""
+    httpx_client = httpx.Client(timeout=httpx.Timeout(300.0, connect=60.0))
+
+    client = ElevenLabs(api_key=api_key, httpx_client=httpx_client)
+
+    settings = VoiceSettings(
+        stability=0.5,
+        similarity_boost=0.75,
+        style=0.2,
+        use_speaker_boost=True,
+    )
+
+    stream = client.text_to_speech.convert(
+        text=text,
+        voice_id=voice_id,
+        model_id=tts_model,
+        output_format="mp3_44100_192",
+        voice_settings=settings,
+    )
+
+    data: bytes = b"".join(stream) if hasattr(stream, "__iter__") else stream  # type: ignore[arg-type]
+    _apply_speed(data, output_path, speed)
+
+
+def _tts_fish_speech(
+    text: str,
+    output_path: Path,
+    server_url: str,
+    reference_id: str | None,
+    temperature: float,
+    audio_format: str,
+    speed: float,
+) -> None:
+    """Fish Speech S2 Pro TTS backend."""
+    clean_text = _strip_ssml(text)
+
+    payload: dict = {
+        "text": clean_text,
+        "format": audio_format,
+        "temperature": temperature,
+        "streaming": False,
+    }
+    if reference_id:
+        payload["reference_id"] = reference_id
+
+    client = httpx.Client(timeout=httpx.Timeout(300.0, connect=60.0))
+    response = client.post(f"{server_url}/v1/tts", json=payload)
+    assert response.status_code == 200, (
+        f"Fish Speech TTS failed: {response.status_code} {response.text}"
+    )
+
+    _apply_speed(response.content, output_path, speed)
+
+
+def ensure_fish_speech_reference(
+    server_url: str,
+    reference_id: str,
+    audio_path: Path,
+    text: str,
+) -> None:
+    """Register a voice reference with Fish Speech if not already present.
+
+    Args:
+        server_url: Fish Speech server URL.
+        reference_id: Name to register the reference under.
+        audio_path: Path to the reference WAV file.
+        text: Transcription of the reference audio.
+    """
+    client = httpx.Client(timeout=httpx.Timeout(30.0, connect=10.0))
+
+    # Check if already registered
+    resp = client.get(
+        f"{server_url}/v1/references/list",
+        headers={"Accept": "application/json"},
+    )
+    assert resp.status_code == 200, f"Failed to list references: {resp.text}"
+    data = resp.json()
+    existing = data.get("reference_ids", [])
+    if reference_id in existing:
+        logger.info(f"Fish Speech reference '{reference_id}' already registered")
+        return
+
+    # Register new reference
+    assert audio_path.exists(), f"Reference audio not found: {audio_path}"
+    resp = client.post(
+        f"{server_url}/v1/references/add",
+        files={"audio": (audio_path.name, audio_path.read_bytes(), "audio/wav")},
+        data={"id": reference_id, "text": text},
+    )
+    assert resp.status_code == 200, (
+        f"Failed to register reference: {resp.status_code} {resp.text}"
+    )
+    logger.info(f"Registered Fish Speech reference '{reference_id}'")
+
+
+def text_to_speech(
+    text: str,
+    voice_id: str,
+    output_path: Path,
+    api_key: str,
+    speed: float = 1.0,
+    tts_model: str = DEFAULT_TTS_MODEL,
+    **tts_kwargs: object,
+) -> None:
+    """Convert text to speech and save as MP3.
+
+    Dispatches to ElevenLabs or Fish Speech based on the ``provider`` key
+    in *tts_kwargs*. When ``provider`` is absent or ``"elevenlabs"``, the
+    positional *voice_id* / *api_key* / *tts_model* args are used. When
+    ``provider`` is ``"fish_speech"``, the relevant kwargs are
+    ``server_url``, ``reference_id``, ``temperature``, and ``format``.
+
+    Args:
+        text: Text to convert to speech.
+        voice_id: ElevenLabs voice ID (ignored for fish_speech).
+        output_path: Path for the output MP3 file.
+        api_key: ElevenLabs API key (ignored for fish_speech).
+        speed: Playback speed multiplier (uses FFmpeg atempo).
+        tts_model: ElevenLabs model ID.
+        **tts_kwargs: Provider-specific options (provider, server_url, etc.).
+    """
+    provider = str(tts_kwargs.get("provider", "elevenlabs"))
+
+    if provider == "fish_speech":
+        _tts_fish_speech(
+            text=text,
+            output_path=output_path,
+            server_url=str(tts_kwargs.get("server_url", "http://localhost:8080")),
+            reference_id=tts_kwargs.get("reference_id"),  # type: ignore[arg-type]
+            temperature=float(tts_kwargs.get("temperature", 0.8)),
+            audio_format=str(tts_kwargs.get("format", "mp3")),
+            speed=speed,
+        )
+    else:
+        _tts_elevenlabs(text, voice_id, output_path, api_key, speed, tts_model)
 
 
 def combine_audio(
@@ -494,6 +607,7 @@ def generate_bookend_audio(
     voice_id: str,
     speed: float = 1.0,
     paper_title: str | None = None,
+    **tts_kwargs: object,
 ) -> Path:
     """Generate a short bookend announcement audio clip.
 
@@ -503,9 +617,10 @@ def generate_bookend_audio(
         position: Whether this is a start or end bookend.
         output_dir: Directory to cache the bookend file.
         elevenlabs_api_key: ElevenLabs API key.
-        voice_id: ElevenLabs voice ID.
+        voice_id: Voice ID.
         speed: Playback speed multiplier.
         paper_title: Paper title for lecture start bookends.
+        **tts_kwargs: Provider-specific options passed to text_to_speech.
 
     Returns:
         Path to the generated bookend MP3.
@@ -526,7 +641,7 @@ def generate_bookend_audio(
         text = f"{label}: {humanized}."
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    text_to_speech(text, voice_id, cache_path, elevenlabs_api_key, speed)
+    text_to_speech(text, voice_id, cache_path, elevenlabs_api_key, speed, **tts_kwargs)
     return cache_path
 
 
@@ -557,3 +672,101 @@ def extract_acronyms(text: str) -> dict[str, str]:
             acronyms[acr] = full
 
     return acronyms
+
+
+# ---------------------------------------------------------------------------
+# LaTeX humanization for TTS
+# ---------------------------------------------------------------------------
+
+_LATEX_SYSTEM_PROMPT = """You are a LaTeX-to-text converter for academic audio transcripts.
+
+YOUR ONLY JOB: Convert ALL LaTeX notation to natural readable text.
+
+CRITICAL RULES:
+1. Convert EVERY LaTeX expression to spoken form
+2. Remove ALL dollar signs ($), backslashes (\\), and curly braces ({})
+3. NEVER output any LaTeX syntax in your response
+
+CONVERSIONS (apply ALL of these):
+
+Greek Letters (always convert):
+- $\\alpha$ -> alpha, $\\beta$ -> beta, $\\gamma$ -> gamma
+- $\\delta$ -> delta, $\\epsilon$ -> epsilon, $\\zeta$ -> zeta
+- $\\eta$ -> eta, $\\theta$ -> theta, $\\iota$ -> iota
+- $\\kappa$ -> kappa, $\\lambda$ -> lambda, $\\mu$ -> mu
+- $\\nu$ -> nu, $\\xi$ -> xi, $\\pi$ -> pi
+- $\\rho$ -> rho, $\\sigma$ -> sigma, $\\tau$ -> tau
+- $\\upsilon$ -> upsilon, $\\phi$ -> phi, $\\chi$ -> chi
+- $\\psi$ -> psi, $\\omega$ -> omega
+
+Math Formatting (remove markup):
+- $\\mathbf{a}$ -> a (remove bold)
+- $\\mathit{x}$ -> x (remove italic)
+- $S$ -> S (remove dollar signs from single letters)
+- $x_i$ -> x sub i
+- $x^2$ -> x squared
+- $x^{-1}$ -> x to the negative 1
+- $10^{-3}$ -> 10 to the negative 3
+
+Fractions:
+- $\\frac{1}{2}$ -> one half
+- $\\frac{a}{b}$ -> a over b
+
+Operators:
+- $\\sum_{i=1}^n$ -> sum from i equals 1 to n
+- $\\prod_{i=1}^n$ -> product from i equals 1 to n
+- $\\int_a^b$ -> integral from a to b
+
+Delimiters:
+- \\( ... \\) -> convert contents to words
+- $ ... $ -> convert contents to words
+- \\text{...} -> read contents normally
+- E[X | Y] -> expected value of X given Y
+- \\mid or | -> given (in conditional expressions)
+- X^T -> X transpose
+
+Special Cases:
+- $\\zeta \\upsilon \\mu \\iota$ -> zeta upsilon mu iota
+- $a$ and $\\alpha$ -> a and alpha
+- $\\mathbf{a}$ and $\\alpha$ -> a and alpha
+
+DO NOT change any other text - only convert LaTeX. Preserve all prose exactly."""
+
+
+def humanize_latex(content: str, model: str) -> str:
+    """Convert all LaTeX notation to natural readable text using LLM.
+
+    Args:
+        content: Content with LaTeX notation.
+        model: pydantic-ai model string.
+
+    Returns:
+        Content with all LaTeX converted to natural language.
+    """
+    import tiktoken
+
+    from ..llm.agents import text_agent
+
+    enc = tiktoken.get_encoding("cl100k_base")
+    tokens = enc.encode(content)
+    max_chunk = 8000
+    humanized_chunks: list[str] = []
+
+    for start in range(0, len(tokens), max_chunk):
+        chunk = enc.decode(tokens[start : start + max_chunk])
+
+        result = text_agent.run_sync(
+            chunk,
+            instructions=_LATEX_SYSTEM_PROMPT,
+            model=model,
+            model_settings={"max_tokens": 10000},
+        )
+        humanized_chunk = result.output.strip()
+
+        if not humanized_chunk:
+            logger.error("LaTeX humanization failed, using original chunk")
+            humanized_chunk = chunk
+
+        humanized_chunks.append(humanized_chunk)
+
+    return "\n\n".join(humanized_chunks)
