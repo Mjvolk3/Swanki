@@ -32,3 +32,4 @@ Switched from `eleven_multilingual_v2` (1 credit/char) to `eleven_flash_v2_5` (0
 ## 2026.04.03 - Fish Speech tts_kwargs passthrough and provider-aware pauses
 
 Added `**tts_kwargs` parameter to `generate_reading_audio()` for Fish Speech provider support. All `text_to_speech()`, `generate_bookend_audio()`, and `add_tts_pauses()` calls now forward provider info. Pause insertion uses `[pause]`/`[short pause]` tags for Fish Speech instead of SSML `<break>`.
+- **Paragraph-only chunking for Fish Speech**: Switches to `chunk_text_paragraphs()` with 2000 char max when using Fish Speech to avoid mid-sentence audio truncation. Section pauses increased to 3s.

@@ -62,3 +62,4 @@ Made `generate_audio()` provider-aware so it can use either ElevenLabs or self-h
 - **Provider config**: Reads `tts_config.provider` from Hydra models config. For `fish_speech`, builds `tts_kwargs` dict with `server_url`, `reference_id`, `temperature`, and `format`. For `elevenlabs` (default), requires `ELEVEN_LABS_API_KEY` as before.
 - **Reference registration**: When `fish_speech` provider has a `reference_id` and `reference_audio_path`, calls `ensure_fish_speech_reference()` once before audio generation to register the voice clone.
 - **tts_kwargs forwarding**: All four `generate_*_audio()` calls now receive `**tts_kwargs`, which flows through to every `text_to_speech()` invocation.
+- **Zotero sync**: Optional post-processing step uploads apkg and audio files to Zotero as timestamped attachments. Enabled via `zotero=sync` Hydra config. Filenames include git short hash for traceability.

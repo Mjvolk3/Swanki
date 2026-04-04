@@ -51,3 +51,5 @@ Added Fish Speech inline prosody tag support for lecture audio generation, produ
 - **Prosody tag instructions**: When `provider=fish_speech`, appends `_FISH_SPEECH_TAG_INSTRUCTIONS` to the lecture system prompt. Instructs the LLM to insert `[pause]`, `[short pause]`, `[emphasis]`, `[excited]`, and `[inhale]` tags sparingly (1-3 per section) for natural pacing and emphasis. ElevenLabs path is unchanged.
 - **Provider-aware pauses**: `add_tts_pauses()` call now passes the provider so post-processing uses `[pause]` tags instead of SSML `<break>` for Fish Speech.
 - **tts_kwargs passthrough**: `generate_lecture_audio()`, bookend calls, and all `text_to_speech()` calls forward `**tts_kwargs`.
+- **Critic accepts Fish Speech tags**: `_CRITIQUE_PROMPT_FISH_SPEECH` variant adds an exception so `[pause]`, `[emphasis]`, etc. are not flagged as meta-commentary. Threaded through `_refine_transcript()` via `critique_prompt` parameter.
+- **Paragraph-only chunking for Fish Speech**: Uses `chunk_text_paragraphs()` with 2000 char max (vs 4500 for ElevenLabs) to avoid mid-sentence truncation. Longer section pauses (4s vs 3s).

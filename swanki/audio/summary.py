@@ -16,6 +16,7 @@ from ._common import (
     DEFAULT_VOICE_ID,
     add_tts_pauses,
     chunk_text,
+    chunk_text_paragraphs,
     clean_markdown_for_tts,
     combine_audio_with_section_pauses,
     extract_acronyms,
@@ -60,6 +61,10 @@ def generate_summary_audio(
         pairs = ", ".join(f"{a} = {f}" for a, f in acronym_map.items())
         acronym_instruction = f"\n8. Expand these acronyms on first use: {pairs}\n"
 
+    # Summary should be ~15-20% of source (shorter than lecture at 25-35%)
+    source_words = len(summary_text.split())
+    word_cap = min(max(int(source_words * 0.20), 200), 800)
+
     system_prompt = (
         "You are converting a document summary to audio format. "
         "Follow these rules precisely:\n"
@@ -76,8 +81,9 @@ def generate_summary_audio(
         "Pauses are handled automatically by paragraph structure.\n"
         "7. Keep the content informative but accessible\n"
         "8. Never include phrases like 'Summary:' or 'This document...'\n"
-        "9. STRICT LENGTH LIMIT: Keep under 1200 words total. The audio must be "
-        "under 10 minutes. Be concise — hit the key points and move on.\n"
+        f"9. STRICT LENGTH LIMIT: Keep under {word_cap} words. This is a summary, "
+        "not a lecture — hit the key points concisely and move on. "
+        "A summary should be SHORTER than a lecture on the same material.\n"
         + acronym_instruction
     )
 
@@ -91,7 +97,7 @@ def generate_summary_audio(
             user_content,
             instructions=system_prompt,
             model=model,
-            model_settings={"max_tokens": 1200},
+            model_settings={"max_tokens": max(word_cap * 2, 1000)},
         )
         transcript = result.output.strip()
     except Exception as e:
@@ -166,8 +172,14 @@ def generate_summary_audio(
     all_section_chunks: list[list[Path]] = []
     chunk_counter = 0
 
+    is_fish = str(tts_kwargs.get("provider", "")) == "fish_speech"
+
     for section in sections_text:
-        chunks = chunk_text(section)
+        chunks = (
+            chunk_text_paragraphs(section, max_chars=2000)
+            if is_fish
+            else chunk_text(section)
+        )
         section_paths: list[Path] = []
 
         for chunk in chunks:
@@ -184,9 +196,11 @@ def generate_summary_audio(
 
         all_section_chunks.append(section_paths)
 
+    section_pause = 3000 if is_fish else 2000
     combine_audio_with_section_pauses(
         all_section_chunks,
         output_path,
+        section_pause_ms=section_pause,
         bookend_start=bookend_start,
         bookend_end=bookend_end,
     )

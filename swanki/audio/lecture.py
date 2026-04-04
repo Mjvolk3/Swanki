@@ -622,6 +622,10 @@ def generate_lecture_audio(
         return output_path.name
 
     # Self-refine loop
+    critique_prompt = _CRITIQUE_PROMPT
+    if str(tts_kwargs.get("provider", "")) == "fish_speech":
+        critique_prompt = _CRITIQUE_PROMPT_FISH_SPEECH
+
     full_transcript = _refine_transcript(
         full_transcript,
         full_system_prompt,
@@ -632,6 +636,7 @@ def generate_lecture_audio(
         max_retries,
         enc,
         source_words=len(cleaned_content.split()),
+        critique_prompt=critique_prompt,
     )
 
     # Save final transcript
@@ -690,10 +695,13 @@ def generate_lecture_audio(
     all_section_chunks: list[list[Path]] = []
     chunk_counter = 0
 
+    is_fish = str(tts_kwargs.get("provider", "")) == "fish_speech"
+
     for section in sections_text:
-        # Lecture uses paragraph-only splitting to avoid mid-sentence breaks
-        # that cause choppy prosody in TTS
-        audio_chunks = chunk_text_paragraphs(section, max_chars=4500)
+        # Paragraph-only splitting — never mid-sentence
+        audio_chunks = chunk_text_paragraphs(
+            section, max_chars=2000 if is_fish else 4500
+        )
         section_paths: list[Path] = []
 
         for chunk in audio_chunks:
@@ -718,11 +726,12 @@ def generate_lecture_audio(
 
         all_section_chunks.append(section_paths)
 
-    # Lecture uses longer section pauses (3s) for distinct section separation
+    # Lecture uses longer section pauses for distinct section separation
+    lecture_pause = 4000 if is_fish else 3000
     combine_audio_with_section_pauses(
         all_section_chunks,
         output_path,
-        section_pause_ms=3000,
+        section_pause_ms=lecture_pause,
         bookend_start=bookend_start,
         bookend_end=bookend_end,
     )
@@ -1052,6 +1061,20 @@ Transcript section to review:
 {transcript}"""
 
 
+_CRITIQUE_PROMPT_FISH_SPEECH = _CRITIQUE_PROMPT.replace(
+    "1. META-COMMENTARY: Flag ANY of these — they must be removed:\n"
+    "   - \"In the text, an image shows...\" / \"the source material\" / \"for audio purposes\"\n"
+    "   - \"in our discussion\" / \"this lecture\" / \"as we noted\" / \"as mentioned earlier\"\n"
+    "   - Any reference to the FORMAT or MEDIUM of the content",
+    "1. META-COMMENTARY: Flag ANY of these — they must be removed:\n"
+    "   - \"In the text, an image shows...\" / \"the source material\" / \"for audio purposes\"\n"
+    "   - \"in our discussion\" / \"this lecture\" / \"as we noted\" / \"as mentioned earlier\"\n"
+    "   - Any reference to the FORMAT or MEDIUM of the content\n"
+    "   EXCEPTION: Bracketed TTS prosody tags like [pause], [short pause], [emphasis],\n"
+    "   [excited], [inhale] are VALID speech synthesis markers — do NOT flag them.",
+)
+
+
 _REFINEMENT_TEMPLATE = Template("""Revise this lecture transcript to fix the issues identified:
 
 ISSUES IDENTIFIED:
@@ -1085,6 +1108,7 @@ def _refine_transcript(
     max_retries: int,
     enc: tiktoken.Encoding,
     source_words: int = 0,
+    critique_prompt: str = _CRITIQUE_PROMPT,
 ) -> str:
     """Run iterative critique-and-refine loop on the transcript."""
     max_iterations = 3
@@ -1110,7 +1134,7 @@ def _refine_transcript(
 
         try:
             critique_result = lecture_critic_agent.run_sync(
-                _CRITIQUE_PROMPT.format(
+                critique_prompt.format(
                     transcript=transcript_escaped,
                     position="Full document",
                 ),
@@ -1123,7 +1147,7 @@ def _refine_transcript(
             logger.info("Falling back to chunked critique...")
             critique_feedback = critique_transcript_chunks(
                 transcript=current_transcript,
-                critique_prompt=_CRITIQUE_PROMPT,
+                critique_prompt=critique_prompt,
                 model=model,
                 chunk_size=8000,
                 max_chunks=10,

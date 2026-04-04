@@ -418,6 +418,17 @@ class Pipeline:
             self.state.current_stage = "anki_sending"
             self.send_to_anki(all_cards, outputs, anki_config)
 
+        # 11. Sync to Zotero if configured
+        zotero_config = self.config.get("zotero", {}).get("zotero", {})
+        if zotero_config.get("sync", False):
+            from ..sync.zotero import sync_to_zotero
+
+            sync_to_zotero(
+                citation_key=citation_key,
+                output_dir=self.output_base,
+                audio_prefix=self.audio_prefix,
+            )
+
         self.state.outputs = outputs
         return outputs
 

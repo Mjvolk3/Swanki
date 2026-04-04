@@ -63,8 +63,11 @@ def add_tts_pauses(text: str, provider: str = "elevenlabs") -> str:
     if provider == "fish_speech":
         text = re.sub(r"\n\n+", "\n\n[pause]\n\n", text)
         text = re.sub(r":\s*\n", ":\n[short pause]\n", text)
+        # Add pause after sentences ending with period followed by newline
+        text = re.sub(r"\.\s*\n", ".\n[short pause]\n", text)
         # Collapse stacked tags
         text = re.sub(r"(\[pause\]\s*){2,}", "[pause]\n\n", text)
+        text = re.sub(r"(\[short pause\]\s*){2,}", "[short pause]\n", text)
     else:
         text = re.sub(r"\n\n+", '\n\n<break time="0.7s" />\n\n', text)
         text = re.sub(r":\s*\n", ':\n<break time="0.4s" />\n', text)
@@ -237,6 +240,62 @@ def _tts_elevenlabs(
     _apply_speed(data, output_path, speed)
 
 
+_FISH_SPEECH_PORTS = [8080, 8081, 8082, 8083]
+
+
+def _find_fish_speech_server(base_url: str) -> str:
+    """Find an available Fish Speech server, trying the configured URL first.
+
+    Checks the configured server, then scans other ports. If all are busy
+    (health check fails), waits and retries on the configured server.
+
+    Args:
+        base_url: The configured server URL (e.g. http://localhost:8080).
+
+    Returns:
+        URL of an available server.
+    """
+    import time
+    from urllib.parse import urlparse
+
+    parsed = urlparse(base_url)
+    host = f"{parsed.scheme}://{parsed.hostname}"
+
+    # Try configured server first
+    try:
+        r = httpx.get(f"{base_url}/v1/health", timeout=5.0)
+        if r.status_code == 200:
+            return base_url
+    except httpx.HTTPError:
+        pass
+
+    # Try other ports
+    for port in _FISH_SPEECH_PORTS:
+        url = f"{host}:{port}"
+        if url == base_url:
+            continue
+        try:
+            r = httpx.get(f"{url}/v1/health", timeout=5.0)
+            if r.status_code == 200:
+                logger.info(f"Using alternate Fish Speech server at {url}")
+                return url
+        except httpx.HTTPError:
+            continue
+
+    # All busy or down — wait on the configured server
+    logger.info(f"All Fish Speech servers busy, waiting on {base_url}...")
+    for _ in range(60):
+        time.sleep(10)
+        try:
+            r = httpx.get(f"{base_url}/v1/health", timeout=5.0)
+            if r.status_code == 200:
+                return base_url
+        except httpx.HTTPError:
+            continue
+
+    return base_url  # last resort, let the TTS call handle the error
+
+
 def _tts_fish_speech(
     text: str,
     output_path: Path,
@@ -254,12 +313,15 @@ def _tts_fish_speech(
         "format": audio_format,
         "temperature": temperature,
         "streaming": False,
+        "chunk_length": 200,
+        "max_new_tokens": 4096,
     }
     if reference_id:
         payload["reference_id"] = reference_id
 
-    client = httpx.Client(timeout=httpx.Timeout(300.0, connect=60.0))
-    response = client.post(f"{server_url}/v1/tts", json=payload)
+    url = _find_fish_speech_server(server_url)
+    client = httpx.Client(timeout=httpx.Timeout(600.0, connect=60.0))
+    response = client.post(f"{url}/v1/tts", json=payload)
     assert response.status_code == 200, (
         f"Fish Speech TTS failed: {response.status_code} {response.text}"
     )

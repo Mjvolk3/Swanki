@@ -41,3 +41,6 @@ Added self-hosted Fish Speech S2 Pro as an alternative TTS provider, eliminating
 - **Reference voice management**: `ensure_fish_speech_reference()` registers a WAV clip with the Fish Speech server via `/v1/references/add` (multipart upload), checking `/v1/references/list` first to avoid duplicates.
 - **Provider-aware pauses**: `add_tts_pauses()` now accepts a `provider` parameter -- inserts SSML `<break>` tags for ElevenLabs, `[pause]`/`[short pause]` for Fish Speech.
 - **LaTeX humanization**: New public `humanize_latex()` function with a dedicated `_LATEX_SYSTEM_PROMPT` that focuses the LLM solely on converting LaTeX to spoken form. Two-pass approach: humanize first, then generate transcript. Moved from reading.py-only to shared utility so card.py can use it.
+- **Server discovery with fallback**: `_find_fish_speech_server()` scans ports 8080-8083 for an available Fish Speech server, falling back to wait-and-retry if all are busy. Enables multi-server parallel paper processing.
+- **Audio truncation fix**: Reverted `chunk_length` to 200 (safe default), bumped `max_new_tokens` to 4096 for headroom. Timeout increased from 300s to 600s.
+- **Richer inline pauses**: Fish Speech path now adds `[short pause]` after sentence-ending periods, not just paragraph breaks. Stacked tags are collapsed.

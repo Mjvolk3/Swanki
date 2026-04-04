@@ -18,6 +18,7 @@ from ._common import (
     DEFAULT_VOICE_ID,
     add_tts_pauses,
     chunk_text,
+    chunk_text_paragraphs,
     clean_markdown_for_tts,
     combine_audio_with_section_pauses,
     extract_acronyms,
@@ -187,8 +188,14 @@ def generate_reading_audio(
     all_section_chunks: list[list[Path]] = []
     chunk_counter = 0
 
+    is_fish = str(tts_kwargs.get("provider", "")) == "fish_speech"
+
     for sec_idx, section in enumerate(sections_text):
-        audio_chunks = chunk_text(section, max_chars=2000)
+        audio_chunks = (
+            chunk_text_paragraphs(section, max_chars=2000)
+            if is_fish
+            else chunk_text(section, max_chars=2000)
+        )
         section_paths: list[Path] = []
 
         for chunk in audio_chunks:
@@ -205,9 +212,11 @@ def generate_reading_audio(
 
         all_section_chunks.append(section_paths)
 
+    section_pause = 3000 if is_fish else 2000
     combine_audio_with_section_pauses(
         all_section_chunks,
         output_path,
+        section_pause_ms=section_pause,
         bookend_start=bookend_start,
         bookend_end=bookend_end,
     )

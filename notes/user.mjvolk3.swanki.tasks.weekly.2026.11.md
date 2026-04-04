@@ -3,8 +3,6 @@ id: jw01iia69oz5lqyr1yz7ifh
 title: '11'
 desc: ''
 updated: 1773622820303
-updated: 1773322944373
-updated: 1773337846654
 created: 1773142434234
 ---
 ## 2026.03.10
@@ -78,3 +76,10 @@ created: 1773142434234
 - [x] Made pipeline.py provider-aware: reads tts provider from Hydra config, builds provider-specific kwargs, forwards to all audio generators [[swanki.pipeline.pipeline#20260403---multi-provider-tts-dispatch-in-audio-pipeline]]
 - [x] Created swanki conda env on gilahyper (Python 3.13 + all deps + ffmpeg + audioop-lts)
 - [x] Installed tmux and synced dotfiles config from Mjvolk3/dotfiles repo
+- [x] Fixed Fish Speech audio truncation: reverted chunk_length to 200, bumped max_new_tokens to 4096, increased timeout to 600s [[swanki.audio._common#20260403---fish-speech-provider-integration-latex-humanization-provider-aware-pauses]]
+- [x] Added multi-server discovery: _find_fish_speech_server() scans ports 8080-8083 for available servers, enabling parallel paper processing on multiple GPUs [[swanki.audio._common#20260403---fish-speech-provider-integration-latex-humanization-provider-aware-pauses]]
+- [x] Switched all Fish Speech audio to paragraph-only chunking (chunk_text_paragraphs, 2000 char max) to prevent mid-sentence cuts [[swanki.audio.lecture#20260403---fish-speech-prosody-tags-and-tts_kwargs-passthrough]]
+- [x] Fixed lecture critic flagging Fish Speech prosody tags as meta-commentary with provider-aware critique prompt [[swanki.audio.lecture#20260403---fish-speech-prosody-tags-and-tts_kwargs-passthrough]]
+- [x] Made summary length proportional to source (20%, floor 200, cap 800 words) to ensure summary stays shorter than lecture [[swanki.audio.summary#20260403---fish-speech-tts_kwargs-passthrough-and-provider-aware-pauses]]
+- [x] Built Zotero sync module: uploads timestamped apkg + audio as Zotero attachments with git hash in filenames for version traceability [[swanki.sync.zotero#20260403---zotero-attachment-upload-for-swanki-outputs]]
+- [x] Added zotero Hydra config group (default: off, sync: on) and pipeline integration at end of process_full() [[swanki.pipeline.pipeline#20260403---multi-provider-tts-dispatch-in-audio-pipeline]]
