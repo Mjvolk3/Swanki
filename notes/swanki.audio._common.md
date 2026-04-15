@@ -44,3 +44,13 @@ Added self-hosted Fish Speech S2 Pro as an alternative TTS provider, eliminating
 - **Server discovery with fallback**: `_find_fish_speech_server()` scans ports 8080-8083 for an available Fish Speech server, falling back to wait-and-retry if all are busy. Enables multi-server parallel paper processing.
 - **Audio truncation fix**: Reverted `chunk_length` to 200 (safe default), bumped `max_new_tokens` to 4096 for headroom. Timeout increased from 300s to 600s.
 - **Richer inline pauses**: Fish Speech path now adds `[short pause]` after sentence-ending periods, not just paragraph breaks. Stacked tags are collapsed.
+
+## 2026.04.15 - Multi-server Fish Speech parallelism
+
+Scale Fish Speech audio generation across multiple GPU server instances by distributing chunks round-robin. A single paper's audio chunks now process concurrently instead of serially, cutting wall time roughly in proportion to the number of healthy servers.
+
+- **Server discovery with caching**: `_discover_fish_speech_servers()` health-checks all `_FISH_SPEECH_PORTS` once and caches the healthy list. Re-discovers when the cached count is below the configured port count so late-starting servers get picked up.
+- **Round-robin picker**: `_pick_fish_speech_server()` replaces the old "find one and wait" logic with a thread-safe global counter that hands out servers in rotation.
+- **Parallel batch helper**: New `tts_chunks_parallel()` accepts `(text, output_path)` pairs and runs them through a `ThreadPoolExecutor` sized to the number of healthy servers. Falls back to sequential when only one server is available or only one chunk is queued.
+- **Longer client timeout**: `_tts_fish_speech()` httpx client timeout bumped from 600s to 1800s to tolerate large chunks on slower GPUs.
+- **Sentence-fallback chunking**: `chunk_text_paragraphs()` now pre-splits any single paragraph that exceeds `max_chars` at sentence boundaries, so no chunk ever exceeds the limit. Previously oversized paragraphs were emitted as-is, which Fish Speech would truncate.

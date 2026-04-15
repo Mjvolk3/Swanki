@@ -63,3 +63,11 @@ Made `generate_audio()` provider-aware so it can use either ElevenLabs or self-h
 - **Reference registration**: When `fish_speech` provider has a `reference_id` and `reference_audio_path`, calls `ensure_fish_speech_reference()` once before audio generation to register the voice clone.
 - **tts_kwargs forwarding**: All four `generate_*_audio()` calls now receive `**tts_kwargs`, which flows through to every `text_to_speech()` invocation.
 - **Zotero sync**: Optional post-processing step uploads apkg and audio files to Zotero as timestamped attachments. Enabled via `zotero=sync` Hydra config. Filenames include git short hash for traceability.
+
+## 2026.04.15 - content_key for book chapters and parallel card audio
+
+Two independent changes that together unlock processing book chapters at scale on a multi-server Fish Speech setup.
+
+- **content_key parameter**: `process_full()` now accepts an optional `content_key` distinct from `citation_key`. `citation_key` stays the BibTeX/Zotero lookup key (e.g. `bishop2024`); `content_key` (e.g. `bishop2024_CH01_deep-learning-revolution`) drives output directory naming, audio prefixes, and the bundled filenames passed to Zotero. When `content_key` is empty it falls back to `citation_key`, so paper workflows are unchanged. The effective key replaces `citation_key` in `ProcessingState`, `self.citation_key`, and `output_dir` resolution.
+- **Parallel card audio across Fish Speech servers**: Card-audio generation now runs through a `ThreadPoolExecutor` sized to the number of healthy Fish Speech servers when the provider is `fish_speech` and there is more than one card. Each card's `generate_card_audio()` call is dispatched in parallel; results are reassembled in original card order so audio URIs and validation messages are unchanged.
+- **Pre-generated citation audio**: To avoid a race on the shared `{citation_key}_citation.mp3` file when many parallel workers all try to lazily generate it, the citation clip is generated once up front via `generate_citation_audio()` before the parallel batch starts. Cards then hit the cached file.

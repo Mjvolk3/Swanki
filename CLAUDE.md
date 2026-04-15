@@ -40,6 +40,10 @@ Use **Google-style docstrings** for functions and classes (`Args:`, `Returns:`, 
 ## Code Execution
 
 - ~/opt/miniconda3/envs/swanki/bin/Swanki python script.py
+- On gilahyper, Mathpix CLI requires a TTY (`process.stdout.clearLine`). Wrap `conda run` with `script`:
+  ```bash
+  conda activate swanki && script -qc "bash /path/to/run.sh" /dev/null
+  ```
 
 ## Weekly Notes
 

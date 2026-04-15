@@ -151,7 +151,11 @@ class Pipeline:
         self.data_dir = Path(os.getenv("SWANKI_DATA", "swanki-out"))
 
     def process_full(
-        self, pdf_path: Path, citation_key: str, output_dir: str | None = None
+        self,
+        pdf_path: Path,
+        citation_key: str,
+        content_key: str = "",
+        output_dir: str | None = None,
     ) -> dict[str, Path]:
         """Process PDF through the complete pipeline.
 
@@ -165,9 +169,15 @@ class Pipeline:
         pdf_path : Path
             Path to the input PDF file
         citation_key : str
-            Citation key for naming outputs and referencing
+            BibTeX citation key for the work (used for Zotero sync).
+            For papers this is the standard key. For book chapters,
+            this is the book-level key.
+        content_key : str, optional
+            Content-specific identifier for naming and audio. If empty,
+            defaults to citation_key. For book chapters, includes the
+            chapter info (e.g. "bishop2024_CH01_deep-learning-revolution").
         output_dir : str, optional
-            Name for the output directory. If not provided, uses citation_key
+            Name for the output directory. If not provided, uses content_key
 
         Returns:
         -------
@@ -192,17 +202,23 @@ class Pipeline:
         >>> print(outputs['cards_plain'])
         PosixPath('swanki-out/Einstein1905/cards-plain.md')
         """
+        # Resolve content_key: used for all naming, audio, and cards.
+        # citation_key is reserved for Zotero sync (the BibTeX library key).
+        # For papers they're the same. For book chapters, content_key includes
+        # the chapter info while citation_key is the book-level key.
+        effective_key = content_key if content_key else citation_key
+
         # Initialize state
         self.state = ProcessingState(
-            pdf_path=pdf_path, citation_key=citation_key, current_stage="initialization"
+            pdf_path=pdf_path, citation_key=effective_key, current_stage="initialization"
         )
         assert self.state is not None  # Set above; helps mypy narrow type
 
-        # Create output directory based on output_dir or citation key with auto-increment if exists
+        # Create output directory based on output_dir or content key with auto-increment if exists
         base_name = (
             output_dir
             if output_dir
-            else (citation_key if citation_key else "swanki-out")
+            else (effective_key if effective_key else "swanki-out")
         )
         output_path = self.data_dir / base_name
 
@@ -264,7 +280,7 @@ class Pipeline:
             logger.info("Running in audio_only mode — skipping card generation")
             all_cards: list[PlainCard] = []
             outputs: dict[str, Path] = {}
-            self.citation_key = citation_key
+            self.citation_key = effective_key
         else:
             pipeline_config = self.config.get("pipeline", {})
             processing_config = pipeline_config.get("processing", {})
@@ -368,7 +384,7 @@ class Pipeline:
                             last_image_page = page_idx
 
             # 7. Store citation key for later use
-            self.citation_key = citation_key
+            self.citation_key = effective_key
 
             self.state.cards_generated = len(all_cards)
 
@@ -427,6 +443,7 @@ class Pipeline:
                 citation_key=citation_key,
                 output_dir=self.output_base,
                 audio_prefix=self.audio_prefix,
+                content_key=effective_key,
             )
 
         self.state.outputs = outputs
@@ -1906,22 +1923,17 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 audio_dir = self.output_base / "gen-md-complementary-audio"
                 audio_dir.mkdir(exist_ok=True)
 
-                for i, card in enumerate(cards):
-                    # Use consistent card numbering instead of misleading page numbers
-                    # This ensures audio files match the card order
-                    card_base = "card"
+                complementary_speed = audio_config.get("complementary_speed", 1.0)
+                force_regenerate_citation = audio_config.get(
+                    "force_regenerate_citation", False
+                )
 
-                    # Get complementary audio speed from config
-                    complementary_speed = audio_config.get("complementary_speed", 1.0)
-                    # Get force regenerate option from config
-                    force_regenerate_citation = audio_config.get(
-                        "force_regenerate_citation", False
-                    )
-
-                    front_filename, back_filename = generate_card_audio(
+                def _process_card(args: tuple[int, object]) -> tuple[int, str | None, str | None]:
+                    idx, card = args
+                    front_fn, back_fn = generate_card_audio(
                         card=card,
-                        card_index=i + 1,
-                        page_base=card_base,
+                        card_index=idx + 1,
+                        page_base="card",
                         audio_dir=audio_dir,
                         elevenlabs_api_key=elevenlabs_api_key,
                         voice_id=voice_id,
@@ -1931,10 +1943,46 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                         force_regenerate_citation=force_regenerate_citation,
                         **tts_kwargs,
                     )
+                    return idx, front_fn, back_fn
 
-                    # Set audio URIs on the card for robust pairing
+                is_fish = tts_provider == "fish_speech"
+                if is_fish and len(cards) > 1:
+                    from concurrent.futures import ThreadPoolExecutor
+
+                    from ..audio._common import _discover_fish_speech_servers
+                    from ..audio.card import generate_citation_audio
+
+                    num_servers = len(_discover_fish_speech_servers(
+                        str(tts_kwargs.get("server_url", "http://localhost:8080"))
+                    ))
+
+                    # Pre-generate citation audio once before parallel cards
+                    # to avoid race condition on the shared citation file.
+                    if self.citation_key:
+                        citation_path = audio_dir / f"{self.citation_key}_citation.mp3"
+                        generate_citation_audio(
+                            citation_key=self.citation_key,
+                            output_path=citation_path,
+                            elevenlabs_api_key=elevenlabs_api_key,
+                            voice_id=voice_id,
+                            model=model,
+                            speed=complementary_speed,
+                            use_cache=True,
+                            force_regenerate=force_regenerate_citation,
+                            **tts_kwargs,
+                        )
+
+                    logger.info(
+                        f"Processing {len(cards)} cards in parallel across {num_servers} servers"
+                    )
+                    with ThreadPoolExecutor(max_workers=num_servers) as pool:
+                        results = list(pool.map(_process_card, enumerate(cards)))
+                else:
+                    results = [_process_card((i, card)) for i, card in enumerate(cards)]
+
+                for idx, front_filename, back_filename in results:
+                    card = cards[idx]
                     if front_filename:
-                        # Use relative path from output directory
                         card.audio_front_uri = (
                             f"gen-md-complementary-audio/{front_filename}"
                         )
@@ -1943,17 +1991,16 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                             f"gen-md-complementary-audio/{back_filename}"
                         )
 
-                    # Validate audio transcript matches card content
                     if not card.validate_audio_match():
-                        print(f"WARNING: Audio transcript mismatch for card {i + 1}")
+                        print(f"WARNING: Audio transcript mismatch for card {idx + 1}")
 
                     if back_filename:
                         print(
-                            f"Generated audio for card {i + 1}: {front_filename}, {back_filename}"
+                            f"Generated audio for card {idx + 1}: {front_filename}, {back_filename}"
                         )
                     else:
                         print(
-                            f"Generated audio for card {i + 1}: {front_filename} (front only)"
+                            f"Generated audio for card {idx + 1}: {front_filename} (front only)"
                         )
 
         # Generate summary audio

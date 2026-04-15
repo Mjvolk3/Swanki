@@ -37,6 +37,11 @@ def process_with_config(cfg: DictConfig) -> None:
             if hasattr(cfg, "citation_key") and cfg.citation_key
             else ""
         )
+        content_key: str = (
+            str(cfg.content_key)
+            if hasattr(cfg, "content_key") and cfg.content_key
+            else ""
+        )
         output_dir: str | None = (
             str(cfg.output_dir)
             if hasattr(cfg, "output_dir") and cfg.output_dir
@@ -45,6 +50,7 @@ def process_with_config(cfg: DictConfig) -> None:
         outputs = pipeline.process_full(
             pdf_path=Path(cfg.pdf_path),
             citation_key=citation_key,
+            content_key=content_key,
             output_dir=output_dir,
         )
         if outputs.get("anki_file"):

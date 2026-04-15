@@ -29,6 +29,7 @@ from ._common import (
     generate_bookend_audio,
     split_transcript_by_sections,
     text_to_speech,
+    tts_chunks_parallel,
 )
 
 logger = logging.getLogger(__name__)
@@ -696,35 +697,38 @@ def generate_lecture_audio(
     chunk_counter = 0
 
     is_fish = str(tts_kwargs.get("provider", "")) == "fish_speech"
+    prefix = (
+        f"{citation_key}_{output_path.stem}" if citation_key else output_path.stem
+    )
 
-    for section in sections_text:
-        # Paragraph-only splitting — never mid-sentence
+    # Collect all chunks across all sections with section index
+    all_jobs: list[tuple[int, str, Path]] = []
+    for sec_idx, section in enumerate(sections_text):
         audio_chunks = chunk_text_paragraphs(
             section, max_chars=2000 if is_fish else 4500
         )
-        section_paths: list[Path] = []
-
         for chunk in audio_chunks:
-            prefix = (
-                f"{citation_key}_{output_path.stem}"
-                if citation_key
-                else output_path.stem
-            )
             chunk_path = output_path.parent / f"{prefix}_chunk{chunk_counter}.mp3"
-            text_to_speech(
-                chunk,
-                voice_id,
-                chunk_path,
-                elevenlabs_api_key,
-                speed,
-                tts_model=LECTURE_TTS_MODEL,
-                **tts_kwargs,
-            )
-            section_paths.append(chunk_path)
+            all_jobs.append((sec_idx, chunk, chunk_path))
             chunk_counter += 1
+
+    if is_fish and len(all_jobs) > 1:
+        tts_pairs = [(text, path) for _, text, path in all_jobs]
+        tts_chunks_parallel(
+            tts_pairs, voice_id, elevenlabs_api_key, speed,
+            tts_model=LECTURE_TTS_MODEL, **tts_kwargs,
+        )
+    else:
+        for _, chunk, chunk_path in all_jobs:
+            text_to_speech(
+                chunk, voice_id, chunk_path, elevenlabs_api_key, speed,
+                tts_model=LECTURE_TTS_MODEL, **tts_kwargs,
+            )
             time.sleep(1)
 
-        all_section_chunks.append(section_paths)
+    all_section_chunks: list[list[Path]] = [[] for _ in sections_text]
+    for sec_idx, _, chunk_path in all_jobs:
+        all_section_chunks[sec_idx].append(chunk_path)
 
     # Lecture uses longer section pauses for distinct section separation
     lecture_pause = 4000 if is_fish else 3000

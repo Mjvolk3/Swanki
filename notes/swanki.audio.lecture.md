@@ -53,3 +53,10 @@ Added Fish Speech inline prosody tag support for lecture audio generation, produ
 - **tts_kwargs passthrough**: `generate_lecture_audio()`, bookend calls, and all `text_to_speech()` calls forward `**tts_kwargs`.
 - **Critic accepts Fish Speech tags**: `_CRITIQUE_PROMPT_FISH_SPEECH` variant adds an exception so `[pause]`, `[emphasis]`, etc. are not flagged as meta-commentary. Threaded through `_refine_transcript()` via `critique_prompt` parameter.
 - **Paragraph-only chunking for Fish Speech**: Uses `chunk_text_paragraphs()` with 2000 char max (vs 4500 for ElevenLabs) to avoid mid-sentence truncation. Longer section pauses (4s vs 3s).
+
+## 2026.04.15 - Parallel chunk dispatch across Fish Speech servers
+
+Lecture audio now collects every chunk across every section into a single job list before TTS, then dispatches the whole batch through `tts_chunks_parallel()` for Fish Speech (or sequentially for ElevenLabs). Eliminates the per-section serial bottleneck so a multi-server setup actually saturates all GPUs for a single lecture.
+
+- Job list is `(section_idx, text, chunk_path)` so chunks can be regrouped back into per-section lists after parallel TTS for the existing `combine_audio_with_section_pauses()` path.
+- ElevenLabs path stays sequential with the original `time.sleep(1)` rate-limiter.

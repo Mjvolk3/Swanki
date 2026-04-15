@@ -32,3 +32,7 @@ Four changes to improve summary audio quality and reduce costs.
 Added `**tts_kwargs` parameter to `generate_summary_audio()` for Fish Speech provider support. All `text_to_speech()`, `generate_bookend_audio()`, and `add_tts_pauses()` calls now forward provider info. Pause insertion uses `[pause]`/`[short pause]` tags for Fish Speech instead of SSML `<break>`.
 - **Proportional length cap**: Summary word limit now scales with source length (20%, floor 200, cap 800) instead of fixed 1200 words. Prompt reinforces "shorter than lecture" constraint. Prevents summary from exceeding lecture length on short papers.
 - **Paragraph-only chunking for Fish Speech**: Switches to `chunk_text_paragraphs()` with 2000 char max when using Fish Speech. Section pauses increased to 3s.
+
+## 2026.04.15 - Parallel chunk dispatch across Fish Speech servers
+
+Summary audio now flattens chunks across all sections into one job list and dispatches via `tts_chunks_parallel()` for Fish Speech, regrouping paths by section index afterwards. Mirrors lecture and reading so summary generation also benefits from multi-server parallelism.

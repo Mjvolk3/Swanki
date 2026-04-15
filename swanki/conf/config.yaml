@@ -10,6 +10,7 @@ defaults:
 - zotero: default
 pdf_path: null
 citation_key: null
+content_key: null
 mode: full
 pipeline: null
 prompts: null

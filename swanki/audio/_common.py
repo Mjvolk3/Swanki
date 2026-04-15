@@ -122,25 +122,46 @@ def chunk_text(text: str, max_chars: int = 3000) -> list[str]:
 
 
 def chunk_text_paragraphs(text: str, max_chars: int = 4500) -> list[str]:
-    """Split text at paragraph boundaries only — never mid-sentence.
+    """Split text at paragraph boundaries, falling back to sentences.
 
     Designed for lecture TTS where prosody continuity within paragraphs
-    is critical. Each paragraph stays intact; only paragraph breaks are
-    used as split points. Uses a larger default max_chars to keep
-    coherent passages together.
+    is critical. Splits preferentially at paragraph breaks. Any single
+    paragraph that exceeds ``max_chars`` is further split at sentence
+    boundaries so no chunk is ever larger than ``max_chars``.
 
     Args:
         text: Text to split into chunks.
         max_chars: Maximum characters per chunk.
 
     Returns:
-        List of text chunks, each containing one or more full paragraphs.
+        List of text chunks.
     """
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+
+    # Pre-split any paragraph that is itself too large at sentence boundaries.
+    split_paragraphs: list[str] = []
+    for p in paragraphs:
+        if len(p) <= max_chars:
+            split_paragraphs.append(p)
+            continue
+        # Split at sentence boundaries (period/!/? followed by space)
+        sentences = re.split(r"(?<=[.!?])\s+", p)
+        current_sent = ""
+        for s in sentences:
+            if not current_sent:
+                current_sent = s
+            elif len(current_sent) + len(s) + 1 <= max_chars:
+                current_sent = current_sent + " " + s
+            else:
+                split_paragraphs.append(current_sent)
+                current_sent = s
+        if current_sent:
+            split_paragraphs.append(current_sent)
+
     chunks: list[str] = []
     current = ""
 
-    for p in paragraphs:
+    for p in split_paragraphs:
         if not current:
             current = p
         elif len(current) + len(p) + 2 <= max_chars:
@@ -242,58 +263,63 @@ def _tts_elevenlabs(
 
 _FISH_SPEECH_PORTS = [8080, 8081, 8082, 8083]
 
+# Thread-safe round-robin state for multi-server distribution
+import threading as _threading
 
-def _find_fish_speech_server(base_url: str) -> str:
-    """Find an available Fish Speech server, trying the configured URL first.
+_server_lock = _threading.Lock()
+_server_index = 0
+_healthy_servers: list[str] = []
+_servers_discovered = False
 
-    Checks the configured server, then scans other ports. If all are busy
-    (health check fails), waits and retries on the configured server.
 
-    Args:
-        base_url: The configured server URL (e.g. http://localhost:8080).
+def _discover_fish_speech_servers(base_url: str, force: bool = False) -> list[str]:
+    """Discover all healthy Fish Speech servers, with caching.
 
-    Returns:
-        URL of an available server.
+    Re-discovers if the cached list has fewer servers than available ports,
+    allowing late-starting servers to be picked up.
     """
-    import time
+    global _healthy_servers, _servers_discovered
+
+    if _servers_discovered and not force and len(_healthy_servers) >= len(_FISH_SPEECH_PORTS):
+        return _healthy_servers
+
     from urllib.parse import urlparse
 
     parsed = urlparse(base_url)
     host = f"{parsed.scheme}://{parsed.hostname}"
 
-    # Try configured server first
-    try:
-        r = httpx.get(f"{base_url}/v1/health", timeout=5.0)
-        if r.status_code == 200:
-            return base_url
-    except httpx.HTTPError:
-        pass
-
-    # Try other ports
+    healthy: list[str] = []
     for port in _FISH_SPEECH_PORTS:
         url = f"{host}:{port}"
-        if url == base_url:
-            continue
         try:
-            r = httpx.get(f"{url}/v1/health", timeout=5.0)
+            r = httpx.get(f"{url}/v1/health", timeout=10.0)
             if r.status_code == 200:
-                logger.info(f"Using alternate Fish Speech server at {url}")
-                return url
+                healthy.append(url)
         except httpx.HTTPError:
             continue
 
-    # All busy or down — wait on the configured server
-    logger.info(f"All Fish Speech servers busy, waiting on {base_url}...")
-    for _ in range(60):
-        time.sleep(10)
-        try:
-            r = httpx.get(f"{base_url}/v1/health", timeout=5.0)
-            if r.status_code == 200:
-                return base_url
-        except httpx.HTTPError:
-            continue
+    if not healthy:
+        healthy = [base_url]
 
-    return base_url  # last resort, let the TTS call handle the error
+    if not _servers_discovered or len(healthy) > len(_healthy_servers):
+        logger.info(f"Discovered {len(healthy)} Fish Speech server(s): {healthy}")
+
+    _healthy_servers = healthy
+    _servers_discovered = True
+    return healthy
+
+
+def _pick_fish_speech_server(base_url: str) -> str:
+    """Round-robin across healthy Fish Speech servers (thread-safe)."""
+    global _server_index
+
+    servers = _discover_fish_speech_servers(base_url)
+
+    with _server_lock:
+        server = servers[_server_index % len(servers)]
+        _server_index += 1
+
+    return server
 
 
 def _tts_fish_speech(
@@ -319,8 +345,8 @@ def _tts_fish_speech(
     if reference_id:
         payload["reference_id"] = reference_id
 
-    url = _find_fish_speech_server(server_url)
-    client = httpx.Client(timeout=httpx.Timeout(600.0, connect=60.0))
+    url = _pick_fish_speech_server(server_url)
+    client = httpx.Client(timeout=httpx.Timeout(1800.0, connect=60.0))
     response = client.post(f"{url}/v1/tts", json=payload)
     assert response.status_code == 200, (
         f"Fish Speech TTS failed: {response.status_code} {response.text}"
@@ -410,6 +436,52 @@ def text_to_speech(
         )
     else:
         _tts_elevenlabs(text, voice_id, output_path, api_key, speed, tts_model)
+
+
+def tts_chunks_parallel(
+    chunks: list[tuple[str, Path]],
+    voice_id: str,
+    api_key: str,
+    speed: float = 1.0,
+    tts_model: str = DEFAULT_TTS_MODEL,
+    **tts_kwargs: object,
+) -> list[Path]:
+    """Process multiple TTS chunks in parallel across Fish Speech servers.
+
+    Each chunk is sent to a different server via round-robin. Results are
+    returned in the same order as the input chunks.
+
+    Args:
+        chunks: List of (text, output_path) pairs.
+        voice_id: Voice ID (ignored for fish_speech).
+        api_key: API key (ignored for fish_speech).
+        speed: Playback speed multiplier.
+        tts_model: TTS model ID.
+        **tts_kwargs: Provider-specific options.
+
+    Returns:
+        List of output paths in input order.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    num_servers = len(_discover_fish_speech_servers(
+        str(tts_kwargs.get("server_url", "http://localhost:8080"))
+    ))
+    max_workers = min(len(chunks), num_servers)
+
+    def _process(args: tuple[str, Path]) -> Path:
+        text, output_path = args
+        text_to_speech(text, voice_id, output_path, api_key, speed, tts_model, **tts_kwargs)
+        return output_path
+
+    if max_workers <= 1:
+        return [_process(c) for c in chunks]
+
+    logger.info(f"Processing {len(chunks)} TTS chunks in parallel across {max_workers} servers")
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        results = list(pool.map(_process, chunks))
+
+    return results
 
 
 def combine_audio(

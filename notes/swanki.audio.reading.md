@@ -33,3 +33,7 @@ Switched from `eleven_multilingual_v2` (1 credit/char) to `eleven_flash_v2_5` (0
 
 Added `**tts_kwargs` parameter to `generate_reading_audio()` for Fish Speech provider support. All `text_to_speech()`, `generate_bookend_audio()`, and `add_tts_pauses()` calls now forward provider info. Pause insertion uses `[pause]`/`[short pause]` tags for Fish Speech instead of SSML `<break>`.
 - **Paragraph-only chunking for Fish Speech**: Switches to `chunk_text_paragraphs()` with 2000 char max when using Fish Speech to avoid mid-sentence audio truncation. Section pauses increased to 3s.
+
+## 2026.04.15 - Parallel chunk dispatch across Fish Speech servers
+
+Reading audio now flattens chunks across all sections into one job list and dispatches via `tts_chunks_parallel()` when Fish Speech is the provider, then regroups paths by section index for the section-paused combine step. Same pattern as lecture/summary so a multi-server deployment processes a paper's audio concurrently.

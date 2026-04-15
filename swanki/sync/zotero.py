@@ -14,6 +14,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
+import httpx
 from pyzotero import zotero
 
 logger = logging.getLogger(__name__)
@@ -50,9 +51,16 @@ def _find_zotero_item(zot: zotero.Zotero, citation_key: str) -> str | None:
     """
     import re
 
-    # Split camelCase citation key into search words (e.g. "luoWhenCausal2020" -> "luo When Causal")
+    # Split camelCase citation key into search words
+    # Handles: lowercase→uppercase, uppercase-run→uppercase+lowercase
+    # e.g. "cardiffSystemsLevelModelingCRISPRBased2024" -> "cardiff Systems Level Modeling CRISPR Based"
     words = re.sub(r"([a-z])([A-Z])", r"\1 \2", citation_key)
-    search_term = re.sub(r"\d+$", "", words).strip()
+    words = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", words)
+    words = re.sub(r"\d+$", "", words).strip()
+    # Filter out long compound words that Zotero can't match (e.g. "Metabolicinformed")
+    # and limit to 5 words max
+    tokens = [w for w in words.split() if len(w) <= 15][:5]
+    search_term = " ".join(tokens)
 
     results = zot.items(q=search_term, limit=20)
 
@@ -99,6 +107,7 @@ def sync_to_zotero(
     citation_key: str,
     output_dir: Path,
     audio_prefix: str,
+    content_key: str = "",
 ) -> None:
     """Upload Swanki outputs to Zotero as timestamped attachments.
 
@@ -107,9 +116,10 @@ def sync_to_zotero(
     name so multiple versions accumulate.
 
     Args:
-        citation_key: Paper citation key (must exist in Zotero extra field).
+        citation_key: BibTeX key for Zotero item lookup.
         output_dir: Swanki output directory containing generated files.
         audio_prefix: Audio file prefix (e.g. "citationKey-fish").
+        content_key: Content identifier for filenames. Defaults to citation_key.
     """
     api_key = os.getenv("ZOTERO_API_KEY")
     library_id = os.getenv("ZOTERO_LIBRARY_ID")
@@ -125,42 +135,73 @@ def sync_to_zotero(
     assert item_key, f"Could not find Zotero item for citation key: {citation_key}"
     logger.info(f"Found Zotero item {item_key} for {citation_key}")
 
+    # content_key is used for filenames (distinguishes chapters);
+    # citation_key is used for Zotero item lookup.
+    file_key = content_key if content_key else citation_key
+
     timestamp = datetime.now().strftime("%Y%m%dT%H%M")
     commit = _git_short_hash()
     uploaded: list[str] = []
 
+    import zipfile
+
     with tempfile.TemporaryDirectory() as tmpdir:
-        for source_pattern, name_template in _OUTPUT_TYPES:
-            source_name = source_pattern.format(
-                citation_key=citation_key, prefix=audio_prefix
-            )
-            source_path = output_dir / source_name
+        # Collect files into zip
+        zip_name = f"{file_key}-{timestamp}-{commit}.zip"
+        zip_path = Path(tmpdir) / zip_name
+        packed: list[str] = []
 
-            if not source_path.exists():
-                logger.debug(f"Skipping {source_name} (not found)")
-                continue
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for source_pattern, name_template in _OUTPUT_TYPES:
+                source_name = source_pattern.format(
+                    citation_key=file_key, prefix=audio_prefix
+                )
+                source_path = output_dir / source_name
 
-            dest_name = name_template.format(
-                citation_key=citation_key, timestamp=timestamp, commit=commit
-            )
-            dest_path = Path(tmpdir) / dest_name
-            shutil.copy2(source_path, dest_path)
+                if not source_path.exists():
+                    logger.debug(f"Skipping {source_name} (not found)")
+                    continue
 
-            logger.info(f"Uploading {dest_name} to Zotero...")
-            zot.attachment_simple([str(dest_path)], parentid=item_key)
-            uploaded.append(dest_name)
+                dest_name = name_template.format(
+                    citation_key=file_key, timestamp=timestamp, commit=commit
+                )
+                zf.write(source_path, dest_name)
+                packed.append(dest_name)
 
-    if not uploaded:
-        logger.warning("No files found to upload to Zotero")
-        return
+        if not packed:
+            logger.warning("No files found to upload to Zotero")
+            return
+
+        zip_size_mb = zip_path.stat().st_size / 1024 / 1024
+        logger.info(f"Uploading {zip_name} ({zip_size_mb:.1f} MB) to Zotero...")
+
+        # Patch httpx default timeout for large file uploads.
+        # pyzotero's _upload.py uses bare httpx.post() with default timeout
+        # which is too short for large files over slow connections.
+        _original_post = httpx.post
+
+        def _patched_post(*args: object, **kwargs: object) -> object:
+            kwargs.setdefault("timeout", httpx.Timeout(600.0, connect=60.0))  # type: ignore[arg-type]
+            return _original_post(*args, **kwargs)  # type: ignore[arg-type]
+
+        httpx.post = _patched_post  # type: ignore[assignment]
+        try:
+            zot.attachment_simple([str(zip_path)], parentid=item_key)
+            uploaded = packed
+        except Exception as e:
+            logger.warning(f"Failed to upload {zip_name}: {e}")
+            print(f"  Upload failed: {zip_name} ({e})")
+            return
+        finally:
+            httpx.post = _original_post  # type: ignore[assignment]
 
     # Update sync log note
     note_item, note_html = _find_or_create_sync_note(zot, item_key)
-    file_list = ", ".join(
-        f.rsplit("-", 1)[0].split("-", 1)[-1] if "-" in f else "apkg"
-        for f in uploaded
+    file_lines = "".join(f"<li>{f}</li>" for f in uploaded)
+    log_entry = (
+        f"<h3>{timestamp} ({commit})</h3>\n"
+        f"<ul>{file_lines}</ul>\n"
     )
-    log_entry = f"<p>{timestamp} — Uploaded {file_list}</p>\n"
     note_item["data"]["note"] = note_html + log_entry
     zot.update_item(note_item)
 
