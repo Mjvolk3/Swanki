@@ -23,3 +23,6 @@ created: 1776290419183
 - [x] Retain summary chunks under `summary_chunks/` with manifest for surgical re-TTS [[swanki.audio.summary]]
 - [x] Retain card chunks under `card_chunks/` with per-card manifest to avoid parallel-write races [[swanki.audio.card]]
 - [x] Re-export `restitch_from_chunks` from the audio package so callers can rebuild from a manifest [[swanki.audio.__init__]]
+- [x] Audio chunk retention and pause-based transitions plan executed end-to-end via worktree (PR #2 merged) [[plan.audio-chunk-retention-pause-transitions.2026.04.16]]
+- [x] Switch generated per-paper run script defaults to `audio=all anki=default` to match gilahyper conventions [[scripts.zotero_paper_import]]
+- [ ] Open-source pipeline plan: replace Mathpix + OpenAI with MinerU + Gemma 4 via vLLM, single-GPU and multi-GPU modes [[plan.open-source-pipeline-mineru-ocr-gemma-4-llm.2026.04.15]]

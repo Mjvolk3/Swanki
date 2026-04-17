@@ -45,3 +45,7 @@ Zotero can return PDF attachments in arbitrary order, causing the SI PDF to be s
 - `_is_main_article()` checks for "Full Text PDF" in title and SI indicators ("supplement", "moesm", "esm") in title/filename
 - `get_pdf_attachments()` now sorts results so main article comes before supplementary PDFs
 - `cut_pdf()` accepts exit code 3 (qpdf warnings) instead of raising `CalledProcessError`
+
+## 2026.04.16 - Generated run script defaults to `audio=all anki=default`
+
+`write_sh_script()` now emits `audio=all anki=default` instead of `audio=full anki=auto_send`. Aligns generated per-paper run scripts with the gilahyper defaults so newly imported papers produce per-card complementary audio and skip Anki auto-send by default.

@@ -307,7 +307,7 @@ def write_sh_script(output_dir: Path, citation_key: str) -> Path:
         f"#!/bin/bash\n\n"
         f"swanki pdf_path={clean_pdf} citation_key={citation_key} "
         f"+output_dir=../Swanki_Data/{citation_key}/{citation_key} "
-        f"audio=full anki=auto_send "
+        f"audio=all anki=default "
         f"pipeline.processing.confirm_before_generation=false\n"
     )
     return sh_path
