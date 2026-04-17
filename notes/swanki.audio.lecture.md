@@ -60,3 +60,11 @@ Lecture audio now collects every chunk across every section into a single job li
 
 - Job list is `(section_idx, text, chunk_path)` so chunks can be regrouped back into per-section lists after parallel TTS for the existing `combine_audio_with_section_pauses()` path.
 - ElevenLabs path stays sequential with the original `time.sleep(1)` rate-limiter.
+
+## 2026.04.16 - Lecture chunks retained in `lecture_chunks/` with manifest
+
+Lecture audio chunks now live under `lecture_chunks/` next to the final MP3 instead of at the parent path, and they are no longer deleted after combination. A `chunk_manifest.json` records every chunk's section, text, and filename plus the bookend filenames, enabling surgical re-TTS of one bad chunk followed by `restitch_from_chunks()` to rebuild the lecture without regenerating everything.
+
+- `append_chunk_pause(text, provider)` is applied to every chunk before TTS dispatch so direct concatenation (no crossfade) sounds seamless. Provider-aware: Fish Speech gets `[long pause]`, ElevenLabs gets `<break time="1.0s" />`.
+- Bookend audio is also written into `lecture_chunks/`, keeping all per-lecture audio assets co-located for restitch.
+- `combine_audio_with_section_pauses()` is now invoked with `chunk_crossfade_ms=0` explicitly. The cleanup `unlink()` block is gone.

@@ -54,3 +54,12 @@ Scale Fish Speech audio generation across multiple GPU server instances by distr
 - **Parallel batch helper**: New `tts_chunks_parallel()` accepts `(text, output_path)` pairs and runs them through a `ThreadPoolExecutor` sized to the number of healthy servers. Falls back to sequential when only one server is available or only one chunk is queued.
 - **Longer client timeout**: `_tts_fish_speech()` httpx client timeout bumped from 600s to 1800s to tolerate large chunks on slower GPUs.
 - **Sentence-fallback chunking**: `chunk_text_paragraphs()` now pre-splits any single paragraph that exceeds `max_chars` at sentence boundaries, so no chunk ever exceeds the limit. Previously oversized paragraphs were emitted as-is, which Fish Speech would truncate.
+
+## 2026.04.16 - Pause-based chunk transitions and chunk retention for surgical regeneration
+
+Replaced 200ms cross-fade between TTS chunks with direct concatenation, letting Fish Speech `[long pause]` and ElevenLabs `<break>` tags supply transitions naturally. Crossfade was clipping sentence endings and the timbre mismatch across independently-synthesized chunks was audible. At the same time, chunk files are now retained instead of being deleted, so re-running TTS on a single bad chunk and restitching is possible without regenerating the whole audio.
+
+- **Crossfade defaults flipped to 0**: `combine_audio()` and `combine_audio_with_section_pauses()` now default `crossfade_ms` / `chunk_crossfade_ms` to `0` instead of `200`. Existing call sites pass `chunk_crossfade_ms=0` explicitly so behavior is independent of the default.
+- **`append_chunk_pause(text, provider)`**: Idempotent helper that appends `[long pause]` (Fish Speech) or `<break time="1.0s" />` (ElevenLabs) to the end of a chunk's text. The ElevenLabs idempotency check looks for any trailing self-closing SSML tag (`/>`), which is intentional -- we do not stack any trailing SSML.
+- **`write_chunk_manifest(chunks_dir, audio_type, output_file, chunks, ...)`**: Writes `chunk_manifest.json` next to the chunk files. Records audio type, output filename, optional bookend filenames, and per-chunk index/section/text/file. Drives the surgical-regen workflow.
+- **`restitch_from_chunks(manifest_path, output_path, ...)`**: Reads the manifest, groups chunk paths by section, and calls `combine_audio_with_section_pauses` to reassemble final audio. Asserts each chunk file exists before assembly so a missing chunk fails fast.
