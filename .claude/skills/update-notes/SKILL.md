@@ -185,6 +185,51 @@ python3 -c "import re,sys; h=sys.argv[1]; t=re.sub(r'^#+\s*','',h).lower(); t=re
 - [ ] One-sentence explainer of pending task [[dendron.path.to.note]]
 ```
 
+## Step 6b: Flip pending plan bullet (worktree only)
+
+When running inside a git worktree, the work almost always originates from a plan note that was pre-linked into the weekly as a pending bullet (by `/uber-plan` or `/uber-implement`). This step flips that bullet to completed so the plan is visibly linked to its implementation.
+
+**Detection:**
+
+1. If `pwd` does not contain `.worktrees/`, skip this step entirely.
+2. Get the current branch: `git branch --show-current`.
+3. If the branch does not start with `plan/`, skip this step.
+4. Strip the prefix to get the slug: `plan/audio-chunk-retention-pause-transitions` -> `audio-chunk-retention-pause-transitions`.
+
+**Find the pending bullet:**
+
+In the target weekly note (the worktree child note resolved in Step 5), search for a line matching the pattern:
+
+```
+- [ ] <any text> [[plan.<slug>.YYYY.MM.DD]]
+```
+
+Use grep to locate it:
+
+```bash
+grep -n "\[\[plan\.<slug>\." <weekly-note-path>
+```
+
+**If a pending bullet is found:**
+
+- Flip `- [ ]` to `- [x]`.
+- Rewrite the one-sentence description to reflect what was actually implemented (drawn from the source-note updates in Part 1). Keep it to one sentence.
+- Preserve the `[[plan.<slug>.YYYY.MM.DD]]` link exactly.
+- If the bullet is not already under today's date section, leave it where it is -- do not move it. The original pending bullet stays anchored to the date the plan was drafted; Step 7 reordering will put completed items above pending ones within its own section.
+
+**If no pending bullet is found:**
+
+- Resolve the full plan fname by globbing `notes/plan.<slug>.*.md` (most recent match).
+- Append a new completed bullet under today's date section:
+  ```
+  - [x] <one-sentence implementation summary> [[plan.<slug>.YYYY.MM.DD]]
+  ```
+
+**If multiple matching bullets are found:**
+
+- Prefer the most recent one (latest date in the `[[plan.<slug>.YYYY.MM.DD]]` link).
+- Flip only that one; leave others untouched.
+
 ## Step 7: Format validation and task reordering
 
 Before staging the weekly note, scan the entire file for format violations and reorder tasks.
@@ -225,6 +270,7 @@ Updated source notes:
 
 Updated weekly note:
   - Added 2 entries under ## 2026.03.19
+  - Flipped plan bullet [[plan.<slug>.YYYY.MM.DD]] to completed
 
 All notes staged. Run /stage -> /commit to finalize.
 ```
