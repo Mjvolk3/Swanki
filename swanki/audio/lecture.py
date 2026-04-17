@@ -22,6 +22,7 @@ from ._common import (
     DEFAULT_VOICE_ID,
     LECTURE_TTS_MODEL,
     add_tts_pauses,
+    append_chunk_pause,
     chunk_text_paragraphs,
     clean_markdown_for_tts,
     combine_audio_with_section_pauses,
@@ -30,6 +31,7 @@ from ._common import (
     split_transcript_by_sections,
     text_to_speech,
     tts_chunks_parallel,
+    write_chunk_manifest,
 )
 
 logger = logging.getLogger(__name__)
@@ -662,7 +664,11 @@ def generate_lecture_audio(
             f.write(f"Citation Key: {citation_key}\n\n")
         f.write(f"Generated Transcript:\n\n{tts_transcript}\n")
 
-    # Generate bookends
+    # Chunk subdirectory holds per-chunk MP3s + manifest for surgical regen
+    chunks_dir = output_path.parent / "lecture_chunks"
+    chunks_dir.mkdir(parents=True, exist_ok=True)
+
+    # Generate bookends inside chunks_dir
     bookend_start = None
     bookend_end = None
     if citation_key:
@@ -670,7 +676,7 @@ def generate_lecture_audio(
             citation_key,
             "lecture",
             "start",
-            output_path.parent,
+            chunks_dir,
             elevenlabs_api_key,
             voice_id,
             speed,
@@ -681,7 +687,7 @@ def generate_lecture_audio(
             citation_key,
             "lecture",
             "end",
-            output_path.parent,
+            chunks_dir,
             elevenlabs_api_key,
             voice_id,
             speed,
@@ -693,10 +699,10 @@ def generate_lecture_audio(
     if not sections_text:
         sections_text = [tts_transcript]
 
-    all_section_chunks: list[list[Path]] = []
     chunk_counter = 0
 
     is_fish = str(tts_kwargs.get("provider", "")) == "fish_speech"
+    provider = str(tts_kwargs.get("provider", "elevenlabs"))
     prefix = (
         f"{citation_key}_{output_path.stem}" if citation_key else output_path.stem
     )
@@ -708,9 +714,15 @@ def generate_lecture_audio(
             section, max_chars=2000 if is_fish else 4500
         )
         for chunk in audio_chunks:
-            chunk_path = output_path.parent / f"{prefix}_chunk{chunk_counter}.mp3"
+            chunk_path = chunks_dir / f"{prefix}_chunk{chunk_counter}.mp3"
             all_jobs.append((sec_idx, chunk, chunk_path))
             chunk_counter += 1
+
+    # Append trailing pause to each chunk for clean concatenation
+    all_jobs = [
+        (sec_idx, append_chunk_pause(text, provider), chunk_path)
+        for sec_idx, text, chunk_path in all_jobs
+    ]
 
     if is_fish and len(all_jobs) > 1:
         tts_pairs = [(text, path) for _, text, path in all_jobs]
@@ -736,18 +748,24 @@ def generate_lecture_audio(
         all_section_chunks,
         output_path,
         section_pause_ms=lecture_pause,
+        chunk_crossfade_ms=0,
         bookend_start=bookend_start,
         bookend_end=bookend_end,
     )
 
-    # Clean up chunk and bookend files
-    for section_paths in all_section_chunks:
-        for p in section_paths:
-            p.unlink()
-    if bookend_start and bookend_start.exists():
-        bookend_start.unlink()
-    if bookend_end and bookend_end.exists():
-        bookend_end.unlink()
+    # Write chunk manifest for surgical regeneration; chunk files are kept.
+    chunk_entries = [
+        {"index": i, "section": sec_idx, "text": text, "file": chunk_path.name}
+        for i, (sec_idx, text, chunk_path) in enumerate(all_jobs)
+    ]
+    write_chunk_manifest(
+        chunks_dir,
+        "lecture",
+        output_path.name,
+        chunk_entries,
+        bookend_start=bookend_start.name if bookend_start else None,
+        bookend_end=bookend_end.name if bookend_end else None,
+    )
 
     return output_path.name
 

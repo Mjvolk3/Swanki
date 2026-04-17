@@ -37,3 +37,11 @@ Added `**tts_kwargs` parameter to `generate_reading_audio()` for Fish Speech pro
 ## 2026.04.15 - Parallel chunk dispatch across Fish Speech servers
 
 Reading audio now flattens chunks across all sections into one job list and dispatches via `tts_chunks_parallel()` when Fish Speech is the provider, then regroups paths by section index for the section-paused combine step. Same pattern as lecture/summary so a multi-server deployment processes a paper's audio concurrently.
+
+## 2026.04.16 - Reading chunks retained in `reading_chunks/` with manifest
+
+Reading audio chunks now live under `reading_chunks/` and are kept after combination, paired with a `chunk_manifest.json` so a single bad chunk can be re-TTS'd and the reading restitched via `restitch_from_chunks()`. Same shape as lecture and summary -- consistency of the chunks-plus-manifest layout across audio types is the point.
+
+- Each chunk gets `append_chunk_pause(text, provider)` before TTS so direct concatenation (no crossfade) sounds seamless.
+- Bookends are written into `reading_chunks/`, co-located with the chunks they bracket.
+- `combine_audio_with_section_pauses()` is invoked with `chunk_crossfade_ms=0` explicitly. The cleanup `unlink()` block is gone.

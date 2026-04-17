@@ -6,6 +6,7 @@ https://github.com/Mjvolk3/Swanki/tree/main/swanki/audio/card.py
 Flashcard audio generation with cloze handling, image descriptions, and citation prefixing.
 """
 
+import json
 import logging
 import re
 import time
@@ -18,6 +19,7 @@ from ..models.cards import PlainCard
 from ..utils.formatting import humanize_citation_key
 from ._common import (
     DEFAULT_VOICE_ID,
+    append_chunk_pause,
     chunk_text,
     combine_audio,
     text_to_speech,
@@ -431,30 +433,53 @@ def generate_card_audio(
             citation_audio_path = None
             logger.warning(f"Proceeding without citation audio for card {card.card_id}")
 
+    provider = str(tts_kwargs.get("provider", "elevenlabs"))
+    chunks_subdir = audio_dir / "card_chunks"
+
+    front_manifest_chunks: list[dict] = []
+    back_manifest_chunks: list[dict] = []
+
     # Generate front audio
     front_chunks = chunk_text(front_transcript)
     needs_combination = citation_audio_path is not None or len(front_chunks) > 1
 
     if not needs_combination:
-        text_to_speech(front_chunks[0], voice_id, front_path, elevenlabs_api_key, speed, **tts_kwargs)
+        text_to_speech(
+            front_chunks[0], voice_id, front_path, elevenlabs_api_key, speed, **tts_kwargs
+        )
     else:
+        chunks_subdir.mkdir(parents=True, exist_ok=True)
         chunk_paths: list[Path] = []
 
         if citation_audio_path and citation_audio_path.exists():
             chunk_paths.append(citation_audio_path)
+            front_manifest_chunks.append(
+                {
+                    "index": 0,
+                    "type": "citation",
+                    "file": citation_audio_path.name,
+                }
+            )
 
         for i, chunk in enumerate(front_chunks):
             prefix = f"{citation_key}_{page_base}" if citation_key else page_base
-            chunk_path = audio_dir / f"{prefix}_{card_index}_front_chunk{i}.mp3"
-            text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed, **tts_kwargs)
+            chunk_path = chunks_subdir / f"{prefix}_{card_index}_front_chunk{i}.mp3"
+            paused_chunk = append_chunk_pause(chunk, provider)
+            text_to_speech(
+                paused_chunk, voice_id, chunk_path, elevenlabs_api_key, speed, **tts_kwargs
+            )
             chunk_paths.append(chunk_path)
+            front_manifest_chunks.append(
+                {
+                    "index": len(front_manifest_chunks),
+                    "type": "tts",
+                    "text": paused_chunk,
+                    "file": chunk_path.name,
+                }
+            )
             time.sleep(1)
 
-        combine_audio(chunk_paths, front_path)
-
-        for p in chunk_paths:
-            if p != citation_audio_path:
-                p.unlink()
+        combine_audio(chunk_paths, front_path, crossfade_ms=0)
 
     # Generate back audio
     if back_transcript:
@@ -466,20 +491,73 @@ def generate_card_audio(
                 back_chunks[0], voice_id, back_path, elevenlabs_api_key, speed, **tts_kwargs
             )
         else:
+            chunks_subdir.mkdir(parents=True, exist_ok=True)
             chunk_paths = []
             for i, chunk in enumerate(back_chunks):
                 prefix = f"{citation_key}_{page_base}" if citation_key else page_base
-                chunk_path = audio_dir / f"{prefix}_{card_index}_back_chunk{i}.mp3"
-                text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed, **tts_kwargs)
+                chunk_path = chunks_subdir / f"{prefix}_{card_index}_back_chunk{i}.mp3"
+                paused_chunk = append_chunk_pause(chunk, provider)
+                text_to_speech(
+                    paused_chunk, voice_id, chunk_path, elevenlabs_api_key, speed, **tts_kwargs
+                )
                 chunk_paths.append(chunk_path)
+                back_manifest_chunks.append(
+                    {
+                        "index": i,
+                        "type": "tts",
+                        "text": paused_chunk,
+                        "file": chunk_path.name,
+                    }
+                )
                 time.sleep(1)
 
-            combine_audio(chunk_paths, back_path)
-            for p in chunk_paths:
-                p.unlink()
+            combine_audio(chunk_paths, back_path, crossfade_ms=0)
+
+        # Write per-card manifest (one file per card avoids parallel-write races)
+        if front_manifest_chunks or back_manifest_chunks:
+            chunks_subdir.mkdir(parents=True, exist_ok=True)
+            citation_audio_rel = (
+                f"../{citation_audio_path.name}"
+                if citation_audio_path and citation_audio_path.exists()
+                else None
+            )
+            manifest = {
+                "audio_type": "card",
+                "card_id": card_uuid,
+                "card_index": card_index,
+                "front_file": front_filename,
+                "back_file": back_filename,
+                "citation_audio": citation_audio_rel,
+                "sides": {
+                    "front": {"chunks": front_manifest_chunks},
+                    "back": {"chunks": back_manifest_chunks},
+                },
+            }
+            manifest_path = chunks_subdir / f"{card_uuid}_manifest.json"
+            manifest_path.write_text(json.dumps(manifest, indent=2))
 
         return front_filename, back_filename
     else:
+        if front_manifest_chunks:
+            chunks_subdir.mkdir(parents=True, exist_ok=True)
+            citation_audio_rel = (
+                f"../{citation_audio_path.name}"
+                if citation_audio_path and citation_audio_path.exists()
+                else None
+            )
+            manifest = {
+                "audio_type": "card",
+                "card_id": card_uuid,
+                "card_index": card_index,
+                "front_file": front_filename,
+                "back_file": None,
+                "citation_audio": citation_audio_rel,
+                "sides": {
+                    "front": {"chunks": front_manifest_chunks},
+                },
+            }
+            manifest_path = chunks_subdir / f"{card_uuid}_manifest.json"
+            manifest_path.write_text(json.dumps(manifest, indent=2))
         return front_filename, None
 
 

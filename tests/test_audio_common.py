@@ -7,9 +7,12 @@ Test file: tests/test_audio_common.py
 Tests for pure functions in swanki.audio._common.
 """
 
+import json
+
 from pydub import AudioSegment
 
 from swanki.audio._common import (
+    append_chunk_pause,
     chunk_text,
     clean_markdown_for_tts,
     combine_audio,
@@ -17,8 +20,10 @@ from swanki.audio._common import (
     extract_acronyms,
     filter_metadata,
     generate_silence,
+    restitch_from_chunks,
     split_transcript_by_sections,
     validate_audio_file,
+    write_chunk_manifest,
 )
 
 # ---------------------------------------------------------------------------
@@ -134,14 +139,29 @@ def test_combine_audio(tmp_path):
 
     assert out.exists()
     combined = AudioSegment.from_mp3(str(out))
-    # Two 1-second clips with 200ms crossfade -> ~1800ms
-    assert len(combined) > 1500
+    # Two 1-second clips concatenated (default crossfade=0) -> ~2000ms
+    assert len(combined) > 1800
 
 
 def test_combine_audio_empty(tmp_path):
     out = tmp_path / "empty.mp3"
     combine_audio([], out)
     assert not out.exists()
+
+
+def test_combine_audio_zero_crossfade_default(tmp_path):
+    """Default crossfade is 0: output is direct concatenation, no overlap."""
+    f1 = tmp_path / "a.mp3"
+    f2 = tmp_path / "b.mp3"
+    AudioSegment.silent(duration=1000).export(str(f1), format="mp3")
+    AudioSegment.silent(duration=1000).export(str(f2), format="mp3")
+
+    out = tmp_path / "combined.mp3"
+    combine_audio([f1, f2], out)
+
+    combined = AudioSegment.from_mp3(str(out))
+    # ~2000ms total (no crossfade overlap), allow MP3 frame boundary slack
+    assert 1900 <= len(combined) <= 2100
 
 
 # ---------------------------------------------------------------------------
@@ -299,3 +319,169 @@ def test_extract_acronyms_skips_all_caps_expansion():
     result = extract_acronyms(text)
     # "DEF" is all-caps so should be skipped as not a real expansion
     assert "ABC" not in result
+
+
+# ---------------------------------------------------------------------------
+# combine_audio_with_section_pauses — zero crossfade default
+# ---------------------------------------------------------------------------
+
+
+def test_combine_sections_zero_crossfade_default(tmp_path):
+    """Default chunk_crossfade_ms=0: chunks within a section are concatenated."""
+    c1 = tmp_path / "c1.mp3"
+    c2 = tmp_path / "c2.mp3"
+    AudioSegment.silent(duration=1000).export(str(c1), format="mp3")
+    AudioSegment.silent(duration=1000).export(str(c2), format="mp3")
+
+    out = tmp_path / "out.mp3"
+    combine_audio_with_section_pauses([[c1, c2]], out, section_pause_ms=0)
+
+    combined = AudioSegment.from_mp3(str(out))
+    # Two concatenated chunks, no overlap, no section pause -> ~2000ms
+    assert 1900 <= len(combined) <= 2100
+
+
+# ---------------------------------------------------------------------------
+# append_chunk_pause
+# ---------------------------------------------------------------------------
+
+
+def test_append_chunk_pause_fish_speech():
+    assert append_chunk_pause("Hello.", "fish_speech") == "Hello. [long pause]"
+
+
+def test_append_chunk_pause_elevenlabs():
+    assert append_chunk_pause("Hello.") == 'Hello. <break time="1.0s" />'
+    assert (
+        append_chunk_pause("Hello.", "elevenlabs")
+        == 'Hello. <break time="1.0s" />'
+    )
+
+
+def test_append_chunk_pause_idempotent_fish():
+    once = append_chunk_pause("Hello.", "fish_speech")
+    twice = append_chunk_pause(once, "fish_speech")
+    assert once == twice
+
+
+def test_append_chunk_pause_idempotent_elevenlabs():
+    once = append_chunk_pause("Hello.")
+    twice = append_chunk_pause(once)
+    assert once == twice
+
+
+def test_append_chunk_pause_strips_trailing_whitespace():
+    assert append_chunk_pause("Hello.   ", "fish_speech") == "Hello. [long pause]"
+
+
+# ---------------------------------------------------------------------------
+# write_chunk_manifest
+# ---------------------------------------------------------------------------
+
+
+def test_write_chunk_manifest_basic(tmp_path):
+    chunks = [
+        {"index": 0, "section": 0, "text": "first", "file": "chunk0.mp3"},
+        {"index": 1, "section": 1, "text": "second", "file": "chunk1.mp3"},
+    ]
+    path = write_chunk_manifest(
+        tmp_path,
+        "lecture",
+        "lecture-audio.mp3",
+        chunks,
+        bookend_start="start.mp3",
+        bookend_end="end.mp3",
+    )
+    assert path == tmp_path / "chunk_manifest.json"
+    data = json.loads(path.read_text())
+    assert data["audio_type"] == "lecture"
+    assert data["output_file"] == "lecture-audio.mp3"
+    assert data["bookend_start"] == "start.mp3"
+    assert data["bookend_end"] == "end.mp3"
+    assert data["chunks"] == chunks
+
+
+def test_write_chunk_manifest_no_bookends(tmp_path):
+    path = write_chunk_manifest(tmp_path, "summary", "out.mp3", [])
+    data = json.loads(path.read_text())
+    assert data["bookend_start"] is None
+    assert data["bookend_end"] is None
+    assert data["chunks"] == []
+
+
+# ---------------------------------------------------------------------------
+# restitch_from_chunks
+# ---------------------------------------------------------------------------
+
+
+def test_restitch_from_chunks_basic(tmp_path):
+    chunks_dir = tmp_path / "chunks"
+    chunks_dir.mkdir()
+    c0 = chunks_dir / "chunk0.mp3"
+    c1 = chunks_dir / "chunk1.mp3"
+    AudioSegment.silent(duration=1000).export(str(c0), format="mp3")
+    AudioSegment.silent(duration=1000).export(str(c1), format="mp3")
+
+    manifest_path = write_chunk_manifest(
+        chunks_dir,
+        "lecture",
+        "out.mp3",
+        [
+            {"index": 0, "section": 0, "text": "a", "file": "chunk0.mp3"},
+            {"index": 1, "section": 1, "text": "b", "file": "chunk1.mp3"},
+        ],
+    )
+
+    out = tmp_path / "restitched.mp3"
+    restitch_from_chunks(manifest_path, out, section_pause_ms=2000)
+
+    assert out.exists()
+    audio = AudioSegment.from_mp3(str(out))
+    # 1s + 2s pause + 1s = ~4s
+    assert len(audio) > 3500
+
+
+def test_restitch_from_chunks_with_bookends(tmp_path):
+    chunks_dir = tmp_path / "chunks"
+    chunks_dir.mkdir()
+    chunk = chunks_dir / "chunk0.mp3"
+    start = chunks_dir / "start.mp3"
+    end = chunks_dir / "end.mp3"
+    AudioSegment.silent(duration=1000).export(str(chunk), format="mp3")
+    AudioSegment.silent(duration=500).export(str(start), format="mp3")
+    AudioSegment.silent(duration=500).export(str(end), format="mp3")
+
+    manifest_path = write_chunk_manifest(
+        chunks_dir,
+        "lecture",
+        "out.mp3",
+        [{"index": 0, "section": 0, "text": "a", "file": "chunk0.mp3"}],
+        bookend_start="start.mp3",
+        bookend_end="end.mp3",
+    )
+
+    out = tmp_path / "restitched.mp3"
+    restitch_from_chunks(manifest_path, out, bookend_pause_ms=500)
+
+    assert out.exists()
+    audio = AudioSegment.from_mp3(str(out))
+    # 500ms start + 500ms pause + 1000ms chunk + 500ms pause + 500ms end = ~3000ms
+    assert len(audio) > 2500
+
+
+def test_restitch_from_chunks_missing_file_fails(tmp_path):
+    chunks_dir = tmp_path / "chunks"
+    chunks_dir.mkdir()
+    manifest_path = write_chunk_manifest(
+        chunks_dir,
+        "lecture",
+        "out.mp3",
+        [{"index": 0, "section": 0, "text": "a", "file": "missing.mp3"}],
+    )
+    out = tmp_path / "restitched.mp3"
+    try:
+        restitch_from_chunks(manifest_path, out)
+    except AssertionError as e:
+        assert "Chunk file missing" in str(e)
+    else:
+        raise AssertionError("Expected AssertionError for missing chunk file")

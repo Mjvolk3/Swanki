@@ -36,3 +36,11 @@ Added `**tts_kwargs` parameter to `generate_summary_audio()` for Fish Speech pro
 ## 2026.04.15 - Parallel chunk dispatch across Fish Speech servers
 
 Summary audio now flattens chunks across all sections into one job list and dispatches via `tts_chunks_parallel()` for Fish Speech, regrouping paths by section index afterwards. Mirrors lecture and reading so summary generation also benefits from multi-server parallelism.
+
+## 2026.04.16 - Summary chunks retained in `summary_chunks/` with manifest
+
+Summary audio chunks now live under `summary_chunks/` and are kept after combination, paired with a `chunk_manifest.json` so individual chunks can be re-TTS'd and restitched via `restitch_from_chunks()`. Mirrors lecture and reading.
+
+- Each chunk gets `append_chunk_pause(text, provider)` before TTS so direct concatenation (no crossfade) sounds seamless.
+- Bookends are written into `summary_chunks/`, co-located with the chunks they bracket.
+- `combine_audio_with_section_pauses()` is invoked with `chunk_crossfade_ms=0` explicitly. The cleanup `unlink()` block is gone.
