@@ -45,3 +45,14 @@ Reading audio chunks now live under `reading_chunks/` and are kept after combina
 - Each chunk gets `append_chunk_pause(text, provider)` before TTS so direct concatenation (no crossfade) sounds seamless.
 - Bookends are written into `reading_chunks/`, co-located with the chunks they bracket.
 - `combine_audio_with_section_pauses()` is invoked with `chunk_crossfade_ms=0` explicitly. The cleanup `unlink()` block is gone.
+
+## 2026.04.17 - Consolidate humanization; caption, citation, acronym, and transition rules
+
+Orange annotations on the zvyagin reading audio surfaced a cluster of pipeline defects: LaTeX dollar signs leaking through, figure titles clipped mid-read, image URLs being read aloud, acronyms expanded twice, "et al" pronounced verbatim, and filler "uh" sounds at section starts. Fixes target each category, plus a deduplication of the LaTeX humanization path so reading and card audio share one prompt.
+
+- **Single humanization source**: Removed local `_LATEX_SYSTEM_PROMPT` + `_humanize_latex` (~80 lines of duplicated code). Reading now imports `humanize_latex` from `_common`, so prompt improvements for one audio type automatically benefit the others. `test_audio_reading::test_humanize_latex` patches the `_common.text_agent` import path now.
+- **Figure/Table captions read as atomic blocks**: Rule 3 rewritten. Reader inserts three section breaks around each figure/table — one before "Figure N", one between "Figure N" and the caption body, one after the caption. Reads the ENTIRE caption (title AND description) as one continuous block. Explicit ban on reading image URLs, mathpix links, or alt-text markers (which were being narrated verbatim on the zvyagin run).
+- **Acronym repeat-expansion ban**: Rule 2 tightened. Expand ONCE on first occurrence, then use the acronym alone. Extracted acronym map in the prompt reinforces "expand each ONCE". Prevents "Artificial Intelligence" and "BERT" from being defined twice in the same document.
+- **Citation format**: New rule 5. Author-year only; drop "et al" entirely. `Greaney et al. (2021)` → `Greaney, 2021`. Multiple citations: `Greaney, 2021; Zost, 2020; Ju, 2020`.
+- **No filler at section starts**: Rule 4 explicitly forbids "uh", "um", "ah" or any vocalized non-word at the beginning of a section, and reiterates the `[pause]` marker ban.
+- **`model: str` required**: Same treatment as card/lecture/summary — no hardcoded `gpt-5-mini` fallback; caller must pass config LLM.

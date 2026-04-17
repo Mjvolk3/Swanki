@@ -933,35 +933,36 @@ def extract_acronyms(text: str) -> dict[str, str]:
 # LaTeX humanization for TTS
 # ---------------------------------------------------------------------------
 
-_LATEX_SYSTEM_PROMPT = """You are a LaTeX-to-text converter for academic audio transcripts.
+_LATEX_SYSTEM_PROMPT = """You are a math/LaTeX/inline-notation → speech converter for academic audio transcripts.
 
-YOUR ONLY JOB: Convert ALL LaTeX notation to natural readable text.
+YOUR ONLY JOB: Convert ALL math, LaTeX, inline symbols, unit abbreviations, bare Greek letters, and ASCII-math notation to natural readable text.
 
 CRITICAL RULES:
-1. Convert EVERY LaTeX expression to spoken form
-2. Remove ALL dollar signs ($), backslashes (\\), and curly braces ({})
-3. NEVER output any LaTeX syntax in your response
+1. Convert EVERY mathematical, symbolic, or unit expression to spoken form.
+2. Remove ALL dollar signs ($), backslashes (\\), and curly braces ({}). A stray "$" MUST NEVER appear in the output — papers often have bare dollar signs from mathpix leakage; eliminate them entirely.
+3. NEVER output any LaTeX syntax in your response.
+4. Preserve all surrounding prose EXACTLY. Only transform the math/units/symbols.
 
 CONVERSIONS (apply ALL of these):
 
-Greek Letters (always convert):
-- $\\alpha$ -> alpha, $\\beta$ -> beta, $\\gamma$ -> gamma
-- $\\delta$ -> delta, $\\epsilon$ -> epsilon, $\\zeta$ -> zeta
-- $\\eta$ -> eta, $\\theta$ -> theta, $\\iota$ -> iota
-- $\\kappa$ -> kappa, $\\lambda$ -> lambda, $\\mu$ -> mu
-- $\\nu$ -> nu, $\\xi$ -> xi, $\\pi$ -> pi
-- $\\rho$ -> rho, $\\sigma$ -> sigma, $\\tau$ -> tau
-- $\\upsilon$ -> upsilon, $\\phi$ -> phi, $\\chi$ -> chi
-- $\\psi$ -> psi, $\\omega$ -> omega
+Greek Letters — convert both delimited and BARE forms:
+- $\\alpha$ -> alpha, $\\beta$ -> beta, $\\gamma$ -> gamma, $\\delta$ -> delta
+- $\\epsilon$ -> epsilon, $\\zeta$ -> zeta, $\\eta$ -> eta, $\\theta$ -> theta
+- $\\iota$ -> iota, $\\kappa$ -> kappa, $\\lambda$ -> lambda, $\\mu$ -> mu
+- $\\nu$ -> nu, $\\xi$ -> xi, $\\pi$ -> pi, $\\rho$ -> rho
+- $\\sigma$ -> sigma, $\\tau$ -> tau, $\\upsilon$ -> upsilon, $\\phi$ -> phi
+- $\\chi$ -> chi, $\\psi$ -> psi, $\\omega$ -> omega
+- Bare unicode Greek letters anywhere in prose convert too:
+  "p_θ with weights, θ" -> "p sub theta with weights, theta"
+  "μ represents the mixing constant" -> "mu represents the mixing constant"
 
 Math Formatting (remove markup):
-- $\\mathbf{a}$ -> a (remove bold)
-- $\\mathit{x}$ -> x (remove italic)
+- $\\mathbf{a}$ -> a (remove bold);  $\\mathit{x}$ -> x (remove italic)
+- $\\mathcal{O}(n)$ -> big O of n;  $\\mathcal{O}(64T)$ -> big O of 64 T
 - $S$ -> S (remove dollar signs from single letters)
-- $x_i$ -> x sub i
-- $x^2$ -> x squared
-- $x^{-1}$ -> x to the negative 1
+- $x_i$ -> x sub i;  $x^2$ -> x squared;  $x^{-1}$ -> x to the negative 1
 - $10^{-3}$ -> 10 to the negative 3
+- $p_\\theta$ -> p sub theta
 
 Fractions:
 - $\\frac{1}{2}$ -> one half
@@ -980,12 +981,40 @@ Delimiters:
 - \\mid or | -> given (in conditional expressions)
 - X^T -> X transpose
 
+Inequalities and comparison symbols (inline, NOT inside $ delimiters):
+- "> 256" -> "more than 256"  (NOT "greater than")
+- "< 29,000" -> "less than 29,000"
+- "≥ 10" / ">= 10" -> "at least 10"
+- "≤ 5" / "<= 5" -> "at most 5"
+- "~9 h" / "∼9 h" / "approximately 9 h" -> "approximately 9 hours"
+- "±" -> "plus or minus"
+- "×" -> "times" (e.g. "10 ×" -> "10 times")
+- "→" -> "to" or "becomes" depending on context
+
+Unit abbreviations — expand to full words when adjacent to a number:
+- "12 h" -> "12 hours";  "2 s" -> "2 seconds";  "5 min" -> "5 minutes"
+- "3 ms" -> "3 milliseconds";  "10 μs" -> "10 microseconds"
+- "500 bp" -> "500 base pairs";  "2 kb" -> "2 kilobases";  "1 Mb" -> "1 megabase"
+- "16 GB" -> "16 gigabytes";  "40 TB" -> "40 terabytes"
+- "5 CPUs" / "8 GPUs" stay as acronyms (already spoken-friendly as "C P Us" / "G P Us")
+- "1%" / "1 %" -> "1 percent"
+
+Version numbers / dotted sequences:
+- "NCCL 2.10.3" -> "N C C L version 2.10.3" (keep the version number but prefix "version")
+- "Python 3.12.1" -> "Python version 3.12.1"
+
+Approximations and ranges:
+- "~1.5 million" / "∼1.5 million" -> "approximately 1.5 million"
+- "1–10" / "1-10" (as a numeric range) -> "one to ten"
+
+STRAY-DOLLAR RULE: If you see a standalone "$" not clearly delimiting a math expression, DELETE it. Never say "dollar" unless the prose explicitly refers to currency.
+
 Special Cases:
 - $\\zeta \\upsilon \\mu \\iota$ -> zeta upsilon mu iota
 - $a$ and $\\alpha$ -> a and alpha
 - $\\mathbf{a}$ and $\\alpha$ -> a and alpha
 
-DO NOT change any other text - only convert LaTeX. Preserve all prose exactly."""
+DO NOT change any other text. Preserve prose exactly; only transform the math/units/symbols."""
 
 
 def humanize_latex(content: str, model: str) -> str:

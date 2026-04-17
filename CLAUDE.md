@@ -45,6 +45,23 @@ Use **Google-style docstrings** for functions and classes (`Args:`, `Returns:`, 
   conda activate swanki && script -qc "bash /path/to/run.sh" /dev/null
   ```
 
+## Workstation Defaults (gilahyper)
+
+When running swanki on gilahyper, use these overrides:
+
+- **`audio=all`** — generate per-card complementary audio alongside summary/lecture/reading. Applies to every paper.
+- **`anki=default`** — no Anki client on this machine; `anki=auto_send` fails at pipeline end.
+- **`models=fish_speech`** — local Fish Speech server at `http://localhost:8080` with the `british-prof` reference voice. Prefer this over ElevenLabs for TTS: no per-call cost, voice cloning stays on-box, and it sidesteps ElevenLabs rate limits.
+
+Combined `.sh` template invocation:
+```bash
+swanki pdf_path=... citation_key=... +output_dir=... \
+  audio=all anki=default models=fish_speech \
+  pipeline.processing.confirm_before_generation=false
+```
+
+Other workstations (laptops without the Fish server / with Anki installed) should not inherit these — they're gilahyper-specific.
+
 ## Weekly Notes
 
 - When checking off a task in the weekly note, always add a one-sentence summary before the `[[link]]`. Never leave a checked item as just a bare link.

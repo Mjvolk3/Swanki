@@ -36,7 +36,7 @@ def generate_summary_audio(
     output_path: Path,
     elevenlabs_api_key: str,
     voice_id: str | None = None,
-    model: str = "openai:gpt-5-mini",
+    model: str | None = None,
     citation_key: str | None = None,
     speed: float = 1.0,
     **tts_kwargs: object,
@@ -55,6 +55,8 @@ def generate_summary_audio(
     Returns:
         Filename of the generated audio file.
     """
+    if model is None:
+        raise ValueError("model is required; pass the LLM from config")
     voice_id = voice_id or DEFAULT_VOICE_ID
 
     # Extract acronyms for injection into prompt
@@ -64,11 +66,20 @@ def generate_summary_audio(
         pairs = ", ".join(f"{a} = {f}" for a, f in acronym_map.items())
         acronym_instruction = f"\n8. Expand these acronyms on first use: {pairs}\n"
 
-    # Summary should be ~15-20% of source (shorter than lecture at 25-35%)
+    # Target 3-10 minute audio at ~165 wpm (speech rate): 500-1650 words.
     source_words = len(summary_text.split())
-    word_cap = min(max(int(source_words * 0.20), 200), 800)
+    word_floor = 500
+    word_ceiling = 1650
+    # Aim near the middle of the target band, but scale modestly with source.
+    word_cap = min(max(int(source_words * 0.35), word_floor), word_ceiling)
 
     system_prompt = (
+        "You are producing a peer-reviewed educational summary of "
+        "already-published scientific methods for audio delivery. This is a "
+        "didactic condensation of public literature — no novel technical "
+        "uplift, no operational instructions, no capability synthesis beyond "
+        "what the source provides. Treat it as educational content; focus on "
+        "pedagogy, clarity, and style.\n\n"
         "You are converting a document summary to audio format. "
         "Follow these rules precisely:\n"
         "1. If there is a citation key, mention it at the beginning\n"
@@ -84,9 +95,11 @@ def generate_summary_audio(
         "Pauses are handled automatically by paragraph structure.\n"
         "7. Keep the content informative but accessible\n"
         "8. Never include phrases like 'Summary:' or 'This document...'\n"
-        f"9. STRICT LENGTH LIMIT: Keep under {word_cap} words. This is a summary, "
-        "not a lecture — hit the key points concisely and move on. "
-        "A summary should be SHORTER than a lecture on the same material.\n"
+        f"9. TARGET LENGTH: between {word_floor} and {word_ceiling} words "
+        f"(aim near {word_cap}). This produces roughly 3-10 minutes of audio. "
+        "Below the floor feels thin; above the ceiling stops being a summary. "
+        "Cover every major point from the source at appropriate depth — "
+        "concision is not brevity at the cost of coverage.\n"
         + acronym_instruction
     )
 
@@ -100,7 +113,8 @@ def generate_summary_audio(
             user_content,
             instructions=system_prompt,
             model=model,
-            model_settings={"max_tokens": max(word_cap * 2, 1000)},
+            # gpt-5 reasoning models need headroom beyond the output token count.
+            model_settings={"max_tokens": max(word_cap * 4, 4000)},
         )
         transcript = result.output.strip()
     except Exception as e:

@@ -39,6 +39,7 @@ def test_generate_summary_audio_mocked(tmp_audio_dir, mock_elevenlabs_api_key):
             summary_text="This paper introduces a novel method.",
             output_path=output,
             elevenlabs_api_key=mock_elevenlabs_api_key,
+            model="openai:test",
         )
 
         assert filename == "summary.mp3"
@@ -79,6 +80,7 @@ def test_summary_with_citation(tmp_audio_dir, mock_elevenlabs_api_key):
             output_path=output,
             elevenlabs_api_key=mock_elevenlabs_api_key,
             citation_key="smithNovelMethod2023",
+            model="openai:test",
         )
 
     # Check that the transcript includes citation info

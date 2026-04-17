@@ -102,7 +102,7 @@ def test_generate_card_transcript_mocked():
 
     with patch("swanki.audio.card.text_agent") as mock_agent:
         mock_agent.run_sync.return_value = mock_result
-        transcript = generate_card_transcript(card, is_front=True)
+        transcript = generate_card_transcript(card, is_front=True, model="openai:test")
         assert isinstance(transcript, str)
         assert len(transcript) > 0
         mock_agent.run_sync.assert_called()
@@ -135,6 +135,7 @@ def test_generate_citation_audio_mocked(tmp_audio_dir, mock_elevenlabs_api_key):
             citation_key="smithML2023",
             output_path=output,
             elevenlabs_api_key=mock_elevenlabs_api_key,
+            model="openai:test",
         )
         assert result == output
 
@@ -167,6 +168,7 @@ def test_generate_card_audio_mocked(tmp_audio_dir, mock_elevenlabs_api_key):
             page_base="page-1",
             audio_dir=tmp_audio_dir,
             elevenlabs_api_key=mock_elevenlabs_api_key,
+            model="openai:test",
         )
 
         assert front_file.endswith("_front.mp3")

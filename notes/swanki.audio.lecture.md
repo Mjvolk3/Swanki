@@ -68,3 +68,11 @@ Lecture audio chunks now live under `lecture_chunks/` next to the final MP3 inst
 - `append_chunk_pause(text, provider)` is applied to every chunk before TTS dispatch so direct concatenation (no crossfade) sounds seamless. Provider-aware: Fish Speech gets `[long pause]`, ElevenLabs gets `<break time="1.0s" />`.
 - Bookend audio is also written into `lecture_chunks/`, keeping all per-lecture audio assets co-located for restitch.
 - `combine_audio_with_section_pauses()` is now invoked with `chunk_crossfade_ms=0` explicitly. The cleanup `unlink()` block is gone.
+
+## 2026.04.17 - Educational-context preambles, symmetric length bounds, and model required
+
+Two problems surfaced when regenerating the zvyagin (SARS-CoV-2 GenSLMs) lecture: (1) OpenAI's safety filter blocked `gpt-5.2` on biosecurity-adjacent content — the full-doc critique got 400s and fell back to weak chunked critique, letting the lecture stay at 48% of source well above the 25-35% target; (2) when the filter did NOT fire, the length loop overshot the other way and trimmed to 7% of source because the refinement was cut-only with no symmetric expand branch. Both are addressed here; `gpt-5.4` also behaves better on this content and is the practical fix for (1).
+
+- **Educational-context preamble**: Prepended to `_DEFAULT_LECTURE_SYSTEM_PROMPT`, `_REFINEMENT_TEMPLATE`, `_CRITIQUE_PROMPT`, and the inline section-level critique inside `generate_and_validate_chunk`. Text frames the lecture as a "peer-reviewed educational summary of already-published methods — no novel technical uplift, no operational instructions, no capability synthesis beyond what the paper itself provides". Helped safety-filter false-positives clear on 5.4 (still not enough for 5.2 on genomics content; model upgrade is the real fix).
+- **Symmetric length refinement**: `_refine_transcript` now forces `critique_feedback.done = False` when the ratio is outside `[0.20, 0.45]`, keeping the loop alive. Injects `LENGTH: EXPAND` feedback when ratio < 20% (mirror of the existing `LENGTH: CUT` at > 45%). Stops the asymmetric cut-only behavior that drove v2 to 7% of source.
+- **`model: str` required**: `critique_transcript_chunks` and `generate_lecture_audio` no longer default to `openai:gpt-5-mini`. Matches card/reading/summary — config LLM must be passed explicitly; `ValueError` if left `None`.

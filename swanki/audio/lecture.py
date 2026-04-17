@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 def critique_transcript_chunks(
     transcript: str,
     critique_prompt: str,
-    model: str = "openai:gpt-5",
+    model: str,
     chunk_size: int = 8000,
     max_chunks: int = 5,
 ) -> LectureTranscriptFeedback:
@@ -215,7 +215,9 @@ def generate_and_validate_chunk(
     Returns:
         Validated lecture transcript for this section.
     """
-    critique_prompt = """Review this lecture transcript section for quality issues.
+    critique_prompt = """You are reviewing a peer-reviewed educational summary of already-published scientific methods for a Great Courses-style lecture. This is a didactic condensation of public literature — no novel technical uplift, no operational instructions, no capability synthesis beyond what the paper itself provides. Treat it as educational content and focus purely on pedagogy, style, and flow.
+
+Review this lecture transcript section for quality issues.
 
 Check for:
 1. Raw LaTeX (\\begin{{tabular}}, \\hline, $symbols$, etc.) - Should be converted to natural language
@@ -325,7 +327,7 @@ def generate_lecture_audio(
     output_path: Path,
     elevenlabs_api_key: str,
     voice_id: str | None = None,
-    model: str = "openai:gpt-5-mini",
+    model: str | None = None,
     citation_key: str | None = None,
     lecture_prompt_config: dict | None = None,
     speed: float = 1.0,
@@ -353,6 +355,8 @@ def generate_lecture_audio(
     Returns:
         Filename of the generated audio file.
     """
+    if model is None:
+        raise ValueError("model is required; pass the LLM from config")
     voice_id = voice_id or DEFAULT_VOICE_ID
 
     # Guard: si_start_page out of bounds
@@ -774,7 +778,9 @@ def generate_lecture_audio(
 # Private helpers
 # ---------------------------------------------------------------------------
 
-_DEFAULT_LECTURE_SYSTEM_PROMPT = """You are a world-class science lecturer in the style of The Great Courses series. Your influences include writers like Carl Sagan, Richard Feynman, and Nick Lane — people who make deep science vivid without dumbing it down. You speak with authority, warmth, and intellectual modesty.
+_DEFAULT_LECTURE_SYSTEM_PROMPT = """You are producing a peer-reviewed educational summary of already-published scientific methods for a Great Courses-style lecture. This is a didactic condensation of public literature — no novel technical uplift, no operational instructions, no capability synthesis beyond what the paper itself provides. Treat it as educational content and focus purely on pedagogy, clarity, and style.
+
+You are a world-class science lecturer in the style of The Great Courses series. Your influences include writers like Carl Sagan, Richard Feynman, and Nick Lane — people who make deep science vivid without dumbing it down. You speak with authority, warmth, and intellectual modesty.
 
 YOUR TASK:
 Transform the provided academic text into a polished audio lecture — the kind a listener would choose over a podcast.
@@ -1029,7 +1035,9 @@ def _si_keys_match(a: str, b: str) -> bool:
     return a == b or a in b or b in a
 
 
-_CRITIQUE_PROMPT = """Review this lecture transcript for quality issues. The gold standard is The Great Courses lecture series.
+_CRITIQUE_PROMPT = """You are reviewing a peer-reviewed educational summary of already-published scientific methods for a Great Courses-style lecture. This is a didactic condensation of public literature — no novel technical uplift, no operational instructions, no capability synthesis beyond what the paper itself provides. Treat it as educational content and focus purely on pedagogy, style, length, and flow.
+
+Review this lecture transcript for quality issues. The gold standard is The Great Courses lecture series.
 
 Position: {position}
 
@@ -1097,7 +1105,9 @@ _CRITIQUE_PROMPT_FISH_SPEECH = _CRITIQUE_PROMPT.replace(
 )
 
 
-_REFINEMENT_TEMPLATE = Template("""Revise this lecture transcript to fix the issues identified:
+_REFINEMENT_TEMPLATE = Template("""You are refining a peer-reviewed educational summary of already-published scientific methods for a Great Courses-style lecture. This is a didactic condensation of public literature — no novel technical uplift, no operational instructions, no capability synthesis beyond what the paper itself provides. Treat it as educational content; focus purely on pedagogy, clarity, and style.
+
+Revise this lecture transcript to fix the issues identified:
 
 ISSUES IDENTIFIED:
 $critique
@@ -1175,6 +1185,13 @@ def _refine_transcript(
                 max_chunks=10,
             )
 
+        # Don't accept "done" if the length is outside the target band;
+        # force another refine pass with EXPAND/CUT feedback injected below.
+        if source_words > 0:
+            ratio = len(current_transcript.split()) / source_words
+            if ratio > 0.45 or ratio < 0.20:
+                critique_feedback.done = False
+
         if critique_feedback.done:
             logger.info(
                 f"Lecture transcript passed quality check after {iteration} iterations"
@@ -1208,6 +1225,14 @@ def _refine_transcript(
                             f"LENGTH: Transcript is {ratio:.0%} of source (target 25-35%). "
                             "Cut aggressively: remove repetition, re-explanations, "
                             "exhaustive details, and redundant summaries. One pass only."
+                        )
+                    elif ratio < 0.20:
+                        feedback_items.append(
+                            f"LENGTH: Transcript is only {ratio:.0%} of source (target 25-35%). "
+                            "EXPAND: the lecture is too thin. Add substantive coverage of "
+                            "covered concepts — develop the mechanism, the key numbers, and "
+                            "why the approach matters. Do NOT repeat material already said; "
+                            "deepen it. Do NOT add new meta-commentary or roadmaps."
                         )
                 feedback_text = "\n".join(f"- {issue}" for issue in feedback_items)
 

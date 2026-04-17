@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 def generate_card_transcript(
     card: PlainCard,
     is_front: bool,
-    model: str = "openai:gpt-5-mini",
+    model: str | None = None,
     citation_key: str | None = None,
     humanized_citation: str | None = None,
 ) -> str:
@@ -51,6 +51,8 @@ def generate_card_transcript(
     Returns:
         Transcript text optimized for TTS.
     """
+    if model is None:
+        raise ValueError("model is required; pass the LLM from config")
     is_cloze = "{{c" in card.front.text
 
     # Get the appropriate text WITHOUT citation first
@@ -224,7 +226,7 @@ def generate_citation_audio(
     output_path: Path,
     elevenlabs_api_key: str,
     voice_id: str | None = None,
-    model: str = "openai:gpt-5-mini",
+    model: str | None = None,
     speed: float = 1.0,
     use_cache: bool = True,
     max_retries: int = 3,
@@ -254,6 +256,8 @@ def generate_citation_audio(
     Raises:
         RuntimeError: If audio generation fails after all retries.
     """
+    if model is None:
+        raise ValueError("model is required; pass the LLM from config")
     voice_id = voice_id or DEFAULT_VOICE_ID
 
     humanized = _humanize_citation(citation_key, model, max_retries)
@@ -330,7 +334,7 @@ def generate_card_audio(
     audio_dir: Path,
     elevenlabs_api_key: str,
     voice_id: str | None = None,
-    model: str = "openai:gpt-5-mini",
+    model: str | None = None,
     citation_key: str | None = None,
     speed: float = 1.0,
     force_regenerate_citation: bool = False,
@@ -357,6 +361,8 @@ def generate_card_audio(
     Returns:
         Tuple of (front_filename, back_filename). Back may be None.
     """
+    if model is None:
+        raise ValueError("model is required; pass the LLM from config")
     voice_id = voice_id or DEFAULT_VOICE_ID
 
     humanized_citation = humanize_citation_key(citation_key) if citation_key else None
@@ -624,9 +630,11 @@ def _remove_cloze_markers(match: re.Match[str]) -> str:  # type: ignore[type-arg
 
 
 def _humanize_citation(
-    citation_key: str, model: str = "openai:gpt-5-mini", max_retries: int = 3
+    citation_key: str, model: str | None = None, max_retries: int = 3
 ) -> str:
     """Convert a citation key to natural speech via LLM."""
+    if model is None:
+        raise ValueError("model is required; pass the LLM from config")
     system_prompt = (
         "Convert citation keys to natural speech for text-to-speech. "
         "Make it flow naturally as if speaking. Add appropriate pauses with commas. "

@@ -44,3 +44,13 @@ Summary audio chunks now live under `summary_chunks/` and are kept after combina
 - Each chunk gets `append_chunk_pause(text, provider)` before TTS so direct concatenation (no crossfade) sounds seamless.
 - Bookends are written into `summary_chunks/`, co-located with the chunks they bracket.
 - `combine_audio_with_section_pauses()` is invoked with `chunk_crossfade_ms=0` explicitly. The cleanup `unlink()` block is gone.
+
+## 2026.04.17 - Target 3-10 minute audio with explicit floor/ceiling; raise max_tokens for reasoning models
+
+Previous summary cap was 200-800 words (aim 20% of source), which produced 1-5 minute narrations — too thin for the summary to stand on its own. Bumped target to **500-1650 words** (3-10 min at ~165 wpm with the 1.1x speed multiplier), with explicit floor and ceiling in the prompt. Also bumped `max_tokens` because gpt-5 reasoning models were exhausting the old budget before emitting any output.
+
+- **Explicit floor and ceiling in prompt**: "TARGET LENGTH: between {floor} and {ceiling} words (aim near {word_cap}). Below the floor feels thin; above the ceiling stops being a summary." Matches the symmetric bounds approach now used in `swanki.audio.lecture`.
+- **Soft aim scales with source**: `word_cap = clamp(source_words * 0.35, 500, 1650)` — longer source papers get a summary closer to the ceiling, shorter ones stay near the floor.
+- **`max_tokens = max(word_cap * 4, 4000)`**: Previous `max(word_cap * 2, 1000)` was causing `Model token limit (1776) exceeded before any response was generated` on gpt-5 reasoning models, which consume budget on hidden reasoning tokens. Bumped multiplier to 4x and floor to 4000.
+- **Educational-context preamble**: Prepended to the system prompt (same text as lecture/reading) to help safety filters clear on biosecurity-adjacent content.
+- **`model: str` required**: No more hardcoded `gpt-5-mini` fallback — caller must pass the configured LLM.

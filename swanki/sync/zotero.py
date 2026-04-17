@@ -39,39 +39,49 @@ def _git_short_hash() -> str:
     return result.stdout.strip() or "unknown"
 
 
+def _match_citation_key(item: dict, citation_key: str) -> bool:
+    """Check if a Zotero item matches a citation key."""
+    data = item["data"]
+    extra = data.get("extra", "")
+    if f"Citation Key: {citation_key}" in extra:
+        return True
+    if data.get("citationKey") == citation_key:
+        return True
+    return False
+
+
 def _find_zotero_item(zot: zotero.Zotero, citation_key: str) -> str | None:
-    """Find a Zotero item key by citation key stored in the extra field.
+    """Find a Zotero item key matching a citation key.
 
-    Args:
-        zot: Authenticated Zotero client.
-        citation_key: Citation key to search for.
-
-    Returns:
-        Zotero item key, or None if not found.
+    Splits the camelCase key into words and searches with progressively
+    fewer terms (Zotero API ANDs all terms). Filters client-side on
+    BetterBibTeX `Citation Key:` in `extra` or Zotero 7 `citationKey`.
     """
     import re
 
-    # Split camelCase citation key into search words
-    # Handles: lowercase→uppercase, uppercase-run→uppercase+lowercase
-    # e.g. "cardiffSystemsLevelModelingCRISPRBased2024" -> "cardiff Systems Level Modeling CRISPR Based"
-    words = re.sub(r"([a-z])([A-Z])", r"\1 \2", citation_key)
-    words = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", words)
-    words = re.sub(r"\d+$", "", words).strip()
-    # Filter out long compound words that Zotero can't match (e.g. "Metabolicinformed")
-    # and limit to 5 words max
-    tokens = [w for w in words.split() if len(w) <= 15][:5]
-    search_term = " ".join(tokens)
+    s = re.sub(r"([a-z])([A-Z])", r"\1 \2", citation_key)
+    s = re.sub(r"([a-zA-Z])(\d)", r"\1 \2", s)
+    s = re.sub(r"(\d)([a-zA-Z])", r"\1 \2", s)
+    words = s.split()
+    title_words = [w for w in words if w[0].isupper()]
 
-    results = zot.items(q=search_term, limit=20)
+    queries = []
+    if title_words:
+        queries.append(" ".join(title_words))
+    queries.append(" ".join(words))
+    if len(title_words) > 2:
+        queries.append(" ".join(title_words[:2]))
 
-    for item in results:
-        data = item["data"]
-        if data["itemType"] == "attachment":
-            continue
-        extra = data.get("extra", "")
-        if citation_key in extra:
-            return data["key"]
-
+    for query in queries:
+        for qmode in (None, "everything"):
+            kwargs = {"q": query}
+            if qmode:
+                kwargs["qmode"] = qmode
+            for item in zot.items(**kwargs):
+                if item["data"]["itemType"] == "attachment":
+                    continue
+                if _match_citation_key(item, citation_key):
+                    return item["data"]["key"]
     return None
 
 
@@ -204,6 +214,12 @@ def sync_to_zotero(
     )
     note_item["data"]["note"] = note_html + log_entry
     zot.update_item(note_item)
+
+    # Tag parent item with 🦊 to signify a successful Swanki upload
+    parent_item = zot.item(item_key)
+    existing_tags = {t["tag"] for t in parent_item["data"].get("tags", [])}
+    if "🦊" not in existing_tags:
+        zot.add_tags(parent_item, "🦊")
 
     logger.info(f"Synced {len(uploaded)} files to Zotero item {item_key}")
     for f in uploaded:

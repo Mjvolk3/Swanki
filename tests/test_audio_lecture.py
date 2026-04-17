@@ -156,6 +156,7 @@ def test_generate_lecture_audio_mocked(tmp_audio_dir, mock_elevenlabs_api_key):
                     image_summaries=[],
                     output_path=output,
                     elevenlabs_api_key=mock_elevenlabs_api_key,
+                    model="openai:test",
                 )
 
                 assert filename == "lecture.mp3"

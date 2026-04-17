@@ -63,3 +63,13 @@ Replaced 200ms cross-fade between TTS chunks with direct concatenation, letting 
 - **`append_chunk_pause(text, provider)`**: Idempotent helper that appends `[long pause]` (Fish Speech) or `<break time="1.0s" />` (ElevenLabs) to the end of a chunk's text. The ElevenLabs idempotency check looks for any trailing self-closing SSML tag (`/>`), which is intentional -- we do not stack any trailing SSML.
 - **`write_chunk_manifest(chunks_dir, audio_type, output_file, chunks, ...)`**: Writes `chunk_manifest.json` next to the chunk files. Records audio type, output filename, optional bookend filenames, and per-chunk index/section/text/file. Drives the surgical-regen workflow.
 - **`restitch_from_chunks(manifest_path, output_path, ...)`**: Reads the manifest, groups chunk paths by section, and calls `combine_audio_with_section_pauses` to reassemble final audio. Asserts each chunk file exists before assembly so a missing chunk fails fast.
+
+## 2026.04.17 - Expanded humanization prompt for ASCII math, units, inequalities, and stray dollars
+
+`_LATEX_SYSTEM_PROMPT` now covers the full span of inline notation that reaches TTS, not just `$...$` delimited LaTeX. Orange annotations on the zvyagin paper's reading audio showed recurring failures on bare unicode Greek (e.g. "p_θ"), inequalities read as "greater than" when "more than" is more natural, unit abbreviations ("12 h" → "12 hours"), version numbers ("NCCL 2.10.3"), approximation tildes, and stray dollar signs leaking through from mathpix output. Card audio was already using this prompt; reading now shares it too (see `swanki.audio.reading`).
+
+- **Stray-dollar rule**: Explicit instruction to delete any bare `$` not clearly delimiting a math expression, so the TTS never says "dollar" unless prose is about currency.
+- **Inequalities**: `>` → "more than" (not "greater than"), `<` → "less than", `≥`/`≤` → "at least"/"at most".
+- **Units**: numeric-adjacent `h`/`s`/`min`/`ms`/`bp`/`kb`/`Mb`/`GB`/`TB` expand to full words; acronym units like `CPU`/`GPU` stay as acronyms.
+- **Version numbers**: `NCCL 2.10.3` → "N C C L version 2.10.3" — prefix "version" and keep the dotted sequence intact.
+- **Bare Greek in prose**: covers the common case where a figure caption or inline math loses its delimiters after markdown conversion, leaving unicode Greek letters floating in prose.

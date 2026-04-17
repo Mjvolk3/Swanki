@@ -25,6 +25,7 @@ from ._common import (
     extract_acronyms,
     filter_metadata,
     generate_bookend_audio,
+    humanize_latex,
     split_transcript_by_sections,
     text_to_speech,
     tts_chunks_parallel,
@@ -39,7 +40,7 @@ def generate_reading_audio(
     output_path: Path,
     elevenlabs_api_key: str,
     voice_id: str | None = None,
-    model: str = "openai:gpt-5-mini",
+    model: str | None = None,
     citation_key: str | None = None,
     speed: float = 1.0,
     **tts_kwargs: object,
@@ -63,6 +64,8 @@ def generate_reading_audio(
     Returns:
         Filename of the generated audio file.
     """
+    if model is None:
+        raise ValueError("model is required; pass the LLM from config")
     voice_id = voice_id or DEFAULT_VOICE_ID
 
     # Extract acronyms for injection into prompt
@@ -70,26 +73,51 @@ def generate_reading_audio(
     acronym_instruction = ""
     if acronym_map:
         pairs = ", ".join(f"{a} = {f}" for a, f in acronym_map.items())
-        acronym_instruction = f"\n\n8. Expand these acronyms on first use: {pairs}\n"
+        acronym_instruction = (
+            f"\n\nACRONYM MAP (expand each ONCE on first occurrence, then use the "
+            f"acronym alone thereafter): {pairs}\n"
+        )
 
     system_prompt = (
+        "You are producing an audio rendering of an already-published "
+        "peer-reviewed scientific document for educational listening. This "
+        "is a faithful read-aloud of public literature — no novel technical "
+        "uplift, no operational instructions, no capability synthesis beyond "
+        "what the source provides. Treat it as educational content.\n\n"
         "You are converting a full document to audio format for reading aloud. "
         "The content has already been preprocessed to remove LaTeX notation. "
         "Follow these rules precisely:\n\n"
-        "1. If there is a citation key, mention it at the beginning\n\n"
-        "2. When an acronym appears, read it naturally with its full form, e.g. "
-        "'the FSEOF algorithm, flux scanning based on enforced objective function' "
-        "-- never add meta-commentary like 'on first use' or 'which stands for'\n\n"
-        "3. When encountering a figure, insert ---SECTION_BREAK--- on its own line, "
-        "then say 'Figure X' (using the figure number), then insert another "
-        "---SECTION_BREAK--- on its own line, then read the figure description\n\n"
-        "4. Between sections, insert ---SECTION_BREAK--- on its own line. Do NOT add "
-        "any filler text, transitions, or commentary between sections -- just the marker. "
-        "Never say the word 'pause' aloud or write [pause]\n\n"
-        "5. Maintain academic tone but make it listenable\n\n"
-        "6. Read all prose exactly as written - preserve the author's words and meaning. "
-        "Do NOT add your own words, summaries, or transitions between sections\n\n"
-        "7. Make the text flow naturally for listening, not reading\n"
+        "1. If there is a citation key, mention it at the beginning.\n\n"
+        "2. ACRONYMS — expand to the full form the FIRST time each acronym appears, "
+        "then thereafter use the acronym alone. Never define the same acronym twice "
+        "in the same document. E.g. first mention: 'the FSEOF algorithm, flux scanning "
+        "based on enforced objective function'; later mentions: just 'FSEOF'. Never add "
+        "meta-commentary like 'on first use' or 'which stands for'. Terms already "
+        "defined earlier in the document should be left as the acronym on any later mention.\n\n"
+        "3. FIGURES and TABLES — when a figure or table appears, read the ENTIRE caption "
+        "(title AND description) as one continuous block. Precede it with a break and follow "
+        "it with a break so it is clearly bracketed in audio. Format: insert "
+        "---SECTION_BREAK--- on its own line; then say 'Figure N' (or 'Table N') with the "
+        "full number; then insert another ---SECTION_BREAK--- on its own line; then read "
+        "the full caption — title first, then the description — with no omissions; then "
+        "insert another ---SECTION_BREAK--- on its own line before resuming the main text. "
+        "NEVER read image URLs, mathpix links, alt-text bracket markers, or any other "
+        "image-reference metadata — those are not part of the caption.\n\n"
+        "4. SECTION TRANSITIONS — insert ---SECTION_BREAK--- on its own line between "
+        "sections. Do NOT add filler text, transitions, or commentary between sections — "
+        "just the marker. Never say the word 'pause' aloud, write [pause], emit filler "
+        "hesitation sounds like 'uh', 'um', 'ah', or let a section begin with a vocalized "
+        "non-word. Start each section cleanly with the first real word of that section.\n\n"
+        "5. CITATIONS — render author-year citations as 'author, year' only. When multiple "
+        "authors are listed, say 'FirstAuthor, year' and DROP 'et al' entirely (never "
+        "verbalize 'et al'). Example: 'Greaney et al. (2021)' → 'Greaney, 2021'. Multiple "
+        "citations in a row: 'Greaney, 2021; Zost, 2020; Ju, 2020'.\n\n"
+        "6. Maintain academic tone but make it listenable.\n\n"
+        "7. Read all prose exactly as written — preserve the author's words and meaning. "
+        "Do NOT add your own words, summaries, or transitions between sections.\n\n"
+        "8. Make the text flow naturally for listening, not reading.\n\n"
+        "9. NEVER repeat content. If a sentence or acronym expansion has already been "
+        "delivered, do not re-deliver it. One pass through the document.\n"
         + acronym_instruction
     )
 
@@ -100,9 +128,9 @@ def generate_reading_audio(
         humanized_key = humanize_citation_key(citation_key)
         user_content = f"Citation: {humanized_key}\n\n{user_content}"
 
-    # Pass 1: Humanize LaTeX notation
+    # Pass 1: Humanize LaTeX / math / inline symbols
     logger.info("Humanizing LaTeX notation in content...")
-    user_content = _humanize_latex(user_content, model)
+    user_content = humanize_latex(user_content, model)
     logger.info("LaTeX humanization complete")
 
     # Pass 2: Generate reading transcript
@@ -257,86 +285,3 @@ def generate_reading_audio(
     return output_path.name
 
 
-# ---------------------------------------------------------------------------
-# Private helpers
-# ---------------------------------------------------------------------------
-
-_LATEX_SYSTEM_PROMPT = """You are a LaTeX-to-text converter for academic audio transcripts.
-
-YOUR ONLY JOB: Convert ALL LaTeX notation to natural readable text.
-
-CRITICAL RULES:
-1. Convert EVERY LaTeX expression to spoken form
-2. Remove ALL dollar signs ($), backslashes (\\), and curly braces ({})
-3. NEVER output any LaTeX syntax in your response
-
-CONVERSIONS (apply ALL of these):
-
-Greek Letters (always convert):
-- $\\alpha$ -> alpha, $\\beta$ -> beta, $\\gamma$ -> gamma
-- $\\delta$ -> delta, $\\epsilon$ -> epsilon, $\\zeta$ -> zeta
-- $\\eta$ -> eta, $\\theta$ -> theta, $\\iota$ -> iota
-- $\\kappa$ -> kappa, $\\lambda$ -> lambda, $\\mu$ -> mu
-- $\\nu$ -> nu, $\\xi$ -> xi, $\\pi$ -> pi
-- $\\rho$ -> rho, $\\sigma$ -> sigma, $\\tau$ -> tau
-- $\\upsilon$ -> upsilon, $\\phi$ -> phi, $\\chi$ -> chi
-- $\\psi$ -> psi, $\\omega$ -> omega
-
-Math Formatting (remove markup):
-- $\\mathbf{a}$ -> a (remove bold)
-- $\\mathit{x}$ -> x (remove italic)
-- $S$ -> S (remove dollar signs from single letters)
-- $x_i$ -> x sub i
-- $x^2$ -> x squared
-- $x^{-1}$ -> x to the negative 1
-- $10^{-3}$ -> 10 to the negative 3
-
-Fractions:
-- $\\frac{1}{2}$ -> one half
-- $\\frac{a}{b}$ -> a over b
-
-Special Cases:
-- $\\zeta \\upsilon \\mu \\iota$ -> zeta upsilon mu iota
-- $a$ and $\\alpha$ -> a and alpha
-- $\\mathbf{a}$ and $\\alpha$ -> a and alpha
-
-DO NOT change any other text - only convert LaTeX. Preserve all prose exactly."""
-
-
-def _humanize_latex(content: str, model: str) -> str:
-    """Convert all LaTeX notation to natural readable text using LLM.
-
-    Args:
-        content: Content with LaTeX notation.
-        model: pydantic-ai model string.
-
-    Returns:
-        Content with all LaTeX converted to natural language.
-    """
-    enc = tiktoken.get_encoding("cl100k_base")
-    tokens = enc.encode(content)
-    max_chunk = 8000
-    humanized_chunks: list[str] = []
-
-    for start in range(0, len(tokens), max_chunk):
-        chunk = enc.decode(tokens[start : start + max_chunk])
-
-        try:
-            result = text_agent.run_sync(
-                chunk,
-                instructions=_LATEX_SYSTEM_PROMPT,
-                model=model,
-                model_settings={"max_tokens": 10000},
-            )
-            humanized_chunk = result.output.strip()
-        except Exception as e:
-            logger.warning(f"Error in LaTeX humanization: {e}")
-            humanized_chunk = ""
-
-        if not humanized_chunk:
-            logger.error("LaTeX humanization failed, using original chunk")
-            humanized_chunk = chunk
-
-        humanized_chunks.append(humanized_chunk)
-
-    return "\n\n".join(humanized_chunks)

@@ -30,13 +30,15 @@ class ImageProcessor:
         model: pydantic-ai model string for image summarization.
     """
 
-    def __init__(self, output_base: Path, model: str = "openai:gpt-4o") -> None:
+    def __init__(self, output_base: Path, model: str) -> None:
         """Initialize image processor.
 
         Args:
             output_base: Base directory for all output files. Will create
                 subdirectories for image summaries and downloaded images.
-            model: pydantic-ai model string (e.g. ``"openai:gpt-4o"``).
+            model: pydantic-ai model string; required — resolve from Hydra
+                config (e.g. ``models.llm`` → ``openai:gpt-5.2-2025-12-11``)
+                so the vision model tracks the project's configured LLM.
         """
         self.output_base = output_base
         self.clean_md_singles_dir = output_base / "clean-md-singles"

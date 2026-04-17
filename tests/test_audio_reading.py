@@ -11,7 +11,8 @@ from unittest.mock import MagicMock, patch
 
 from pydub import AudioSegment
 
-from swanki.audio.reading import _humanize_latex, generate_reading_audio
+from swanki.audio._common import humanize_latex
+from swanki.audio.reading import generate_reading_audio
 
 
 def test_generate_reading_audio_mocked(tmp_audio_dir, mock_elevenlabs_api_key):
@@ -39,6 +40,7 @@ def test_generate_reading_audio_mocked(tmp_audio_dir, mock_elevenlabs_api_key):
             full_content="Introduction. This paper presents a method.",
             output_path=output,
             elevenlabs_api_key=mock_elevenlabs_api_key,
+            model="openai:test",
         )
 
         assert filename == "reading.mp3"
@@ -52,11 +54,11 @@ def test_humanize_latex():
     mock_result = MagicMock()
     mock_result.output = "The variable alpha equals 5."
 
-    with patch("swanki.audio.reading.text_agent") as mock_agent:
+    with patch("swanki.audio._common.text_agent") as mock_agent:
         mock_agent.run_sync.return_value = mock_result
 
-        result = _humanize_latex(
-            "The variable $\\alpha$ equals 5.", "openai:gpt-5-mini"
+        result = humanize_latex(
+            "The variable $\\alpha$ equals 5.", "openai:test"
         )
 
         assert isinstance(result, str)

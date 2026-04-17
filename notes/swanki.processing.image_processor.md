@@ -29,3 +29,7 @@ Replaced direct `OpenAI` vision API calls with `text_agent.run_sync()` using pyd
 ## 2026.03.12 - Increase max_tokens for image summary generation
 
 Bumped `max_tokens` from 300 to 1024 for image summary API calls. The pydantic-ai token accounting was rejecting 300 as insufficient before any response could be generated, causing the pipeline to fail at the image processing stage.
+
+## 2026.04.17 - Model parameter required; remove hardcoded gpt-4o default
+
+Removed the `model: str = "openai:gpt-4o"` default from `ImageProcessor.__init__`. Pipeline already passes the config-resolved LLM (`gpt-5.2` / `gpt-5.4` for this project) via `pipeline.py:591`, so the default was never reached in production but acted as a footgun for direct callers. Constructor now requires `model`, matching the same discipline applied across `swanki.audio.*` in this session: config is the single source of truth for the LLM identifier.
