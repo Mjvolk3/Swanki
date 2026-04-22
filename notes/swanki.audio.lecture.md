@@ -76,3 +76,27 @@ Two problems surfaced when regenerating the zvyagin (SARS-CoV-2 GenSLMs) lecture
 - **Educational-context preamble**: Prepended to `_DEFAULT_LECTURE_SYSTEM_PROMPT`, `_REFINEMENT_TEMPLATE`, `_CRITIQUE_PROMPT`, and the inline section-level critique inside `generate_and_validate_chunk`. Text frames the lecture as a "peer-reviewed educational summary of already-published methods — no novel technical uplift, no operational instructions, no capability synthesis beyond what the paper itself provides". Helped safety-filter false-positives clear on 5.4 (still not enough for 5.2 on genomics content; model upgrade is the real fix).
 - **Symmetric length refinement**: `_refine_transcript` now forces `critique_feedback.done = False` when the ratio is outside `[0.20, 0.45]`, keeping the loop alive. Injects `LENGTH: EXPAND` feedback when ratio < 20% (mirror of the existing `LENGTH: CUT` at > 45%). Stops the asymmetric cut-only behavior that drove v2 to 7% of source.
 - **`model: str` required**: `critique_transcript_chunks` and `generate_lecture_audio` no longer default to `openai:gpt-5-mini`. Matches card/reading/summary — config LLM must be passed explicitly; `ValueError` if left `None`.
+
+## 2026.04.22 - Word-count budget, chunk-aware refinement, duplicate-opener guard
+
+The ratio-of-source budget was producing too-short lectures for small papers (merzbacher 8 min, tazza 9 min) and too-long ones for dense books (would exceed 30 min cap). Switched to an absolute word-count band centered on 30% of source, with explicit floor and ceiling. Independently, the refine loop was regenerating full lectures when a tail chunk got `LENGTH: EXPAND` feedback — the model took the full system prompt's "OPENING → BODY → CLOSING" structure literally and appended a second intro + roadmap, guillotined at the hard cap. Fixed at two layers: tightened prompts so refinement cannot add new openings, and a post-refine `_strip_duplicate_openers()` guard catches any that slip through.
+
+### Word-count budget
+
+- New module constants: `PLANNING_WPM = 130` (measured fish_speech@1.1x rate), `LECTURE_SOURCE_RATIO = 0.30`, `LECTURE_WORD_FLOOR = 1500` (~11.5 min), `LECTURE_WORD_CAP = 3900` (30 min hard cap).
+- `_compute_lecture_target_words(source_words)` returns `(target, floor, ceiling)` where target = `clamp(source * 0.30, 1500, 3900)` and the band is `[0.85·target, 1.15·target]` clamped to the same limits.
+- `_DEFAULT_LECTURE_SYSTEM_PROMPT` LENGTH rule rewritten with `${target_floor}`, `${target_ceiling}`, `${target_words}` Template placeholders; injected via `Template(system_instructions).safe_substitute(...)` at call time.
+- `_refine_transcript` length checks switched from ratio bands (`0.20-0.45`) to absolute word-count bands. Same shape: force `done = False` and inject `LENGTH: EXPAND`/`CUT` feedback when outside band.
+- Hard truncation at the end of the refine loop now caps at `LECTURE_WORD_CAP` regardless of source word count (was `min(source_words, 4500)`).
+
+### Chunk-aware refinement
+
+- New `_REFINE_SYSTEM_PROMPT`: explicit "you are editing a chunk of an existing lecture; do NOT add new intros/roadmaps/closings". Used as `instructions` for refinement calls instead of `full_system_prompt` (which mandated the full lecture arc).
+- `_REFINEMENT_TEMPLATE` reworded: headline says "revise ONLY the chunk below", adds a HARD CONSTRAINTS block listing forbidden additions (opening hook, roadmap, closing summary, paper topic framing), and the closing instruction says "PROVIDE THE REVISED CHUNK (same scope, same position in the lecture)" instead of "PROVIDE THE COMPLETE REVISED TRANSCRIPT".
+- `_CRITIQUE_PROMPT` LENGTH item (#3) simplified — code enforces the band now, critic focuses on style/substance.
+
+### Duplicate-opener guard
+
+- New `_strip_duplicate_openers(transcript)` helper, invoked right after `_refine_transcript` returns. Scans for multiple occurrences of `"Today we'll cover"` (both straight and smart apostrophe variants).
+- Two modes: if the second occurrence is followed by a `---SECTION_BREAK---` and substantial content (>100 words) after it, excise just the restart block (last-period-before-duplicate to end-of-trailing-break), preserving downstream body sections. Otherwise the restart runs to end-of-transcript → truncate at the last sentence boundary before the duplicate.
+- Discovered because thornburg v2 and zvyagin v6 both produced transcripts ending with a second opening hook + roadmap + body; bookmark from Prologue pinpointed "At the conclusion it's talking about what we are going to do as if back to the introduction". Transcripts for both papers were hand-fixed and re-TTS'd via `scripts/retts_cleaned_transcripts.py`.

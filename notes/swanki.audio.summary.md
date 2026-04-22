@@ -54,3 +54,12 @@ Previous summary cap was 200-800 words (aim 20% of source), which produced 1-5 m
 - **`max_tokens = max(word_cap * 4, 4000)`**: Previous `max(word_cap * 2, 1000)` was causing `Model token limit (1776) exceeded before any response was generated` on gpt-5 reasoning models, which consume budget on hidden reasoning tokens. Bumped multiplier to 4x and floor to 4000.
 - **Educational-context preamble**: Prepended to the system prompt (same text as lecture/reading) to help safety filters clear on biosecurity-adjacent content.
 - **`model: str` required**: No more hardcoded `gpt-5-mini` fallback — caller must pass the configured LLM.
+
+## 2026.04.22 - Constant 4-5 minute target; drop source-scaled cap
+
+Evaluation on zvyagin + thornburg + bishop CH01/CH02 showed summaries varying from 2 min to 10 min depending on source length — the `source_words * 0.35` scaling was making long papers produce overlong summaries. User wants summaries to feel consistent: the summary is its own artifact, not a proportional excerpt.
+
+- `word_floor = 500`, `word_ceiling = 700`, `word_cap = 600` (constant, no scaling with source length). At the measured ~130 wpm for fish_speech@1.1x that's roughly 4-5 minutes regardless of paper size.
+- Dropped the `source_words = len(summary_text.split())` variable and the `word_cap = clamp(source_words * 0.35, ...)` line.
+- Prompt rule #9 updated to "This produces roughly 4-5 minutes of audio and should stay constant regardless of source length."
+- Known gap: prompt is guidance only — the summary generator has no post-hoc word-count enforcement (unlike lecture's critique/refine loop). Observed summaries landed at ~800-1100 words / 6.6-7.7 min across the regen batch, over the 700 ceiling but at least consistent. Enforcement loop deferred; user to decide when to tighten.

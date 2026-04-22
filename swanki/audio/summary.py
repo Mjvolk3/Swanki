@@ -66,12 +66,11 @@ def generate_summary_audio(
         pairs = ", ".join(f"{a} = {f}" for a, f in acronym_map.items())
         acronym_instruction = f"\n8. Expand these acronyms on first use: {pairs}\n"
 
-    # Target 3-10 minute audio at ~165 wpm (speech rate): 500-1650 words.
-    source_words = len(summary_text.split())
+    # Target 4-5 minute audio at ~130 wpm (fish_speech@1.1x): 500-700 words.
+    # Constant regardless of source length so summaries feel consistent.
     word_floor = 500
-    word_ceiling = 1650
-    # Aim near the middle of the target band, but scale modestly with source.
-    word_cap = min(max(int(source_words * 0.35), word_floor), word_ceiling)
+    word_ceiling = 700
+    word_cap = 600
 
     system_prompt = (
         "You are producing a peer-reviewed educational summary of "
@@ -96,7 +95,8 @@ def generate_summary_audio(
         "7. Keep the content informative but accessible\n"
         "8. Never include phrases like 'Summary:' or 'This document...'\n"
         f"9. TARGET LENGTH: between {word_floor} and {word_ceiling} words "
-        f"(aim near {word_cap}). This produces roughly 3-10 minutes of audio. "
+        f"(aim near {word_cap}). This produces roughly 4-5 minutes of audio "
+        "and should stay constant regardless of source length. "
         "Below the floor feels thin; above the ceiling stops being a summary. "
         "Cover every major point from the source at appropriate depth — "
         "concision is not brevity at the cost of coverage.\n"

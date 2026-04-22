@@ -21,11 +21,18 @@ class PageLabel(BaseModel):
     keep: bool  # educational value?
 
 
+class KeepRange(BaseModel):
+    """0-indexed [start, end) page range to KEEP."""
+
+    start: int
+    end: int
+
+
 class PDFCutPlan(BaseModel):
     """LLM-generated plan for which PDF pages to keep or cut."""
 
     pages: list[PageLabel]
-    keep_ranges: list[tuple[int, int]]  # 0-indexed [start, end) ranges to KEEP
+    keep_ranges: list[KeepRange]
 
 
 SYSTEM_PROMPT = """\
@@ -37,6 +44,12 @@ KEEP (educational value):
 - Content, Abstract, Introduction, Methods, Results, Discussion
 - Supplementary Figures/Data, Extended Data, STAR Methods
 - Tables, Figures, Equations
+- The FIRST page (title + authors + abstract) is ALWAYS "content"; author
+  affiliations at the top do not make the page "author_info" if the abstract
+  or introduction begins on the same page.
+- Figure/table pages (mostly captions + axis labels) are ALWAYS "content".
+- A page that CONTINUES a Methods/Results/Discussion section is "content"
+  even if it has an Acknowledgments or References heading at the bottom.
 
 CUT (no educational value):
 - References, Bibliography, Literature Cited
@@ -45,6 +58,18 @@ CUT (no educational value):
 - Competing/Conflicts of Interest, Financial Interests/Disclosures
 - Data Availability statements, Code Availability
 - Declaration of Interests
+
+IMPORTANT cut rules:
+- Only CUT a page when its ENTIRE content is non-educational end-matter.
+  A page with Methods/Results/Figures on top and Acknowledgments at the
+  bottom is still "content" (KEEP).
+- References are a single contiguous block at the end of the main text
+  (plus optionally a separate block after Supplementary). Do NOT produce
+  isolated "references" labels surrounded by content pages — those are
+  likely footer citations on content pages; re-label as "content".
+- Never produce alternating KEEP/CUT/KEEP/CUT sequences mid-paper; if you
+  are about to, re-inspect — the CUT pages are almost certainly figure or
+  content pages with stray header text.
 
 Labels: "content", "references", "acknowledgments", "author_info", "supplementary"
 - Use "content" for main body + methods + results + discussion

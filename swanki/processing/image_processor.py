@@ -94,9 +94,13 @@ class ImageProcessor:
                     summary_path.write_text(summary, encoding="utf-8")
                     image_info["summary_path"] = summary_path
                 else:
-                    error_msg = f"No summary generated for image: {image_info['url']}"
-                    logger.error(error_msg)
-                    raise RuntimeError(error_msg)
+                    # None means the image is unusable (corrupted URL, missing
+                    # local file, etc.). Skip it rather than aborting the whole
+                    # paper over one bad figure.
+                    logger.warning(
+                        f"No summary for image: {image_info['url'][:120]}; skipping"
+                    )
+                    continue
 
             if "summary" in image_info:
                 content = self._insert_image_summary(content, image_info)
@@ -189,6 +193,16 @@ Keep the summary concise but informative (2-4 sentences)."""
 
         image_url: str = image_info["url"]
         image_content: BinaryContent | ImageUrl
+
+        # Guard: markdown_cleaner occasionally produces nested
+        # ![![](URL1)](URL2). Our regex captures the inner section as
+        # "url1_partial](url2_full" which 400s at the origin. Skip these
+        # so the pipeline keeps moving instead of crashing the whole run.
+        if "](" in image_url or "%5D(" in image_url:
+            logger.warning(
+                f"Skipping corrupted nested image URL: {image_url[:120]}"
+            )
+            return None
 
         if not image_url.startswith("http"):
             # Local image — read bytes and use BinaryContent

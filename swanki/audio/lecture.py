@@ -37,6 +37,88 @@ from ._common import (
 logger = logging.getLogger(__name__)
 
 
+# Fish Speech @1.1x measured at ~130 wpm across paired transcript/audio samples.
+# Lecture length is clamped to [FLOOR, CAP] words, centered on SOURCE_RATIO × source.
+PLANNING_WPM = 130
+LECTURE_SOURCE_RATIO = 0.30
+LECTURE_WORD_FLOOR = 1500  # ~11.5 min at PLANNING_WPM
+LECTURE_WORD_CAP = 3900    # 30-min hard cap at PLANNING_WPM
+
+
+def _compute_lecture_target_words(source_words: int) -> tuple[int, int, int]:
+    """Return (target, floor, ceiling) word counts for a lecture given source size."""
+    target = int(source_words * LECTURE_SOURCE_RATIO)
+    target = min(max(target, LECTURE_WORD_FLOOR), LECTURE_WORD_CAP)
+    floor = max(LECTURE_WORD_FLOOR, int(target * 0.85))
+    ceiling = min(LECTURE_WORD_CAP, int(target * 1.15))
+    return target, floor, ceiling
+
+
+# Phrases that only appear at a lecture's opening roadmap. Multiple occurrences
+# indicate the refine loop re-generated a full lecture instead of editing chunks.
+_ROADMAP_MARKERS = ("Today we'll cover", "Today we\u2019ll cover")
+
+
+def _strip_duplicate_openers(transcript: str) -> str:
+    """Remove a duplicated lecture restart if one is present.
+
+    If a roadmap marker appears more than once, truncate the transcript at the
+    last sentence boundary that precedes the second occurrence. For a restart
+    block bounded by ``---SECTION_BREAK---`` markers, prefer excising the block
+    in place so downstream body sections are retained.
+    """
+    positions: list[int] = []
+    for marker in _ROADMAP_MARKERS:
+        i = 0
+        while True:
+            j = transcript.find(marker, i)
+            if j == -1:
+                break
+            positions.append(j)
+            i = j + 1
+    positions.sort()
+    if len(positions) < 2:
+        return transcript
+
+    second = positions[1]
+
+    # If the duplicate roadmap is bounded by a trailing SECTION_BREAK and
+    # substantial content follows it, excise the restart block (likely of the
+    # shape "[pause] ... Today we'll cover ... Now let's turn to X ---SECTION_BREAK---").
+    trailing_break = transcript.find("---SECTION_BREAK---", second)
+    tail_word_count = (
+        len(transcript[trailing_break + len("---SECTION_BREAK---"):].split())
+        if trailing_break != -1
+        else 0
+    )
+    if trailing_break != -1 and tail_word_count > 100:
+        # Back up from the duplicate roadmap to the preceding sentence boundary.
+        head = transcript[:second]
+        cut = max(head.rfind("."), head.rfind("!"), head.rfind("?"))
+        if cut == -1:
+            cut = len(head)
+        # Skip past the SECTION_BREAK so we don't leave a double break.
+        tail_start = trailing_break + len("---SECTION_BREAK---")
+        while tail_start < len(transcript) and transcript[tail_start] in " \n":
+            tail_start += 1
+        logger.warning(
+            "Duplicate lecture roadmap detected mid-transcript; excising restart block "
+            f"(chars {cut + 1}-{tail_start}, {len(transcript[cut + 1:tail_start].split())} words)"
+        )
+        return transcript[: cut + 1] + "\n\n" + transcript[tail_start:]
+
+    # Otherwise truncate: the restart runs to the end of the transcript.
+    head = transcript[:second]
+    cut = max(head.rfind("."), head.rfind("!"), head.rfind("?"))
+    if cut == -1:
+        cut = len(head)
+    dropped = len(transcript[cut + 1:].split())
+    logger.warning(
+        f"Duplicate lecture roadmap detected at tail; truncating (dropping {dropped} words)"
+    )
+    return transcript[: cut + 1]
+
+
 def critique_transcript_chunks(
     transcript: str,
     critique_prompt: str,
@@ -434,6 +516,21 @@ def generate_lecture_audio(
         content_prefix = "Begin your lecture on"
         si_instructions = ""
 
+    # Substitute absolute word-count targets into the LENGTH rule.
+    source_words = len(cleaned_content.split())
+    target_words, target_floor, target_ceiling = _compute_lecture_target_words(
+        source_words
+    )
+    logger.info(
+        f"Lecture length target: {target_words}w (band {target_floor}-{target_ceiling}w) "
+        f"from {source_words}w source"
+    )
+    system_instructions = Template(system_instructions).safe_substitute(
+        target_words=target_words,
+        target_floor=target_floor,
+        target_ceiling=target_ceiling,
+    )
+
     humanized_key = (
         humanize_citation_key(citation_key) if citation_key else "this academic work"
     )
@@ -642,9 +739,15 @@ def generate_lecture_audio(
         output_path,
         max_retries,
         enc,
-        source_words=len(cleaned_content.split()),
+        source_words=source_words,
+        target_words=target_words,
+        target_floor=target_floor,
+        target_ceiling=target_ceiling,
         critique_prompt=critique_prompt,
     )
+
+    # Structural guard: drop duplicate lecture restarts the refine loop can inject.
+    full_transcript = _strip_duplicate_openers(full_transcript)
 
     # Save final transcript
     transcript_path = transcripts_dir / f"{output_path.stem}_transcript.md"
@@ -796,10 +899,10 @@ Every lecture follows this arc, with ---SECTION_BREAK--- on its own line between
 
 CRITICAL OUTPUT RULES:
 
-1. LENGTH — STRICTLY 25-35% of source manuscript word count.
+1. LENGTH — STRICTLY ${target_floor}-${target_ceiling} words (target ${target_words}).
    - This is a LECTURE, not a second reading of the paper.
    - Cover the key ideas, skip exhaustive details. Be selective and confident.
-   - If the source is 5000 words, your lecture is 1250-1750 words. No more.
+   - Below the floor feels thin; above the ceiling loses the listener.
    - NEVER repeat or re-explain a concept you've already covered.
    - One pass through the material. No "let's revisit" or "as we said earlier."
 
@@ -1053,9 +1156,8 @@ CRITICAL CHECKS:
    - "As we discussed..." followed by re-stating what was already said
    - Concepts introduced twice with different wording
 
-3. LENGTH: Target is 25-35% of source manuscript.
-   - Estimate word count
-   - Flag if over 40% — needs aggressive cutting
+3. LENGTH: Enforced in code via absolute word-count band.
+   - The length band is checked separately; focus this review on style and substance.
 
 4. MARKDOWN HEADERS: Are there bare markdown headers (##, ###)?
    - These must be converted to spoken transitions
@@ -1105,29 +1207,44 @@ _CRITIQUE_PROMPT_FISH_SPEECH = _CRITIQUE_PROMPT.replace(
 )
 
 
-_REFINEMENT_TEMPLATE = Template("""You are refining a peer-reviewed educational summary of already-published scientific methods for a Great Courses-style lecture. This is a didactic condensation of public literature — no novel technical uplift, no operational instructions, no capability synthesis beyond what the paper itself provides. Treat it as educational content; focus purely on pedagogy, clarity, and style.
+_REFINE_SYSTEM_PROMPT = (
+    "You are editing a chunk of an existing audio lecture transcript. You are "
+    "NOT writing a new lecture. The chunk you receive is one fragment of a "
+    "larger piece that already has its own opening, roadmap, and closing. "
+    "Never add new intro hooks, roadmaps, or closings. Never re-state the "
+    "paper's title or topic. Stay within the chunk's scope and subject matter. "
+    "Apply only the revisions called for in the user message."
+)
 
-Revise this lecture transcript to fix the issues identified:
+
+_REFINEMENT_TEMPLATE = Template("""You are refining a CHUNK of an existing lecture transcript. This is a didactic condensation of public literature — no novel technical uplift, no operational instructions, no capability synthesis beyond what the paper itself provides. Treat it as educational content; focus purely on pedagogy, clarity, and style.
+
+Revise ONLY the chunk below to fix the issues identified. Do NOT rewrite the whole lecture.
 
 ISSUES IDENTIFIED:
 $critique
 
-REVISION INSTRUCTIONS:
-1. Convert ALL lists to flowing narrative prose
-2. Convert ALL LaTeX to natural spoken language
-3. Remove ALL citations and references
-4. Remove metadata sections completely
-5. Remove ALL meta-commentary ("in the text, an image shows", "for audio purposes", "in our discussion")
-6. Convert markdown headers to spoken transitions ("Now let's turn to...")
-7. Remove duplicate summaries — keep ONE closing paragraph at the end
-8. Remove ANY re-explanation of concepts already covered. One pass only.
-9. TARGET LENGTH: 25-35% of source. Cut aggressively if over.
-10. Maintain Great Courses lecture style: authoritative, modest, never salesman-like
+HARD CONSTRAINTS — VIOLATING THESE BREAKS THE AUDIO:
+- DO NOT add a new opening hook, intro paragraph, or "Today we'll cover…" roadmap.
+- DO NOT add a new closing summary / takeaways paragraph.
+- DO NOT reintroduce the paper's title, authors, or topic framing.
+- A chunk is a FRAGMENT of a longer lecture — openings and closings already exist elsewhere; adding another creates audible duplication.
 
-ORIGINAL TRANSCRIPT:
+REVISION INSTRUCTIONS:
+1. Convert ALL lists to flowing narrative prose.
+2. Convert ALL LaTeX to natural spoken language.
+3. Remove ALL citations and references.
+4. Remove metadata sections completely.
+5. Remove ALL meta-commentary ("in the text, an image shows", "for audio purposes", "in our discussion").
+6. Convert markdown headers to spoken transitions ("Now let's turn to…").
+7. Remove ANY re-explanation of concepts already covered. One pass only.
+8. LENGTH: honor any LENGTH feedback above; cut or expand WITHIN the chunk's scope. Never satisfy a shortage by appending a new intro/roadmap/closing.
+9. Maintain Great Courses lecture style: authoritative, modest, never salesman-like.
+
+ORIGINAL CHUNK:
 $transcript
 
-PROVIDE THE COMPLETE REVISED TRANSCRIPT:""")
+PROVIDE THE REVISED CHUNK (same scope, same position in the lecture):""")
 
 
 def _refine_transcript(
@@ -1140,6 +1257,9 @@ def _refine_transcript(
     max_retries: int,
     enc: tiktoken.Encoding,
     source_words: int = 0,
+    target_words: int = 0,
+    target_floor: int = LECTURE_WORD_FLOOR,
+    target_ceiling: int = LECTURE_WORD_CAP,
     critique_prompt: str = _CRITIQUE_PROMPT,
 ) -> str:
     """Run iterative critique-and-refine loop on the transcript."""
@@ -1147,17 +1267,16 @@ def _refine_transcript(
     current_transcript = full_transcript
     critique_feedback = None
 
-    # Length ratio check before critique loop (target: 25-35% of source)
-    if source_words > 0:
-        ratio = len(current_transcript.split()) / source_words
-        if ratio > 0.45:
-            logger.warning(
-                f"Transcript is {ratio:.0%} of source length (target 25-35%) — injecting length-reduction feedback"
-            )
-        elif ratio < 0.2:
-            logger.warning(
-                f"Transcript is only {ratio:.0%} of source length — potential under-development"
-            )
+    # Absolute word-count band check before critique loop.
+    cur_words = len(current_transcript.split())
+    if cur_words > target_ceiling:
+        logger.warning(
+            f"Transcript is {cur_words}w (target {target_words}w, max {target_ceiling}w) — will inject length-reduction feedback"
+        )
+    elif cur_words < target_floor:
+        logger.warning(
+            f"Transcript is only {cur_words}w (target {target_words}w, min {target_floor}w) — potential under-development"
+        )
 
     for iteration in range(max_iterations):
         logger.info(f"Lecture critique iteration {iteration + 1}/{max_iterations}")
@@ -1187,10 +1306,9 @@ def _refine_transcript(
 
         # Don't accept "done" if the length is outside the target band;
         # force another refine pass with EXPAND/CUT feedback injected below.
-        if source_words > 0:
-            ratio = len(current_transcript.split()) / source_words
-            if ratio > 0.45 or ratio < 0.20:
-                critique_feedback.done = False
+        cur_words = len(current_transcript.split())
+        if cur_words > target_ceiling or cur_words < target_floor:
+            critique_feedback.done = False
 
         if critique_feedback.done:
             logger.info(
@@ -1218,22 +1336,21 @@ def _refine_transcript(
                 chunk = enc.decode(transcript_tokens[start : start + chunk_size])
 
                 feedback_items = list(critique_feedback.feedback)
-                if source_words > 0:
-                    ratio = len(current_transcript.split()) / source_words
-                    if ratio > 0.45:
-                        feedback_items.append(
-                            f"LENGTH: Transcript is {ratio:.0%} of source (target 25-35%). "
-                            "Cut aggressively: remove repetition, re-explanations, "
-                            "exhaustive details, and redundant summaries. One pass only."
-                        )
-                    elif ratio < 0.20:
-                        feedback_items.append(
-                            f"LENGTH: Transcript is only {ratio:.0%} of source (target 25-35%). "
-                            "EXPAND: the lecture is too thin. Add substantive coverage of "
-                            "covered concepts — develop the mechanism, the key numbers, and "
-                            "why the approach matters. Do NOT repeat material already said; "
-                            "deepen it. Do NOT add new meta-commentary or roadmaps."
-                        )
+                cur_words = len(current_transcript.split())
+                if cur_words > target_ceiling:
+                    feedback_items.append(
+                        f"LENGTH: Transcript is {cur_words}w (target {target_words}w, max {target_ceiling}w). "
+                        "Cut aggressively: remove repetition, re-explanations, "
+                        "exhaustive details, and redundant summaries. One pass only."
+                    )
+                elif cur_words < target_floor:
+                    feedback_items.append(
+                        f"LENGTH: Transcript is only {cur_words}w (target {target_words}w, min {target_floor}w). "
+                        "EXPAND: the lecture is too thin. Add substantive coverage of "
+                        "covered concepts — develop the mechanism, the key numbers, and "
+                        "why the approach matters. Do NOT repeat material already said; "
+                        "deepen it. Do NOT add new meta-commentary or roadmaps."
+                    )
                 feedback_text = "\n".join(f"- {issue}" for issue in feedback_items)
 
                 refinement_prompt = _REFINEMENT_TEMPLATE.substitute(
@@ -1244,7 +1361,7 @@ def _refine_transcript(
                 try:
                     refine_result = text_agent.run_sync(
                         refinement_prompt,
-                        instructions=full_system_prompt,
+                        instructions=_REFINE_SYSTEM_PROMPT,
                         model=model,
                         model_settings={"max_tokens": max_output_tokens},
                     )
@@ -1262,15 +1379,14 @@ def _refine_transcript(
             current_transcript = "\n\n".join(refined_chunks)
             logger.info("Lecture transcript refinement complete")
 
-    # Hard cap: never exceed source word count or ~30 min (~4500 words at TTS speed)
-    max_lecture_words = min(source_words, 4500) if source_words > 0 else 4500
+    # Hard cap: never exceed LECTURE_WORD_CAP (~30 min at PLANNING_WPM).
     current_words = len(current_transcript.split())
-    if current_words > max_lecture_words:
+    if current_words > LECTURE_WORD_CAP:
         logger.warning(
-            f"Lecture {current_words}w exceeds cap {max_lecture_words}w, truncating to last sentence"
+            f"Lecture {current_words}w exceeds cap {LECTURE_WORD_CAP}w, truncating to last sentence"
         )
         words = current_transcript.split()
-        truncated = " ".join(words[:max_lecture_words])
+        truncated = " ".join(words[:LECTURE_WORD_CAP])
         last_period = truncated.rfind(".")
         if last_period > len(truncated) * 0.7:
             current_transcript = truncated[: last_period + 1]

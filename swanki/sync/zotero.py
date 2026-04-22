@@ -63,25 +63,54 @@ def _find_zotero_item(zot: zotero.Zotero, citation_key: str) -> str | None:
     s = re.sub(r"([a-zA-Z])(\d)", r"\1 \2", s)
     s = re.sub(r"(\d)([a-zA-Z])", r"\1 \2", s)
     words = s.split()
-    title_words = [w for w in words if w[0].isupper()]
+    # Drop 1-char title words ("V", etc.); Zotero AND-search can't locate them
+    # when the title renders the same idea with a non-ASCII token (e.g. "β").
+    title_words = [w for w in words if len(w) > 1 and w[0].isupper()]
 
     queries = []
+    # Literal citation key with qmode=everything searches the `extra` field
+    # where BetterBibTeX stores `Citation Key: <key>` — guaranteed hit when
+    # the item actually exists. Put first.
+    queries.append((citation_key, "everything"))
     if title_words:
-        queries.append(" ".join(title_words))
-    queries.append(" ".join(words))
+        queries.append((" ".join(title_words), None))
+        queries.append((" ".join(title_words), "everything"))
+    queries.append((" ".join(words), None))
+    queries.append((" ".join(words), "everything"))
     if len(title_words) > 2:
-        queries.append(" ".join(title_words[:2]))
+        queries.append((" ".join(title_words[:2]), None))
+    # Fallback: first word alone (usually the author prefix) — catches cases
+    # where the title token doesn't match the citation-key's CamelCase split.
+    if words:
+        queries.append((words[0], "everything"))
 
-    for query in queries:
-        for qmode in (None, "everything"):
-            kwargs = {"q": query}
-            if qmode:
-                kwargs["qmode"] = qmode
-            for item in zot.items(**kwargs):
-                if item["data"]["itemType"] == "attachment":
-                    continue
-                if _match_citation_key(item, citation_key):
-                    return item["data"]["key"]
+    for q, qmode in queries:
+        kwargs: dict[str, object] = {"q": q}
+        if qmode:
+            kwargs["qmode"] = qmode
+        for item in zot.items(**kwargs):
+            if item["data"]["itemType"] == "attachment":
+                continue
+            if _match_citation_key(item, citation_key):
+                return item["data"]["key"]
+
+    # Last-resort fallback: paginate the full library and match client-side.
+    # Zotero's search API does not index the native `citationKey` field, so
+    # Zotero 7 items whose key isn't also in title/extra/authors require this
+    # linear scan. Slow but bulletproof.
+    start = 0
+    while True:
+        batch = zot.items(start=start, limit=100)
+        if not batch:
+            break
+        for item in batch:
+            if item["data"]["itemType"] == "attachment":
+                continue
+            if _match_citation_key(item, citation_key):
+                return item["data"]["key"]
+        if len(batch) < 100:
+            break
+        start += 100
     return None
 
 

@@ -33,6 +33,7 @@ radivojevicMachineLearningAutomated2020
 .claude/config.json
 .claude/plans/
 .claude/settings.local.json
+.claude/*.lock
 
 # Agent working files (worktree-local, not committed)
 AGENT.md
@@ -68,3 +69,4 @@ mermaid-filter.err
 # coverage
 .coverage
 htmlcov/
+

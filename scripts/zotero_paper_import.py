@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import warnings
@@ -29,6 +30,7 @@ load_dotenv()
 
 ZOTERO_API_KEY = os.environ["ZOTERO_API_KEY"]
 ZOTERO_LIBRARY_ID = os.environ["ZOTERO_LIBRARY_ID"]
+ZOTERO_LIBRARY_TYPE = os.environ.get("ZOTERO_LIBRARY_TYPE", "user")
 
 SWANKI_DATA = Path(__file__).resolve().parent.parent.parent / "Swanki_Data"
 QPDF = "qpdf"
@@ -146,7 +148,7 @@ def find_item_by_citation_key(zot: zotero.Zotero, citation_key: str) -> dict:
     """
     words = citation_key_to_words(citation_key)
     title_words = [w for w in words if w[0].isupper()]
-    queries = []
+    queries = [citation_key]  # raw key matches BBT `Citation Key:` / `citationKey` directly
     if title_words:
         queries.append(" ".join(title_words))
     queries.append(" ".join(words))
@@ -162,6 +164,12 @@ def find_item_by_citation_key(zot: zotero.Zotero, citation_key: str) -> dict:
             for item in items:
                 if _match_citation_key(item, citation_key):
                     return item
+
+    # Fallback: scan the whole library (last resort for titles that don't
+    # match text search — e.g. special chars like β, /, hyphens).
+    for item in zot.everything(zot.items()):
+        if _match_citation_key(item, citation_key):
+            return item
     raise LookupError(f"No Zotero item found for citation key: {citation_key}")
 
 
@@ -281,14 +289,20 @@ def _labels_to_ranges(labels: list[str]) -> list[tuple[int, int]]:
 
 
 def cut_pdf(input_pdf: Path, output_pdf: Path, start: int, end: int) -> None:
-    """Cut a PDF using qpdf (0-based start, end-exclusive)."""
-    # qpdf uses 1-based inclusive page ranges
-    # Exit code 3 = warnings (e.g. minor PDF structural issues) but success
-    result = subprocess.run(
-        [QPDF, str(input_pdf), "--pages", ".", f"{start + 1}-{end}", "--", str(output_pdf)],
-    )
-    if result.returncode not in (0, 3):
-        result.check_returncode()
+    """Cut a PDF page range (0-based start, end-exclusive).
+
+    Uses PyPDF2 rather than ``qpdf --pages`` because the latter can
+    preserve overlaid content streams on some web-scraped / HTML-to-PDF
+    sources, producing visually stacked/duplicated pages.
+    """
+    from PyPDF2 import PdfReader, PdfWriter
+
+    reader = PdfReader(str(input_pdf), strict=False)
+    writer = PdfWriter()
+    for i in range(start, end):
+        writer.add_page(reader.pages[i])
+    with output_pdf.open("wb") as f:
+        writer.write(f)
 
 
 def unite_pdfs(inputs: list[Path], output: Path) -> None:
@@ -299,15 +313,18 @@ def unite_pdfs(inputs: list[Path], output: Path) -> None:
     )
 
 
-def write_sh_script(output_dir: Path, citation_key: str) -> Path:
+def write_sh_script(
+    output_dir: Path, citation_key: str, models: str | None = None
+) -> Path:
     """Write the swanki .sh runner script."""
     clean_pdf = output_dir / f"{citation_key}_clean.pdf"
     sh_path = output_dir / f"{citation_key}.sh"
+    models_flag = f"models={models} " if models else ""
     sh_path.write_text(
         f"#!/bin/bash\n\n"
         f"swanki pdf_path={clean_pdf} citation_key={citation_key} "
         f"+output_dir=../Swanki_Data/{citation_key}/{citation_key} "
-        f"audio=all anki=default "
+        f"audio=all anki=default {models_flag}"
         f"pipeline.processing.confirm_before_generation=false\n"
     )
     return sh_path
@@ -321,7 +338,8 @@ def _get_keep_ranges_llm(pdf_path: Path) -> tuple[list[tuple[int, int]], int]:
     for p in plan.pages:
         status = "KEEP" if p.keep else "CUT"
         print(f"    Page {p.page}: {p.label} [{status}]")
-    return plan.keep_ranges, total
+    ranges = [(r.start, r.end) for r in plan.keep_ranges]
+    return ranges, total
 
 
 def _get_keep_ranges_regex(pdf_path: Path) -> tuple[list[tuple[int, int]], int]:
@@ -356,7 +374,9 @@ def _get_keep_ranges(pdf_path: Path) -> tuple[list[tuple[int, int]], int, bool]:
     return ranges, total, False
 
 
-def clean_pdf(output_dir: Path, citation_key: str) -> PrepareResult:
+def clean_pdf(
+    output_dir: Path, citation_key: str, models: str | None = None
+) -> PrepareResult:
     """Classify pages, cut keep-ranges, unite, and write .sh script."""
     main_pdf = output_dir / f"{citation_key}.pdf"
     si_pdf = None
@@ -390,13 +410,17 @@ def clean_pdf(output_dir: Path, citation_key: str) -> PrepareResult:
         si_kept = sum(end - start for start, end in si_ranges)
         print(f"  SI: kept {si_kept} of {si_total} pages")
 
-    # Unite into _clean.pdf
+    # Build _clean.pdf. pdfunite on a single input can produce visually
+    # duplicated/stacked content — skip it and just copy the lone piece.
     clean_path = output_dir / f"{citation_key}_clean.pdf"
-    unite_pdfs(cut_pieces, clean_path)
+    if len(cut_pieces) == 1:
+        shutil.copy2(cut_pieces[0], clean_path)
+    else:
+        unite_pdfs(cut_pieces, clean_path)
     print(f"  Created: {clean_path}")
 
     # Write .sh script
-    sh_path = write_sh_script(output_dir, citation_key)
+    sh_path = write_sh_script(output_dir, citation_key, models=models)
     print(f"  Created: {sh_path}")
 
     # Write _meta.json with SI boundary info
@@ -438,9 +462,26 @@ def main():
         action="store_true",
         help="Only download PDFs, skip cleaning",
     )
+    parser.add_argument(
+        "--group-id",
+        help="Zotero group library ID (overrides ZOTERO_LIBRARY_ID/TYPE env)",
+    )
+    parser.add_argument(
+        "--models",
+        help="Swanki Hydra models group to bake into generated .sh (e.g. fish_speech_audrey)",
+    )
     args = parser.parse_args()
 
-    config = ZoteroConfig(library_id=ZOTERO_LIBRARY_ID, api_key=ZOTERO_API_KEY)
+    if args.group_id:
+        config = ZoteroConfig(
+            library_id=args.group_id, api_key=ZOTERO_API_KEY, library_type="group"
+        )
+    else:
+        config = ZoteroConfig(
+            library_id=ZOTERO_LIBRARY_ID,
+            api_key=ZOTERO_API_KEY,
+            library_type=ZOTERO_LIBRARY_TYPE,
+        )
     zot = connect(config)
 
     for key in args.keys:
@@ -449,7 +490,7 @@ def main():
         download_pdfs(zot, key, output_dir)
 
         if not args.download_only:
-            result = clean_pdf(output_dir, key)
+            result = clean_pdf(output_dir, key, models=args.models)
             method = "LLM" if result.used_llm else "regex"
             ranges_str = ", ".join(f"{s+1}-{e}" for s, e in result.keep_ranges)
             print(
