@@ -139,6 +139,20 @@ def extract_audio(
             target = target_dir / Path(name).name
             if target.exists():
                 continue
+            # Republished audio gets a fresh timestamp+hash. Without removing
+            # the prior file ABS treats both as separate chapters of the same
+            # book. One (key, audio_type) tuple should map to one mp3.
+            for stale in target_dir.glob("*.mp3"):
+                if stale.name == target.name:
+                    continue
+                sm = MP3_PATTERN.match(stale.name)
+                if (
+                    sm
+                    and sm.group("key") == m.group("key")
+                    and sm.group("type") == audio_type
+                ):
+                    stale.unlink()
+                    print(f"  - {stale.relative_to(dest_root.parent)} (replaced)")
             target.write_bytes(zf.read(name))
             print(f"  + {target.relative_to(dest_root.parent)}")
             count += 1

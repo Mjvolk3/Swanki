@@ -15,3 +15,8 @@ created: 1776884900886
 - [x] Wrote `republish_fixed_lectures.sh` to orchestrate re-TTS → Zotero upload → ABS cleanup → abs_refresh as a single fix flow [[scripts.republish_fixed_lectures#20260422---orchestrate-the-duplicate-opener-fix-end-to-end]]
 - [x] Wrote `publish_regen_to_abs.sh` as the Zotero-backed publish path for already-generated versioned audio [[scripts.publish_regen_to_abs#20260422---publish-already-generated-versioned-audio-via-the-zoteroabs-path]]
 - [x] Added `abs_clean_stale_chapters.py` and wired it into `abs_refresh.sh` as step 5/6 so stale chapter JSON is cleared whenever a book's audioFiles no longer match its chapter titles [[scripts.abs_clean_stale_chapters#20260422---initial-version]] [[scripts.abs_refresh#20260422---added-stale-chapter-cleanup-as-step-56]]
+
+## 2026.04.25
+
+- [x] Fixed `swanki_abs_sync` so a republished paper's new mp3 evicts the prior `(key, audio_type)` file in the same dir, eliminating phantom ABS chapters from stacked timestamped versions [[scripts.swanki_abs_sync#20260425---replace-stale-per-paper-mp3s-on-republish]]
+- [ ] Plan: solution-manual mode for problem-set PDFs (Schaum's, Bishop) — deterministic enumeration, problem-solution pairing, cross-chapter reference resolution, coverage audit, separate `<key>-problem-set.apkg` deck [[plan.solution-manual-mode-for-problem-set-pdfs.2026.04.25]]
