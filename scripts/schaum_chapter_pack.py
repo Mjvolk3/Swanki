@@ -4,14 +4,23 @@ scripts/schaum_chapter_pack.py
 https://github.com/Mjvolk3/Swanki/tree/main/scripts/schaum_chapter_pack.py
 
 Preprocess a Schaum's-style book by chopping one chapter's pages and the
-back-of-book answer key region, concatenating into a single PDF for
-solution_manual mode.
+specific back-of-book pages that contain THAT chapter's answer key, then
+concatenating into a single PDF for solution_manual mode.
+
+The --answer-key-pages range should be the SMALLEST range covering this
+chapter's answers, NOT the entire back-of-book region. Other chapters' answers
+that happen to share the same page are tolerated (the regex pairer keys on
+`^Chapter N` and ignores other-chapter blocks), but including many extra pages
+inflates OCR cost and bloats the LLM context window for no benefit.
+
+For Schaum's Microbiology (Alcamo, 2nd ed.), answers per chapter fit on a
+fraction of a single page; pass `--answer-key-pages 328-328` for Ch1, etc.
 
 Usage:
     python scripts/schaum_chapter_pack.py \\
         --source /scratch/alcamoSchaumsOutlineMicrobiology2010_clean.pdf \\
         --chapter-pages 8-18 \\
-        --answer-key-pages 328-336 \\
+        --answer-key-pages 328-328 \\
         --output /scratch/alcamo_CH01_packed.pdf
 """
 
