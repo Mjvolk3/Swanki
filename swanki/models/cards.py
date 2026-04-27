@@ -701,6 +701,21 @@ class PlainCard(BaseModel):
     audio_back_transcript: str | None = Field(
         None, description="Generated transcript for back audio"
     )
+    # Subtype discriminator. Defaults preserve existing behavior; cloze/image are
+    # still inferred from content. Solution-manual mode sets explicit values for
+    # problem_main / subproblem / problem_overview / full_solution.
+    card_subtype: Literal[
+        "regular",
+        "cloze",
+        "image",
+        "problem_main",
+        "subproblem",
+        "problem_overview",
+        "full_solution",
+    ] = Field(
+        default="regular",
+        description="Card subtype for downstream styling and length policy.",
+    )
 
     @field_validator("tags", mode="before")
     def validate_tags(cls, v):

@@ -1,0 +1,25 @@
+defaults:
+  - default
+  - _self_
+
+processing:
+  # solution_manual override path bypasses the segmenter; problem-set logic
+  # operates per-problem via regex enumeration.
+  segmentation: none
+  image_cards:
+    enabled: false
+
+solution_manual:
+  # Optional list of paths to chapter-index.yaml artifacts from prior chapter
+  # runs. When set, cross-chapter equation/figure/theorem refs are inlined.
+  chapter_indexes: []
+  # Heuristic threshold above which an overview card is added (chars).
+  long_problem_chars: 4000
+  # Reserved for future LLM batching; currently 1 problem per call.
+  batch_size: 5
+  # Phase 1: keep off until full-solution gap-filling provenance is validated.
+  enable_full_solution_cards: false
+  # Phase 1: heuristic-only card-plan classification.
+  enable_llm_classifier: false
+  # Hard-fail if any problem is unsolved unless explicitly overridden.
+  allow_unsolved: false

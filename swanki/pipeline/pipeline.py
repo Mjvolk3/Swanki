@@ -281,6 +281,31 @@ class Pipeline:
             all_cards: list[PlainCard] = []
             outputs: dict[str, Path] = {}
             self.citation_key = effective_key
+        elif mode == "solution_manual":
+            # Problem-set explicit override: treat the entire input as a single
+            # problem-set section. Bypasses the (future) classifier and runs
+            # the problem-set pipeline whole-document.
+            from .problem_set import run_solution_manual_override
+
+            logger.info("Running in solution_manual mode (whole-document override)")
+            self.citation_key = effective_key
+            self.state.current_stage = "solution_manual"
+            all_cards, provenance_log = run_solution_manual_override(
+                self, cleaned_files, doc_summary
+            )
+            self.state.cards_generated = len(all_cards)
+            self.state.current_stage = "output_generation"
+            outputs = self.generate_outputs(
+                all_cards, doc_summary, self.output_base
+            )
+            if provenance_log.entries:
+                import yaml as _yaml
+
+                prov_path = self.output_base / "provenance.yaml"
+                prov_path.write_text(
+                    _yaml.safe_dump(provenance_log.model_dump(), sort_keys=False)
+                )
+                outputs["provenance"] = prov_path
         else:
             pipeline_config = self.config.get("pipeline", {})
             processing_config = pipeline_config.get("processing", {})
@@ -423,7 +448,7 @@ class Pipeline:
                 else self.citation_key
             )
             deck_name = self.format_deck_name(deck_template, deck_name_value)
-            apkg_path = self.output_base / f"{self.citation_key}.apkg"
+            apkg_path = self.output_base / self._apkg_filename()
             exporter = ApkgExporter(deck_name)
             exporter.export_from_file(outputs["cards_audio"], apkg_path)
             outputs["apkg"] = apkg_path
@@ -1767,7 +1792,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 else self.citation_key
             )
             deck_name = self.format_deck_name(deck_template, deck_name_value)
-            apkg_path = output_dir / f"{self.citation_key}.apkg"
+            apkg_path = output_dir / self._apkg_filename()
             exporter = ApkgExporter(deck_name)
             exporter.export_from_file(plain_path, apkg_path)
             outputs["apkg"] = apkg_path
@@ -2203,6 +2228,26 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                         f.write(f"- {tf.name}\n")
 
                 print(f"Written transcript summary: {summary_path.name}")
+
+    def _apkg_filename(self) -> str:
+        """Compute the .apkg filename for this run.
+
+        Uses ``audio_prefix`` (which equals ``content_key`` when set, else
+        ``citation_key``) as the base and appends ``apkg_filename_suffix``
+        from the output config (default empty for backward compatibility).
+        Solution-manual mode override sets the suffix to ``-problem-set``.
+
+        Returns:
+            Filename like ``"<key>.apkg"`` or ``"<key>-problem-set.apkg"``.
+        """
+        output_config = self.config.get("output", {}).get("output", {})
+        suffix = output_config.get("apkg_filename_suffix", "")
+        base = (
+            self.audio_prefix
+            if hasattr(self, "audio_prefix")
+            else self.citation_key
+        )
+        return f"{base}{suffix}.apkg"
 
     def format_deck_name(self, template: str, deck_name: str) -> str:
         """Format deck name template with variables.

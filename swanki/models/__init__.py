@@ -22,6 +22,24 @@ from .cards import (
 )
 from .document import DocumentSummary, ImageSummary
 from .pipeline import ProcessingState
+from .problem_set import (
+    CardPlan,
+    CardPlanResponse,
+    CardSubtype,
+    PairingResult,
+    ProblemCardBatchResponse,
+    ProblemEnumerationResponse,
+    ProblemLocation,
+    ProblemPairing,
+    ProblemPairingResponse,
+    ProblemPart,
+    ProblemProvenance,
+    ProblemSubtype,
+    ProblemTag,
+    ProblemUnit,
+    ProvenanceLog,
+    ProvenanceSpan,
+)
 
 __all__ = [
     "PlainCard",
@@ -38,4 +56,21 @@ __all__ = [
     "ImageSummary",
     "AudioTranscript",
     "ProcessingState",
+    # Problem-set models
+    "CardPlan",
+    "CardPlanResponse",
+    "CardSubtype",
+    "PairingResult",
+    "ProblemCardBatchResponse",
+    "ProblemEnumerationResponse",
+    "ProblemLocation",
+    "ProblemPairing",
+    "ProblemPairingResponse",
+    "ProblemPart",
+    "ProblemProvenance",
+    "ProblemSubtype",
+    "ProblemTag",
+    "ProblemUnit",
+    "ProvenanceLog",
+    "ProvenanceSpan",
 ]

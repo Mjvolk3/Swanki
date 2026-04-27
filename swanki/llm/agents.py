@@ -15,6 +15,12 @@ from ..models.cards import (
     LectureTranscriptFeedback,
 )
 from ..models.document import DocumentSummary
+from ..models.problem_set import (
+    CardPlanResponse,
+    ProblemCardBatchResponse,
+    ProblemEnumerationResponse,
+    ProblemPairingResponse,
+)
 
 # ── Structured-output agents ───────────────────────────────────────────
 document_summary_agent: Agent[None, DocumentSummary] = Agent(
@@ -31,6 +37,20 @@ audio_feedback_agent: Agent[None, AudioTranscriptFeedback] = Agent(
 )
 lecture_critic_agent: Agent[None, LectureTranscriptFeedback] = Agent(
     output_type=LectureTranscriptFeedback, retries=3
+)
+
+# ── Solution-manual mode agents ────────────────────────────────────────
+problem_enumeration_agent: Agent[None, ProblemEnumerationResponse] = Agent(
+    output_type=ProblemEnumerationResponse, retries=3
+)
+problem_pairing_agent: Agent[None, ProblemPairingResponse] = Agent(
+    output_type=ProblemPairingResponse, retries=2
+)
+card_plan_classifier_agent: Agent[None, CardPlanResponse] = Agent(
+    output_type=CardPlanResponse, retries=2
+)
+problem_card_gen_agent: Agent[None, ProblemCardBatchResponse] = Agent(
+    output_type=ProblemCardBatchResponse, retries=3
 )
 
 # ── Raw-text agent (shared across all plain-text calls) ───────────────

@@ -1,0 +1,66 @@
+defaults:
+  - default
+  - _self_
+
+prompts:
+  solution_manual:
+    section_classifier: |-
+      You receive a sample of cleaned markdown from a textbook chapter PDF. Classify the document
+      into a sequence of contiguous ContentSections with kind in {main_content, review_exercises,
+      front_matter, back_matter}.
+
+      - main_content: chapter body that teaches concepts. Even if it contains numbered Q&A
+        ("1.1 What is X? Answer: ..."), it counts as main_content because it IS the chapter.
+        For these sections, set overlap_density in [0,1] based on what fraction is problem-shaped.
+      - review_exercises: end-of-chapter sections labeled Multiple Choice, Matching, True/False,
+        Completion, Review Questions, Problems, Exercises, Practice — i.e., assessment material
+        with paired or appended solutions. Set overlap_density=1.0.
+      - front_matter: Copyright, Preface, Table of Contents, Dedication.
+      - back_matter: Index, Glossary, Bibliography UNLESS the back-matter contains an
+        "Answers to Review Questions" / "Solutions" block, in which case re-classify that span
+        as review_exercises and set its paired_answer_section to the index of the corresponding
+        question section (matched by chapter number).
+
+      Cover every page. Do not invent sections. Set confidence appropriately.
+    main_with_overlap_instruction: |-
+      Note: this content includes numbered example questions or theory-problem Q&A blocks.
+      Treat them as illustrative examples, NOT as content to memorize verbatim. Extract the
+      underlying CONCEPTS, principles, definitions, and mechanisms being taught through the
+      examples. Do NOT generate cards that restate the example questions. Generate
+      concept-focused cards that a student would benefit from regardless of having seen the
+      specific examples.
+    problem_enumeration: |-
+      You receive cleaned markdown from a textbook chapter (problems + solutions). List every
+      numbered problem with its canonical book ID, subtype, and statement. Subtypes: theory_problem,
+      multiple_choice, matching, true_false, completion. Preserve the book's numbering exactly
+      (e.g. '1.7'). For Multiple-Choice items without book-level IDs, synthesize 'MC-{n}'.
+      Do not invent problems. Do not skip problems. Do not generate solutions.
+    problem_pairing: |-
+      You receive a list of enumerated problems (each with id and statement) and a set of text
+      spans from the document's review_exercises pages that did NOT match any explicit
+      "Solution N.M" marker via regex. For each problem still missing a solution, find the span
+      whose content answers it and return a ProblemLocation entry with role=solution.
+      Match by content (the solution should derive or compute what the problem asks for), not
+      by position. If no span matches a problem, omit it from your output — do NOT fabricate
+      a solution. The pipeline's coverage audit will surface the gap.
+    problem_card_gen: |-
+      You receive one problem (statement + solution, with cross-references already inlined) and a
+      CardPlan describing exactly how many cards to emit. Generate exactly the cards specified
+      with the requested card_subtype values in order.
+
+      Each card must be self-contained: every referenced equation, theorem, or figure is already
+      inlined in the statement/solution text — do NOT add bare references like "see equation (1.2)".
+      Carry book-numbering as a label on the front ("Problem 1.7: ...") and as a tag (see required tags).
+      Respect the 500-char limit on every back text.
+
+      For full_solution cards (when requested), populate provenance_entries with one
+      ProblemProvenance whose spans annotate the back text: each span has origin: copy
+      (with source_ref) or origin: generated. Spans must concatenate (in order) to the
+      back.text exactly.
+
+      Set card_subtype on every emitted card to the requested value (problem_main, subproblem,
+      problem_overview, or full_solution).
+    card_plan_classifier: |-
+      You receive one problem unit. Decide n_cards (1-5), which subproblem labels to expand,
+      whether to include an overview card, and whether to include a full_solution card with
+      gap-filling. Default to the heuristic in the prompt unless ambiguity is high.

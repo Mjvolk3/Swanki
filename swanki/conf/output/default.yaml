@@ -8,3 +8,7 @@ output:
   organize_by_type: true
   create_anki_deck: true
   tag_format: slugified
+  # Suffix appended to the .apkg filename. Default empty preserves existing
+  # behavior. Solution-manual mode override uses "-problem-set" via the
+  # output=problem_set preset.
+  apkg_filename_suffix: ""
