@@ -12,9 +12,13 @@ multiple tracks, and doesn't re-derive them when the file set changes).
 Prologue then shows phantom chapters pointing at deleted tracks.
 
 Rule (stable across regens that keep track counts the same but change
-timestamps): every chapter title must match the stem of an audioFile
-currently on the book. If any chapter title is absent from the current
-audioFiles, clear the chapters array.
+timestamps): every chapter title must either (a) exactly match the stem of
+an audioFile currently on the book, or (b) be a prefix of one followed by
+``-`` (the audio-type / timestamp / hash suffix that swanki appends).
+The prefix form lets manually-cleaned titles like
+``hammingArtDoingScience2020_01_orientation`` survive cron cycles even
+though the underlying file is named with a ``-lecture-20260428T1748-…``
+suffix appended. If any chapter title fails both checks, clear the array.
 
 Run via the ABS API so in-memory state is updated too (a direct SQLite
 write would leave ABS serving stale in-memory data until restart).
@@ -73,8 +77,19 @@ def find_books_with_stale_chapters(db_path: str) -> list[tuple[str, str, str]]:
         current_stems = {
             _stem(af.get("metadata", {}).get("filename", "")) for af in audio_files
         }
-        chapter_titles = {ch.get("title", "") for ch in chapters}
-        if not chapter_titles.issubset(current_stems):
+        chapter_titles = {ch.get("title", "") for ch in chapters if ch.get("title")}
+
+        def _valid(title: str) -> bool:
+            # Exact match (legacy filename-derived titles) OR
+            # prefix-before-the-type-suffix match (manually-cleaned titles
+            # where the swanki ``-{summary,reading,lecture}-<ts>-<hash>``
+            # suffix has been stripped).
+            return any(
+                stem == title or stem.startswith(f"{title}-")
+                for stem in current_stems
+            )
+
+        if not all(_valid(t) for t in chapter_titles):
             stale.append((row["li_id"], row["book_id"], row["title"]))
     return stale
 

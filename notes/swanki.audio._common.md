@@ -73,3 +73,38 @@ Replaced 200ms cross-fade between TTS chunks with direct concatenation, letting 
 - **Units**: numeric-adjacent `h`/`s`/`min`/`ms`/`bp`/`kb`/`Mb`/`GB`/`TB` expand to full words; acronym units like `CPU`/`GPU` stay as acronyms.
 - **Version numbers**: `NCCL 2.10.3` → "N C C L version 2.10.3" — prefix "version" and keep the dotted sequence intact.
 - **Bare Greek in prose**: covers the common case where a figure caption or inline math loses its delimiters after markdown conversion, leaving unicode Greek letters floating in prose.
+
+## 2026.04.26 - Sentence-boundary pacing and Fish Speech punctuation/concat fixes
+
+Three independent fixes targeting Fish Speech S2-Pro pacing and pronunciation. Fish is fully tag-driven for pauses (newlines aren't respected), so previous heuristics that relied on `\n\n` paragraph breaks produced lectures that "blazed through" any LLM output emitted as one long paragraph.
+
+- `add_tts_pauses`: when no paragraph breaks exist, inject `[short pause]` every third sentence boundary (`(?<=[.!?])(?=\s+[A-Z])`). Restores lecture cadence without depending on LLM formatting.
+- `append_chunk_pause`: chunk-end tag changed from `[long pause]` to `[pause]`. Fish was rendering `[long pause]` as an audible breath/sigh at every chunk concatenation point; `[pause]` is reliably silent. Real silence between chunks is now supplied deterministically by the combine helper.
+- `combine_audio_with_section_pauses` gains two parameters:
+  - `chunk_tail_trim_ms` — strip this many ms from the end of each chunk before concat (clip residual tag artifacts without cutting speech; lecture path uses 100 ms for Fish).
+  - `chunk_pause_ms` — insert real `AudioSegment.silent()` gap between chunks within a section (lecture path uses 300 ms for Fish).
+- New `_normalize_fish_speech_punct(text)` folds Unicode punctuation into ASCII before TTS: em-dash to comma+space, en-dash/minus to hyphen, curly quotes to straight, ellipsis to three periods, NBSP to space. Wired into `_tts_fish_speech` after SSML stripping. Fish's tokenizer was otherwise garbling these characters or dropping them silently.
+
+## 2026.04.30 - Silence-aware trim, gain match, and crossfade co-existence
+
+Three independent fixes to `combine_audio_with_section_pauses`, all driven by Hamming-book listener bookmarks reporting chunk-boundary artifacts (volume jumps, sigh between chunks, sentences crashing together, last syllable getting clipped). All three preserve intra-chunk dynamics — no compression, no flattening — and target only the seams.
+
+### Silence-aware trim replaces blind tail cut
+
+The blind `seg = seg[:len(seg) - chunk_tail_trim_ms]` cut was risky: if Fish rendered speech in the trim region, the trim chopped off the last word's decay tail. Replaced with a `pydub.silence.detect_silence` scan over the last `(chunk_tail_trim_ms + 200)` ms of the chunk:
+
+- `silence_thresh = max(seg.dBFS - 16, -50.0)` — relative to chunk's own mean, so quiet chunks aren't over-trimmed.
+- `min_silence_len = 80` — short enough to detect natural inter-word silence, long enough to ignore brief pops.
+- `trailing` = silences whose end touches the scan window's end (within 30 ms tolerance).
+- If no trailing silence is detected (chunk ends mid-speech), the chunk is left intact — no blind trim.
+- If trailing silence is detected, we cut **inside** that silence with a `tail_buffer_ms = 350` post-speech buffer. This was tuned over v7-v9: 0 ms (cut at speech-silence transition) felt clipped, 150 ms still sounded clipped to the listener even though speech wasn't being cut, 350 ms gives enough room that no chunk is perceived as truncated. Fish's sigh-then-silence tag artifact still gets eaten when a chunk ends with one because the 350 ms buffer lands inside the silence portion before the silence ends.
+
+Side effect: `chunk_tail_trim_ms` is now effectively a **scan-window** parameter (how far back to look for silence) rather than a guaranteed cut amount. Net trim varies per-chunk; ranges from "no trim" (speech to end) to "much more than `chunk_tail_trim_ms`" (long trailing silence + sigh).
+
+### Per-chunk RMS gain match
+
+`gain_match_target_dbfs` parameter (None disables, default None — preserves prior behavior for non-Fish callers). When set, each chunk + bookend is shifted by `(target - seg.dBFS)` so all components land at the same mean dBFS. Empirically the Hamming Fish output drifted ~2.5 dB chunk-to-chunk and bookends were 4-6 dB hotter than chunks. The shift is a single multiplicative scalar — pure gain, no compression, no peak limiting — so emphasized syllables stay loud relative to their surroundings within each chunk. Lecture path uses `-25.0` as the target (close to the Fish output's mean); silent segments (`dBFS == -inf`) skip the math.
+
+### Crossfade and chunk_pause_ms now stack
+
+Old code skipped `chunk_pause_ms` insertion when `chunk_crossfade_ms > 0` (the `if chunk_pause_ms > 0 and chunk_crossfade_ms == 0` guard). Removed the guard. Now both apply: silence is inserted first, then the next chunk crossfades into the trailing silence. Net effect is a smooth fade-in of the next chunk over the existing inter-chunk gap — addresses listener complaint about "abrupt prosody jump" at chunk transitions. Lecture path uses `chunk_pause_ms=700` + `chunk_crossfade_ms=50` together.

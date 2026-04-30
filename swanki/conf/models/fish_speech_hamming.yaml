@@ -1,0 +1,14 @@
+models:
+  llm:
+    provider: openai
+    model: gpt-5.4-2026-03-05
+    temperature: 0.7
+    max_retries: 3
+  tts:
+    provider: fish_speech
+    server_url: http://localhost:8080
+    reference_id: hamming-20260428T1135-science-vs-engineering
+    reference_audio_path: /scratch/projects/torchcell-scratch/Swanki_Models/voice_refs/hamming/clips/20260428T1135-science-vs-engineering/denoised.wav
+    reference_text: "Now I need to discus science versus engineering. science, if you are doing it, you shouldn't know what you're doing. If you know what you're doing you shouldn't be doing it. Not in science because science is supposed to be exploration of what you don't know. Engineering you shouldn't be doing it unless you do know what you are doing. Well nothing is pure, science involves a great deal of engineering and engineering involves great deal of new material, so its a great blend."
+    temperature: 0.8
+    format: mp3

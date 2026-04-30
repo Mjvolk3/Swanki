@@ -100,3 +100,45 @@ The ratio-of-source budget was producing too-short lectures for small papers (me
 - New `_strip_duplicate_openers(transcript)` helper, invoked right after `_refine_transcript` returns. Scans for multiple occurrences of `"Today we'll cover"` (both straight and smart apostrophe variants).
 - Two modes: if the second occurrence is followed by a `---SECTION_BREAK---` and substantial content (>100 words) after it, excise just the restart block (last-period-before-duplicate to end-of-trailing-break), preserving downstream body sections. Otherwise the restart runs to end-of-transcript → truncate at the last sentence boundary before the duplicate.
 - Discovered because thornburg v2 and zvyagin v6 both produced transcripts ending with a second opening hook + roadmap + body; bookmark from Prologue pinpointed "At the conclusion it's talking about what we are going to do as if back to the introduction". Transcripts for both papers were hand-fixed and re-TTS'd via `scripts/retts_cleaned_transcripts.py`.
+
+## 2026.04.26 - Safety-refusal retry, Fish-tag whitelist, deterministic chunk gaps
+
+OpenAI's biology-content safety filter was rejecting whole sections (genomic LMs adjacent to viral surveillance), leaving silent gaps in the lecture. The Fish-tag policy in the critic was also too strict: it flagged every bracketed token, blocking the LLM from emitting expressive prosody markers a great-courses professor would use. Three changes:
+
+- New module-level `_gen_with_safety_retry(...)` wraps each `text_agent.run_sync` with up to two reprompts that prepend an explicit educational-context preamble. Used in both `_validate_lecture_section` and the single-shot transcript generator. On non-safety errors it short-circuits and logs as before.
+- `combine_audio_with_section_pauses` is invoked with `chunk_tail_trim_ms=100` and `chunk_pause_ms=300` for Fish (else 0). Replaces the prior approach of letting Fish render a `[long pause]` tag at chunk ends — that produced the sigh/breath artifacts users were bookmarking.
+- Critique rule 8 rewritten to whitelist a curated professorial tag vocabulary — `[pause]`, `[short pause]`, `[long pause]` (section boundaries only), `[emphasis]`, `[excited]`, `[delight]`, `[gasp]`, `[laughing tone]`, `[chuckle]`, `[amused]`, `[thoughtful]`, `[curious]`, `[serious]`, `[sincere]` — and explicitly forbid breath/throat-noise tags (`[inhale]`, `[exhale]`, `[sigh]`, `[clearing throat]`, `[tsk]`, `[panting]`, `[moaning]`) plus out-of-register emotion tags (`[whisper]`, `[shouting]`, `[sad]`, `[angry]`, `[anxious]`, etc.).
+
+Companion change in `swanki/conf/prompts/default.yaml` rule 12 mirrors the whitelist on the generator side and tells the model to use semantic tags sparingly (≤10 per chapter), with the deterministic injector handling structural pauses. New rule 13 enforces faithfulness to the source paper's emphasis (no extrapolating into tangential public-health framing when the paper is methods/compute).
+
+## 2026.04.30 - Boundary-fix bundle and first-person book voice critic patches
+
+Hamming-book listener feedback drove three sets of changes targeting the same audio path. Pacing and prosody are now distinct knobs from the writer prompt, and the critic+refine loop no longer strips the author-voice phrasing the writer was asked to produce.
+
+### Pacing knobs and concatenation overhauls
+
+Listener bookmarks on v3-v4 of the Hamming lectures: "pacing too fast", "sentences crash into each other", "loud volume jumps between chunks", "sigh artifact at chunk transitions", "cuts off mid-sentence". Mapped each complaint to a structural cause in `combine_audio_with_section_pauses`:
+
+- `chunk_pause_ms` 300 -> 700 ms — listeners report the 300 ms inter-chunk gap was perceptually nothing once their attention was engaged. 700 ms gives the lecturer voice room to breathe.
+- `lecture_pause` (section_pause_ms) 4000 -> 5000 ms — same direction, between sections rather than chunks.
+- `chunk_tail_trim_ms` 100 -> 250 ms blind cut **then** -> silence-aware trim with progressively bigger post-speech buffer (150 -> 350 ms over v8/v9 iterations). The 350 ms buffer ensures we never clip the trailing decay of a fricative or diphthong even when Fish renders speech right up to chunk-end. See [[swanki.audio._common#20260430---silence-aware-trim-gain-match-and-crossfade-co-existence]].
+- `chunk_crossfade_ms` 0 -> 50 ms passed through to combine. Was hardcoded zero; now wired through so the inter-chunk silence + leading audio of the next chunk crossfade smoothly instead of cutting hard. Pairs with the silence-buffer change.
+- `gain_match_target_dbfs=-25.0` for Fish — empirical chunk amplitude drift was ~2.5 dB across consecutive chunks (verified with `volumedetect`), and bookend mp3s landed 4-6 dB hotter than chunks. Pure constant-gain shift per chunk, no compression — preserves intra-chunk dynamics (Hamming's expressive emphasis stays loud relative to surrounding speech).
+
+### Critic and refiner now whitelist first-person voice
+
+The book voice writer prompt asks for first-person Hamming framing ("I think", "in my view", "we will see"), but the v2 lectures came back with zero "I" markers. Root cause: `_CRITIQUE_PROMPT` (line 1216) flagged "in our discussion" / "as we noted" / "as mentioned earlier" as forbidden meta-commentary, and `_REFINEMENT_TEMPLATE` (line 1295) instructed the refiner to "remove ALL meta-commentary" lumped together with format/medium phrases. The writer produced first-person; the refiner stripped it.
+
+Patched both prompts plus the local in-function `critique_prompt` (line 355):
+
+- Added a "DO NOT FLAG" preamble listing first-person speaker framings as **intentional author-voice** that must be preserved.
+- Removed conversational lecturer phrases ("in our discussion", "as we noted", "as mentioned earlier") from the meta-commentary blocklist. Kept truly format-pointing phrases ("In the text, an image shows", "for audio purposes").
+- Refiner's revision instruction 5 explicitly says "DO NOT remove first-person speaker framings — those are INTENTIONAL author-voice and must be preserved verbatim".
+- Critic check 2 reframed: "Parenthetical author-year citations" (still bad) **but** "DO keep collaborator names referenced naturally, like 'Shannon and I'" (now good).
+
+After this, ch01 v3 came back with 36 "I" markers and 6 "my", reading recognizably as Hamming. Subsequent iterations iterated on **structure** (the boundary-fix bundle above) rather than voice.
+
+### Companion changes
+
+`swanki/conf/prompts/book_voice.yaml` is a sibling config selectable via `prompts=book_voice +author="<name>"` — copies the full default.yaml schema (Hydra config groups don't merge) and overrides only `prompts.audio.lecture_system` to put the writer in first-person author voice. Hydra's `${author}` interpolation injects the speaker's name. The book_voice prompt also lifts `[long pause]` from "section boundaries only" to rhetorical turns, raises the semantic tag cap from ~10 to ~15-20 per chapter, and adds rules for storytelling connectives ("and then", "now here is the part I want you to see") and against splicing distinct source claims into one sentence.
+

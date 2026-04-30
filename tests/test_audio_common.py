@@ -12,6 +12,7 @@ import json
 from pydub import AudioSegment
 
 from swanki.audio._common import (
+    _normalize_fish_speech_punct,
     append_chunk_pause,
     chunk_text,
     clean_markdown_for_tts,
@@ -485,3 +486,25 @@ def test_restitch_from_chunks_missing_file_fails(tmp_path):
         assert "Chunk file missing" in str(e)
     else:
         raise AssertionError("Expected AssertionError for missing chunk file")
+
+
+# ---------------------------------------------------------------------------
+# _normalize_fish_speech_punct
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_fish_speech_punct_dashes():
+    text = "diseases\u2014such as tumors with type 1\u2013associated lesions."
+    out = _normalize_fish_speech_punct(text)
+    assert out == "diseases, such as tumors with type 1-associated lesions."
+
+
+def test_normalize_fish_speech_punct_quotes_and_ellipsis():
+    text = "the cell\u2019s ability \u201cto detour\u201d\u2026 continues"
+    out = _normalize_fish_speech_punct(text)
+    assert out == "the cell's ability \"to detour\"... continues"
+
+
+def test_normalize_fish_speech_punct_passthrough_ascii():
+    text = "plain ASCII - no changes needed."
+    assert _normalize_fish_speech_punct(text) == text

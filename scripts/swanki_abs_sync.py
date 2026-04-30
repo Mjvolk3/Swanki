@@ -100,19 +100,40 @@ def fetch_items(zot: zotero.Zotero, tag: str | None) -> list[dict]:
     return items
 
 
-def latest_zip(zot: zotero.Zotero, item_key: str) -> dict | None:
-    zips = []
+def latest_zips(zot: zotero.Zotero, item_key: str) -> list[dict]:
+    """Return one zip per distinct content prefix on the item — the newest of each.
+
+    A book item may carry multiple zips (one per chapter, with prefix like
+    ``{citation_key}_01-...`` and ``{citation_key}_02-...``). Earlier code
+    picked only the single newest zip across the item, which discarded all
+    but one chapter. Group by prefix, then keep the newest in each group.
+    """
+    by_prefix: dict[str, tuple[str, dict]] = {}
     for child in zot.children(item_key):
         name = child.get("data", {}).get("filename", "")
         if not name.endswith(".zip"):
             continue
         m = ZIP_PATTERN.match(name)
-        if m:
-            zips.append((m.group("ts"), child))
+        if not m:
+            continue
+        prefix = m.group("key")
+        ts = m.group("ts")
+        prev = by_prefix.get(prefix)
+        if prev is None or ts > prev[0]:
+            by_prefix[prefix] = (ts, child)
+    return [c for _, c in by_prefix.values()]
+
+
+def latest_zip(zot: zotero.Zotero, item_key: str) -> dict | None:
+    """Back-compat: newest zip (single) — defers to ``latest_zips`` and
+    returns the most recent if any exist."""
+    zips = latest_zips(zot, item_key)
     if not zips:
         return None
-    zips.sort(key=lambda e: e[0], reverse=True)
-    return zips[0][1]
+    return max(
+        zips,
+        key=lambda c: ZIP_PATTERN.match(c["data"]["filename"]).group("ts"),  # type: ignore[union-attr]
+    )
 
 
 def extract_audio(
@@ -183,11 +204,18 @@ def sync_projection(
         if not ckey:
             continue
         group = group_key(ckey, kind)
-        att = latest_zip(zot, item["key"])
-        if not att:
-            continue
-        content = zot.file(att["key"])
-        total += extract_audio(content, audiotypes, dest_root, kind, group)
+        for att in latest_zips(zot, item["key"]):
+            try:
+                content = zot.file(att["key"])
+            except Exception as e:
+                # Stale attachment metadata pointing to a missing file; skip
+                # it instead of aborting the whole sync.
+                print(
+                    f"  warn: skipping {att.get('data',{}).get('filename','?')} "
+                    f"(key={att.get('key','?')}): {e}"
+                )
+                continue
+            total += extract_audio(content, audiotypes, dest_root, kind, group)
     print(f"  extracted {total} new mp3(s)")
 
 

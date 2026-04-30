@@ -66,9 +66,22 @@ def add_tts_pauses(text: str, provider: str = "elevenlabs") -> str:
         text = re.sub(r":\s*\n", ":\n[short pause]\n", text)
         # Add pause after sentences ending with period followed by newline
         text = re.sub(r"\.\s*\n", ".\n[short pause]\n", text)
+        # Inject [short pause] every 3 sentences inside continuous prose so
+        # long single paragraphs (which Fish S2-Pro otherwise speaks without
+        # noticeable breath) still get lecture cadence. Newlines are not used
+        # by S2-Pro for pacing — every pause is tag-driven.
+        _sent_counter = [0]
+
+        def _inject_pause(_match: re.Match) -> str:
+            _sent_counter[0] += 1
+            if _sent_counter[0] % 3 == 0:
+                return " [short pause] "
+            return ""
+
+        text = re.sub(r"(?<=[.!?])(?=\s+[A-Z])", _inject_pause, text)
         # Collapse stacked tags
         text = re.sub(r"(\[pause\]\s*){2,}", "[pause]\n\n", text)
-        text = re.sub(r"(\[short pause\]\s*){2,}", "[short pause]\n", text)
+        text = re.sub(r"(\[short pause\]\s*){2,}", "[short pause] ", text)
     else:
         text = re.sub(r"\n\n+", '\n\n<break time="0.7s" />\n\n', text)
         text = re.sub(r":\s*\n", ':\n<break time="0.4s" />\n', text)
@@ -98,8 +111,11 @@ def append_chunk_pause(text: str, provider: str = "elevenlabs") -> str:
     """
     text = text.rstrip()
     if provider == "fish_speech":
-        if not text.endswith("[long pause]"):
-            text += " [long pause]"
+        # Fish renders [long pause] as an audible breath/sigh at chunk
+        # boundaries; use [pause] (reliable silence) and supply the rest of
+        # the chunk gap deterministically via combine_audio_with_section_pauses.
+        if not (text.endswith("[pause]") or text.endswith("[long pause]")):
+            text += " [pause]"
     else:
         # Any trailing self-closing SSML tag (commonly <break.../>) is treated
         # as an existing pause and not stacked. This is intentional.
@@ -207,6 +223,35 @@ def chunk_text_paragraphs(text: str, max_chars: int = 4500) -> list[str]:
 def _strip_ssml(text: str) -> str:
     """Remove SSML break tags that Fish Speech cannot handle."""
     return re.sub(r'<break[^>]*/?\s*>', '', text)
+
+
+_FISH_SPEECH_PUNCT_MAP = {
+    "\u2014": ", ",   # em dash → comma + space (reads as a natural pause)
+    "\u2013": "-",    # en dash → ASCII hyphen
+    "\u2212": "-",    # minus sign → ASCII hyphen
+    "\u2018": "'",    # left single quote
+    "\u2019": "'",    # right single quote / apostrophe
+    "\u201A": "'",    # single low-9 quote
+    "\u201B": "'",    # single high-reversed-9 quote
+    "\u201C": '"',    # left double quote
+    "\u201D": '"',    # right double quote
+    "\u201E": '"',    # double low-9 quote
+    "\u2026": "...",  # horizontal ellipsis
+    "\u00A0": " ",    # non-breaking space
+}
+
+
+def _normalize_fish_speech_punct(text: str) -> str:
+    """Fold Unicode punctuation into ASCII for Fish Speech TTS.
+
+    Fish Speech's tokenizer garbles Unicode dashes, curly quotes, and
+    ellipses rather than voicing them as pauses or apostrophes. Mapping
+    each to an ASCII equivalent before synthesis removes the garble
+    without changing perceived prosody.
+    """
+    for src, dst in _FISH_SPEECH_PUNCT_MAP.items():
+        text = text.replace(src, dst)
+    return text
 
 
 def _apply_speed(data: bytes, output_path: Path, speed: float) -> None:
@@ -361,6 +406,7 @@ def _tts_fish_speech(
 ) -> None:
     """Fish Speech S2 Pro TTS backend."""
     clean_text = _strip_ssml(text)
+    clean_text = _normalize_fish_speech_punct(clean_text)
 
     payload: dict = {
         "text": clean_text,
@@ -710,6 +756,9 @@ def combine_audio_with_section_pauses(
     bookend_start: Path | None = None,
     bookend_end: Path | None = None,
     bookend_pause_ms: int = 500,
+    chunk_tail_trim_ms: int = 0,
+    chunk_pause_ms: int = 0,
+    gain_match_target_dbfs: float | None = None,
 ) -> None:
     """Combine audio chunks grouped by section with real silence between sections.
 
@@ -721,30 +770,93 @@ def combine_audio_with_section_pauses(
         output: Path for the combined output file.
         section_pause_ms: Silence duration between sections.
         chunk_crossfade_ms: Crossfade duration between chunks within a section.
+            Combines with ``chunk_pause_ms``: when both are set, the silence is
+            inserted first and the next chunk crossfades into the trailing silence,
+            smoothing the join without bleeding speech.
         bookend_start: Optional start bookend audio file.
         bookend_end: Optional end bookend audio file.
         bookend_pause_ms: Silence after start bookend / before end bookend.
+        chunk_tail_trim_ms: Strip this many ms from the end of each chunk before
+            concatenation. Used to clip Fish Speech tag-rendering artifacts
+            (audible inhale/sigh that the [pause] tag renders as).
+        chunk_pause_ms: Deterministic silence inserted between chunks within a
+            section. Replaces relying on TTS-rendered ``[long pause]`` tags.
+        gain_match_target_dbfs: If set, each chunk + bookend is shifted by a
+            single gain scalar so its mean dBFS lands at the target. Pure gain,
+            no compression — preserves intra-chunk dynamics (Hamming's
+            expressive emphasis stays loud relative to surrounding speech).
+            Eliminates audible loudness jumps between consecutive chunks.
     """
     if not sections:
         logger.error("No sections provided to combine_audio_with_section_pauses")
         return
 
+    def _gain_match(seg: AudioSegment) -> AudioSegment:
+        if gain_match_target_dbfs is None:
+            return seg
+        # pydub returns -inf for silent segments; only normalize voiced audio
+        if seg.dBFS == float("-inf"):
+            return seg
+        delta = gain_match_target_dbfs - seg.dBFS
+        return seg + delta
+
+    def _load(path: Path) -> AudioSegment:
+        seg = AudioSegment.from_mp3(str(path))
+        if chunk_tail_trim_ms > 0 and len(seg) > chunk_tail_trim_ms + 200:
+            # Silence-aware trim: cut inside the trailing silence (NOT at its
+            # leading edge). Cutting right at the speech-silence transition
+            # makes the chunk-end sound clipped — the listener perceives the
+            # last syllable as truncated. We keep ~150 ms of post-speech
+            # silence as breathing room before the inter-chunk pause kicks in.
+            from pydub.silence import detect_silence
+
+            scan_window_ms = chunk_tail_trim_ms + 200
+            scan = seg[-scan_window_ms:]
+            silence_thresh = max(seg.dBFS - 16, -50.0)
+            silences = detect_silence(
+                scan, min_silence_len=80, silence_thresh=silence_thresh
+            )
+            # Trailing silence: a range whose end touches the end of the scan
+            # window (within a small tolerance).
+            trailing = [s for s in silences if s[1] >= scan_window_ms - 30]
+            if trailing:
+                silence_start_in_scan = trailing[-1][0]
+                # 350 ms of post-speech silence buffer. Listener feedback on v8
+                # (150 ms): still perceived as clipped at chunk boundaries even
+                # though no speech was actually being cut. The buffer needs to
+                # leave enough silence after the last syllable that the chunk
+                # never feels truncated. With this width, only chunks with
+                # genuinely long trailing silence get any trim at all.
+                tail_buffer_ms = 350
+                abs_cut = min(
+                    len(seg)
+                    - scan_window_ms
+                    + silence_start_in_scan
+                    + tail_buffer_ms,
+                    len(seg),
+                )
+                seg = seg[:abs_cut]
+            # else: chunk ends mid-speech — leave intact, no blind trim.
+        return _gain_match(seg)
+
     combined: AudioSegment | None = None
 
-    # Start bookend
+    # Start bookend (also gain-matched so it doesn't punch over the chunk level)
     if bookend_start and bookend_start.exists():
-        combined = AudioSegment.from_mp3(str(bookend_start))
+        combined = _gain_match(AudioSegment.from_mp3(str(bookend_start)))
         combined += AudioSegment.silent(duration=bookend_pause_ms)
 
     for sec_idx, section_chunks in enumerate(sections):
         if not section_chunks:
             continue
 
-        # Build section audio from chunks with crossfade
-        section_audio = AudioSegment.from_mp3(str(section_chunks[0]))
+        # Build section audio from chunks: silence first, then crossfade-append.
+        section_audio = _load(section_chunks[0])
         for chunk_path in section_chunks[1:]:
+            if chunk_pause_ms > 0:
+                section_audio += AudioSegment.silent(duration=chunk_pause_ms)
             section_audio = section_audio.append(
-                AudioSegment.from_mp3(str(chunk_path)), crossfade=chunk_crossfade_ms
+                _load(chunk_path), crossfade=chunk_crossfade_ms
             )
 
         # Append section with silence gap (except before first section)
@@ -761,7 +873,7 @@ def combine_audio_with_section_pauses(
     # End bookend
     if bookend_end and bookend_end.exists():
         combined += AudioSegment.silent(duration=bookend_pause_ms)
-        combined += AudioSegment.from_mp3(str(bookend_end))
+        combined += _gain_match(AudioSegment.from_mp3(str(bookend_end)))
 
     combined.export(str(output), format="mp3", bitrate="192k")
 

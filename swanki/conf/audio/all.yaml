@@ -6,6 +6,6 @@ audio:
   complementary_speed: 1.6
   summary_speed: 1.1
   reading_speed: 1.2
-  lecture_speed: 1.1
+  lecture_speed: 1.0
   format: mp3
   quality: high

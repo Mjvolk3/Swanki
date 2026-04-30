@@ -1,0 +1,14 @@
+models:
+  llm:
+    provider: openai
+    model: gpt-5.4-2026-03-05
+    temperature: 0.7
+    max_retries: 3
+  tts:
+    provider: fish_speech
+    server_url: http://localhost:8080
+    reference_id: bechtel-20260428T1813-circadian-and-energy
+    reference_audio_path: /scratch/projects/torchcell-scratch/Swanki_Models/voice_refs/bechtel/clips/20260428T1813-circadian-and-energy/denoised.wav
+    reference_text: "so i spent a long time in the circadian world, and one of the things that i will draw from that is the incredible importance of computational modeling in order to understand how mechaisms behave. I will then turn to some more recent work i have been doing on molecular motors and a stunning realization one day that i've been talking about mechanisms doing things for year and never asked well where's the energy that figures in the account."
+    temperature: 0.8
+    format: mp3
