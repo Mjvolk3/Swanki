@@ -421,6 +421,29 @@ def generate_cards_for_problem(
     )
     response: ProblemCardBatchResponse = result.output
 
+    # Stamp card_subtype from the plan, in order. The LLM can omit the field
+    # (it defaults to "regular" on PlainCard) and we need the audit to find
+    # the right subtypes — code knows the plan, so trust the plan, not the LLM.
+    expected_subtypes: list[str] = []
+    if plan.include_main:
+        expected_subtypes.append("problem_main")
+    expected_subtypes.extend(["subproblem"] * len(plan.subproblem_labels))
+    if plan.include_overview:
+        expected_subtypes.append("problem_overview")
+    if plan.include_full_solution:
+        expected_subtypes.append("full_solution")
+
+    for card, subtype in zip(response.cards, expected_subtypes, strict=False):
+        card.card_subtype = subtype  # type: ignore[assignment]
+
+    # Stamp the canonical problem tag too — required by audit Part 3.
+    canonical_tag = ProblemTag(
+        citation_key=citation_key, problem_id=problem.problem_id
+    ).render()
+    for card in response.cards:
+        if canonical_tag not in card.tags:
+            card.tags.append(canonical_tag)
+
     # Attach figure images to card backs (problem_main / problem_overview).
     for card in response.cards:
         if problem.referenced_figures and card.back.image_path is None:
@@ -537,6 +560,37 @@ def run_solution_manual_override(
         if prov is not None:
             provenance_entries.append(prov)
 
+    # Persist diagnostic artifacts BEFORE the audit so we have something to
+    # inspect when audit fails. Cards aren't yet rendered to .apkg-bound
+    # markdown; this is a debug dump of the LLM output.
+    output_base = pipeline.output_base
+    pairing_path = output_base / "problem-pairings.yaml"
+    pairing_path.write_text(
+        yaml.safe_dump(pairings.model_dump(), sort_keys=False)
+    )
+    logger.info(f"Wrote pairing artifact: {pairing_path}")
+
+    debug_path = output_base / "cards-debug.yaml"
+    debug_path.write_text(
+        yaml.safe_dump(
+            {
+                "n_cards": len(all_cards),
+                "subtype_counts": dict(Counter(c.card_subtype for c in all_cards)),
+                "cards": [
+                    {
+                        "front": c.front.text[:200],
+                        "back": c.back.text[:200],
+                        "tags": list(c.tags),
+                        "card_subtype": c.card_subtype,
+                    }
+                    for c in all_cards
+                ],
+            },
+            sort_keys=False,
+        )
+    )
+    logger.info(f"Wrote cards debug artifact: {debug_path}")
+
     audit_coverage(
         problems,
         pairings,
@@ -548,13 +602,5 @@ def run_solution_manual_override(
     provenance_log = ProvenanceLog(
         chapter_id=chapter_id, entries=provenance_entries
     )
-
-    # Persist pairing artifact for introspection.
-    output_base = pipeline.output_base
-    pairing_path = output_base / "problem-pairings.yaml"
-    pairing_path.write_text(
-        yaml.safe_dump(pairings.model_dump(), sort_keys=False)
-    )
-    logger.info(f"Wrote pairing artifact: {pairing_path}")
 
     return all_cards, provenance_log

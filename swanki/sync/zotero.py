@@ -19,9 +19,12 @@ from pyzotero import zotero
 
 logger = logging.getLogger(__name__)
 
-# Swanki output types to upload: (glob pattern, name template)
+# Swanki output types to upload: (glob pattern, name template).
+# The apkg pattern uses a wildcard so it matches both the legacy
+# `<key>.apkg` and the suffixed `<key>-problem-set.apkg` produced by
+# solution-manual mode (see Pipeline._apkg_filename).
 _OUTPUT_TYPES = [
-    ("{citation_key}.apkg", "{citation_key}-{timestamp}-{commit}.apkg"),
+    ("{citation_key}*.apkg", "{stem}-{timestamp}-{commit}.apkg"),
     ("{prefix}-lecture-audio.mp3", "{citation_key}-lecture-{timestamp}-{commit}.mp3"),
     ("{prefix}-summary-audio.mp3", "{citation_key}-summary-{timestamp}-{commit}.mp3"),
     ("{prefix}-reading-audio.mp3", "{citation_key}-reading-{timestamp}-{commit}.mp3"),
@@ -192,20 +195,25 @@ def sync_to_zotero(
 
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for source_pattern, name_template in _OUTPUT_TYPES:
-                source_name = source_pattern.format(
+                source_glob = source_pattern.format(
                     citation_key=file_key, prefix=audio_prefix
                 )
-                source_path = output_dir / source_name
-
-                if not source_path.exists():
-                    logger.debug(f"Skipping {source_name} (not found)")
+                # Glob to support patterns with `*` (e.g. apkg with optional
+                # filename suffix). For literal patterns, glob returns 0 or 1.
+                matches = sorted(output_dir.glob(source_glob))
+                if not matches:
+                    logger.debug(f"Skipping {source_glob} (no matches)")
                     continue
 
-                dest_name = name_template.format(
-                    citation_key=file_key, timestamp=timestamp, commit=commit
-                )
-                zf.write(source_path, dest_name)
-                packed.append(dest_name)
+                for source_path in matches:
+                    dest_name = name_template.format(
+                        citation_key=file_key,
+                        stem=source_path.stem,
+                        timestamp=timestamp,
+                        commit=commit,
+                    )
+                    zf.write(source_path, dest_name)
+                    packed.append(dest_name)
 
         if not packed:
             logger.warning("No files found to upload to Zotero")
