@@ -27,3 +27,7 @@ Added 4 new structured-output agents for [[swanki.pipeline.problem_set]]:
 
 All four response types live in [[swanki.models.problem_set]] (NOT in `pipeline/problem_set.py`) so this file's imports don't cycle back through the pipeline module.
 
+## 2026.04.26 - Section classifier agent for mode=full integrated routing
+
+Added `section_classifier_agent: Agent[None, ClassificationResult]` (retries=2). Used as a low-confidence fallback by [[swanki.pipeline.section_classifier]]'s `classify_sections()` when the heading-driven pass can't disambiguate (e.g. PDFs without clean `## Heading` anchors). Imports `ClassificationResult` from [[swanki.models.sections]] — same pattern as the problem-set agents.
+

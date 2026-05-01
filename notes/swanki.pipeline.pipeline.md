@@ -80,6 +80,15 @@ Centralized the two hard-coded `f"{self.citation_key}.apkg"` sites (lines 426 an
 
 The classifier-driven `mode=full` per-section routing described in the plan note ([[plan.solution-manual-mode-for-problem-set-pdfs.2026.04.25]]) is NOT yet wired — that's the follow-up batch. The current `mode=full` path is unchanged from prior behavior.
 
+## 2026.04.26 - Classifier-driven mode=full routing + audio source masking
+
+Wired the section-classifier path so a single PDF mixing prose chapter content and end-of-chapter problem sets routes appropriately:
+
+- Both `mode=full` and `mode=audio_only` now run [[swanki.pipeline.section_classifier#classify_sections]] before the mode dispatch. The output persists to `<output_base>/section-classification.yaml` for introspection.
+- `mode=full` body is rewritten to filter pages by kind: `main_content` files go through the existing segmentation + per-segment card-gen path (with image-card interleaving via translated original-page indices); `review_exercises` files route through [[swanki.pipeline.problem_set#run_solution_manual_override]] which handles enumeration, pairing, resolution, and audit. Cards from both streams merge into a single `all_cards` list (distinguished by tags). `provenance.yaml` is written when full-solution cards exist on either path.
+- `generate_audio()` widened: new `main_content_files: list[Path] | None = None` and `main_content_text: str | None = None` parameters. When the classifier provides them, lecture audio uses the filtered `main_content_files` and reading audio uses `main_content_text`, so review-exercise content (which reads terribly as a lecture) is excluded. Backward compatible — `mode=solution_manual` passes `None` and the audio paths fall back to all `cleaned_files` as before.
+- `mode=solution_manual` path unchanged: still bypasses the classifier and treats the whole document as a single problem-set unit.
+
 ## 2026.05.14 - Plumb tts.{preprocessor,chunking,postprocessor} sub-trees into tts_kwargs
 
 Load-bearing wiring fix for the Hamming audio-quality plan. The flat-listed `tts_kwargs` dict at lines 1880-1913 only forwarded five hand-named keys (`provider`, `server_url`, `reference_id`, `temperature`, `format`), so any nested sub-tree added under `models.tts` in YAML was silently dropped before reaching the audio modules. The Hamming plan added three nested sub-trees (`preprocessor`, `chunking`, `postprocessor`) that drive all the new behaviors — without this edit they had no effect.

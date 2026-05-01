@@ -275,6 +275,33 @@ class Pipeline:
         # Branch based on mode
         mode = self.config.get("mode", "full")
 
+        # Run the section classifier for full + audio_only (audio_only needs
+        # main_content_text for filtered lecture/reading sources).
+        # solution_manual mode bypasses the classifier (treats whole doc as
+        # review_exercises). The output is also persisted to
+        # <output_base>/section-classification.yaml for introspection.
+        main_content_text: str | None = None
+        if mode in {"full", "audio_only"}:
+            from .section_classifier import (
+                classify_sections,
+                filter_files_by_kind,
+                merge_main_content,
+                original_page_indices,
+            )
+
+            self.state.current_stage = "section_classification"
+            classification = classify_sections(
+                cleaned_files, self.config, self.output_base
+            )
+            logger.info(
+                f"Classifier ({classification.method}, conf={classification.confidence:.2f}): "
+                f"{len(classification.page_labels)} pages → "
+                f"{len(classification.sections)} sections"
+            )
+            main_content_text = merge_main_content(
+                cleaned_files, classification.page_labels
+            )
+
         if mode == "audio_only":
             # Skip card generation stages (5.5-8)
             logger.info("Running in audio_only mode — skipping card generation")
@@ -307,115 +334,163 @@ class Pipeline:
                 )
                 outputs["provenance"] = prov_path
         else:
+            # mode == "full" — classifier-driven dispatch. main_content sections
+            # route through the existing segment-based card-gen; review_exercises
+            # sections route through the problem-set pipeline. Cards merge into
+            # one all_cards list distinguished by tags.
+            self.citation_key = effective_key
             pipeline_config = self.config.get("pipeline", {})
             processing_config = pipeline_config.get("processing", {})
 
-            # 5.5. Segmentation (char mode recombines pages into uniform segments)
-            segmentation_mode = processing_config.get("segmentation", "page")
-
-            if segmentation_mode == "char":
-                self.state.current_stage = "segmentation"
-                char_config = processing_config.get("char_segmentation", {})
-                combined_text, page_offsets = combine_markdown_files(cleaned_files)
-                segment_tuples = split_into_segments(
-                    combined_text, char_config.get("target_chars", 2000)
-                )
-                segment_dir = self.output_base / "segments"
-                segment_files = write_segment_files(segment_tuples, segment_dir)
-                segment_to_pages = build_segment_to_page_map(
-                    page_offsets,
-                    [(s, e) for _, s, e in segment_tuples],
-                    len(cleaned_files),
-                )
-                text_card_files = segment_files
-            else:
-                text_card_files = cleaned_files
-                segment_to_pages = None
-
-            # 5.6. Estimate card count
-            estimated_cards = self.estimate_card_count(
-                text_card_files, image_summaries, processing_config
+            # Filter pages by section kind. Concept cards come from main_content
+            # only; problem-set cards come from review_exercises sections.
+            main_files = filter_files_by_kind(
+                cleaned_files, classification.page_labels, "main_content"
+            )
+            main_orig_idxs = original_page_indices(
+                classification.page_labels, "main_content"
+            )
+            review_files = filter_files_by_kind(
+                cleaned_files, classification.page_labels, "review_exercises"
+            )
+            logger.info(
+                f"mode=full routing: {len(main_files)} main_content pages, "
+                f"{len(review_files)} review_exercises pages"
             )
 
-            # Check if user confirmation is required
-            confirm_required = processing_config.get("confirm_before_generation", True)
-            if confirm_required:
-                logger.info(
-                    f"Proceeding with card generation (estimated: {estimated_cards} cards)"
-                )
-                response = (
-                    input(
-                        f"\nContinue with card generation? ({estimated_cards} cards estimated) [Y/n]: "
+            all_cards: list[PlainCard] = []
+
+            # ── main_content path: existing segment-driven card-gen ──
+            if main_files:
+                segmentation_mode = processing_config.get("segmentation", "page")
+                if segmentation_mode == "char":
+                    self.state.current_stage = "segmentation"
+                    char_config = processing_config.get("char_segmentation", {})
+                    combined_text, page_offsets = combine_markdown_files(main_files)
+                    segment_tuples = split_into_segments(
+                        combined_text, char_config.get("target_chars", 2000)
                     )
-                    .strip()
-                    .lower()
+                    segment_dir = self.output_base / "segments"
+                    segment_files = write_segment_files(
+                        segment_tuples, segment_dir
+                    )
+                    seg_to_filtered_pages = build_segment_to_page_map(
+                        page_offsets,
+                        [(s, e) for _, s, e in segment_tuples],
+                        len(main_files),
+                    )
+                    # Translate filtered page idx → original document page idx
+                    # so image_summaries[page_idx] resolves correctly.
+                    segment_to_pages = [
+                        [main_orig_idxs[fp] for fp in pages]
+                        for pages in seg_to_filtered_pages
+                    ]
+                    text_card_files = segment_files
+                else:
+                    text_card_files = main_files
+                    segment_to_pages = [
+                        [main_orig_idxs[i]] for i in range(len(main_files))
+                    ]
+
+                estimated_cards = self.estimate_card_count(
+                    text_card_files, image_summaries, processing_config
                 )
-                if response and response not in ["y", "yes", ""]:
-                    logger.info("Card generation cancelled by user")
-                    raise KeyboardInterrupt("User cancelled card generation")
-            else:
-                logger.info(
-                    f"Proceeding with card generation (estimated: {estimated_cards} cards)"
+
+                confirm_required = processing_config.get(
+                    "confirm_before_generation", True
                 )
+                if confirm_required:
+                    logger.info(
+                        f"Proceeding with card generation (estimated: {estimated_cards} cards)"
+                    )
+                    response = (
+                        input(
+                            f"\nContinue with card generation? ({estimated_cards} cards estimated) [Y/n]: "
+                        )
+                        .strip()
+                        .lower()
+                    )
+                    if response and response not in ["y", "yes", ""]:
+                        logger.info("Card generation cancelled by user")
+                        raise KeyboardInterrupt("User cancelled card generation")
+                else:
+                    logger.info(
+                        f"Proceeding with card generation (estimated: {estimated_cards} cards)"
+                    )
 
-            # 6. Generate cards with document-order interleaving
-            self.state.current_stage = "card_generation"
-            all_cards = []
+                self.state.current_stage = "card_generation"
+                image_config = processing_config.get("image_cards", {})
+                image_cards_enabled = image_config.get("enabled", True)
+                cards_per_seg = processing_config.get("cards_per_segment", 3)
 
-            # Get image card config
-            image_config = processing_config.get("image_cards", {})
-            image_cards_enabled = image_config.get("enabled", True)
-            cards_per_seg = processing_config.get("cards_per_segment", 3)
+                last_image_page = -1
+                for seg_idx, seg_file in enumerate(text_card_files):
+                    seg_cards = self._generate_cards_for_segment(
+                        seg_idx,
+                        text_card_files,
+                        doc_summary,
+                        context_radius=processing_config.get("context_radius", 1),
+                        num_cards=cards_per_seg,
+                    )
+                    all_cards.extend(seg_cards)
 
-            last_image_page = -1
-            for seg_idx, seg_file in enumerate(text_card_files):
-                # Text cards for this segment
-                seg_cards = self._generate_cards_for_segment(
-                    seg_idx,
-                    text_card_files,
-                    doc_summary,
-                    context_radius=processing_config.get("context_radius", 1),
-                    num_cards=cards_per_seg,
-                )
-                all_cards.extend(seg_cards)
-
-                # Image cards — interleaved in document order
-                if image_cards_enabled:
-                    if segment_to_pages is not None:
+                    if image_cards_enabled:
                         pages_for_seg = segment_to_pages[seg_idx]
-                    else:
-                        pages_for_seg = [seg_idx]
+                        for page_idx in pages_for_seg:
+                            if page_idx > last_image_page:
+                                page_image_cards = self._generate_image_cards_for_page(
+                                    cleaned_files[page_idx],
+                                    doc_summary,
+                                    image_summaries,
+                                    cards_per_image=image_config.get(
+                                        "cards_per_image", 3
+                                    ),
+                                    image_on_front=image_config.get(
+                                        "image_on_front", True
+                                    ),
+                                    image_on_back=image_config.get(
+                                        "image_on_back", True
+                                    ),
+                                    require_math=image_config.get(
+                                        "require_math_content", False
+                                    ),
+                                    placement_strategy=image_config.get(
+                                        "placement_strategy", "smart"
+                                    ),
+                                    front_back_ratio=image_config.get(
+                                        "front_back_ratio", 0.5
+                                    ),
+                                )
+                                all_cards.extend(page_image_cards)
+                                last_image_page = page_idx
 
-                    for page_idx in pages_for_seg:
-                        if page_idx > last_image_page:
-                            page_image_cards = self._generate_image_cards_for_page(
-                                cleaned_files[page_idx],
-                                doc_summary,
-                                image_summaries,
-                                cards_per_image=image_config.get("cards_per_image", 3),
-                                image_on_front=image_config.get("image_on_front", True),
-                                image_on_back=image_config.get("image_on_back", True),
-                                require_math=image_config.get(
-                                    "require_math_content", False
-                                ),
-                                placement_strategy=image_config.get(
-                                    "placement_strategy", "smart"
-                                ),
-                                front_back_ratio=image_config.get(
-                                    "front_back_ratio", 0.5
-                                ),
-                            )
-                            all_cards.extend(page_image_cards)
-                            last_image_page = page_idx
+            # ── review_exercises path: problem-set pipeline ──
+            provenance_log = None
+            if review_files:
+                from .problem_set import run_solution_manual_override
 
-            # 7. Store citation key for later use
-            self.citation_key = effective_key
+                logger.info(
+                    f"Routing {len(review_files)} review_exercises pages through problem-set pipeline"
+                )
+                self.state.current_stage = "problem_set"
+                problem_set_cards, provenance_log = run_solution_manual_override(
+                    self, review_files, doc_summary
+                )
+                all_cards.extend(problem_set_cards)
 
             self.state.cards_generated = len(all_cards)
 
             # 8. Generate outputs based on config
             self.state.current_stage = "output_generation"
             outputs = self.generate_outputs(all_cards, doc_summary, self.output_base)
+            if provenance_log is not None and provenance_log.entries:
+                import yaml as _yaml
+
+                prov_path = self.output_base / "provenance.yaml"
+                prov_path.write_text(
+                    _yaml.safe_dump(provenance_log.model_dump(), sort_keys=False)
+                )
+                outputs["provenance"] = prov_path
 
         # 9. Generate audio if configured
         audio_config = self.config.get("audio", {}).get("audio", {})
@@ -433,8 +508,23 @@ class Pipeline:
             )
         if any_audio:
             self.state.current_stage = "audio_generation"
+            # When the classifier ran (mode in {full, audio_only}) we have
+            # main_content_text + main_content_files for filtered lecture/reading.
+            # Otherwise (mode=solution_manual) leave them as None so the audio
+            # paths fall back to all cleaned_files.
+            main_content_files: list[Path] | None = None
+            if mode in {"full", "audio_only"}:
+                main_content_files = filter_files_by_kind(
+                    cleaned_files, classification.page_labels, "main_content"
+                )
             self.generate_audio(
-                all_cards, doc_summary, outputs, cleaned_files, image_summaries
+                all_cards,
+                doc_summary,
+                outputs,
+                cleaned_files,
+                image_summaries,
+                main_content_files=main_content_files,
+                main_content_text=main_content_text,
             )
 
         # 9b. Re-export .apkg with audio if audio cards were generated
@@ -1857,6 +1947,8 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         outputs: dict[str, Path],
         cleaned_files: list[Path],
         image_summaries: list[ImageSummary],
+        main_content_files: list[Path] | None = None,
+        main_content_text: str | None = None,
     ):
         """Generate audio files for various content types.
 
@@ -2082,8 +2174,13 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         # Generate reading audio (full document)
         if audio_config.get("generate_reading", False):
             logger.info("Generating reading audio...")
-            # Combine all cleaned markdown content
-            full_content = "\n\n".join([f.read_text() for f in cleaned_files])
+            # Filtered main_content (excludes review_exercises) when provided
+            # by the classifier dispatch; otherwise fall back to all pages.
+            full_content = (
+                main_content_text
+                if main_content_text is not None
+                else "\n\n".join([f.read_text() for f in cleaned_files])
+            )
             reading_audio_path = (
                 self.output_base / f"{self.audio_prefix}-reading-audio.mp3"
             )
@@ -2136,8 +2233,15 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 meta = json.loads(meta_path.read_text())
                 si_start_page = meta.get("si_start_page")
 
+            # Use main_content-only files when classifier dispatch supplied them.
+            lecture_source_files = (
+                main_content_files
+                if main_content_files is not None
+                else cleaned_files
+            )
+
             generate_lecture_audio(
-                markdown_files=cleaned_files,
+                markdown_files=lecture_source_files,
                 image_summaries=image_summary_strings,
                 output_path=lecture_audio_path,
                 elevenlabs_api_key=elevenlabs_api_key,

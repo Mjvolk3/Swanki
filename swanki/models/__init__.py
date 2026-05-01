@@ -40,6 +40,13 @@ from .problem_set import (
     ProvenanceLog,
     ProvenanceSpan,
 )
+from .sections import (
+    ClassificationResult,
+    ContentSection,
+    PageLabel,
+    SectionKind,
+    sections_from_page_labels,
+)
 
 __all__ = [
     "PlainCard",
@@ -73,4 +80,10 @@ __all__ = [
     "ProblemUnit",
     "ProvenanceLog",
     "ProvenanceSpan",
+    # Section classifier
+    "ClassificationResult",
+    "ContentSection",
+    "PageLabel",
+    "SectionKind",
+    "sections_from_page_labels",
 ]

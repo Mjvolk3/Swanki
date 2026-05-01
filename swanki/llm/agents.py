@@ -21,6 +21,7 @@ from ..models.problem_set import (
     ProblemEnumerationResponse,
     ProblemPairingResponse,
 )
+from ..models.sections import ClassificationResult
 
 # ── Structured-output agents ───────────────────────────────────────────
 document_summary_agent: Agent[None, DocumentSummary] = Agent(
@@ -40,6 +41,9 @@ lecture_critic_agent: Agent[None, LectureTranscriptFeedback] = Agent(
 )
 
 # ── Solution-manual mode agents ────────────────────────────────────────
+section_classifier_agent: Agent[None, ClassificationResult] = Agent(
+    output_type=ClassificationResult, retries=2
+)
 problem_enumeration_agent: Agent[None, ProblemEnumerationResponse] = Agent(
     output_type=ProblemEnumerationResponse, retries=3
 )

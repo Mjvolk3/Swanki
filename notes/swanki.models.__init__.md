@@ -14,3 +14,5 @@ Added package-level docstring. Sorted imports alphabetically and switched to dou
 
 Added 15 new public types from [[swanki.models.problem_set]] to the package surface (`CardPlan`, `CardPlanResponse`, `CardSubtype`, `PairingResult`, `ProblemCardBatchResponse`, `ProblemEnumerationResponse`, `ProblemLocation`, `ProblemPairing`, `ProblemPairingResponse`, `ProblemPart`, `ProblemProvenance`, `ProblemSubtype`, `ProblemTag`, `ProblemUnit`, `ProvenanceLog`, `ProvenanceSpan`).
 
+Added 5 more from [[swanki.models.sections]] for the section-classifier layer: `ClassificationResult`, `ContentSection`, `PageLabel`, `SectionKind`, `sections_from_page_labels` (helper).
+
