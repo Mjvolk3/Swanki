@@ -72,6 +72,14 @@ Two independent changes that together unlock processing book chapters at scale o
 - **Parallel card audio across Fish Speech servers**: Card-audio generation now runs through a `ThreadPoolExecutor` sized to the number of healthy Fish Speech servers when the provider is `fish_speech` and there is more than one card. Each card's `generate_card_audio()` call is dispatched in parallel; results are reassembled in original card order so audio URIs and validation messages are unchanged.
 - **Pre-generated citation audio**: To avoid a race on the shared `{citation_key}_citation.mp3` file when many parallel workers all try to lazily generate it, the citation clip is generated once up front via `generate_citation_audio()` before the parallel batch starts. Cards then hit the cached file.
 
+## 2026.04.26 - mode=solution_manual branch + _apkg_filename helper
+
+Added a third arm to the mode dispatch in `process_full()`. When `mode == "solution_manual"` the pipeline calls [[swanki.pipeline.problem_set#run_solution_manual_override]] to enumerate, pair, resolve, and generate problem-set cards in one whole-document pass — bypassing the existing segment-based card-gen body entirely. Provenance YAML is written next to the cards if any `full_solution` cards exist (currently disabled by default).
+
+Centralized the two hard-coded `f"{self.citation_key}.apkg"` sites (lines 426 and 1770) into a new `Pipeline._apkg_filename()` helper that consults `output.apkg_filename_suffix` (default empty for backward compatibility, `"-problem-set"` via the `output=problem_set` preset). The helper is mode-agnostic — both the markdown-only export path and the audio-then-export path call it.
+
+The classifier-driven `mode=full` per-section routing described in the plan note ([[plan.solution-manual-mode-for-problem-set-pdfs.2026.04.25]]) is NOT yet wired — that's the follow-up batch. The current `mode=full` path is unchanged from prior behavior.
+
 ## 2026.05.14 - Plumb tts.{preprocessor,chunking,postprocessor} sub-trees into tts_kwargs
 
 Load-bearing wiring fix for the Hamming audio-quality plan. The flat-listed `tts_kwargs` dict at lines 1880-1913 only forwarded five hand-named keys (`provider`, `server_url`, `reference_id`, `temperature`, `format`), so any nested sub-tree added under `models.tts` in YAML was silently dropped before reaching the audio modules. The Hamming plan added three nested sub-trees (`preprocessor`, `chunking`, `postprocessor`) that drive all the new behaviors — without this edit they had no effect.

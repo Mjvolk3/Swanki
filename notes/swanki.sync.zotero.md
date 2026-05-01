@@ -32,3 +32,10 @@ Two ergonomic fixes for the upload path. First, `_find_zotero_item` was unable t
 - **Progressive query strategy (matches `scripts/zotero_paper_import.py::find_item_by_citation_key`)**: try title-words first, then all words, then the first two title-words, each under both default and `qmode=everything`. Stops at the first item whose `extra` contains `Citation Key: {key}` or whose native `citationKey` field matches.
 - **Extracted `_match_citation_key` helper**: checks BBT `Citation Key: {key}` in `extra` AND Zotero 7 `citationKey`. Shared shape with the import script.
 - **🦊 tag appended on successful upload**: After the zip upload and sync-note update, `_find_zotero_item` refetches the parent item and `zot.add_tags(item, "🦊")` if not already present. Idempotent — a second upload of the same paper leaves the tag untouched.
+
+## 2026.04.26 - APKG glob picks up filename suffix
+
+Caught during the first end-to-end Schaum's Ch1 run: the apkg source pattern in `_OUTPUT_TYPES` was hard-coded to `{citation_key}.apkg` and silently skipped files matching the new `apkg_filename_suffix` knob (e.g. `<key>-problem-set.apkg`). The mp3s uploaded fine but the apkg was missing from Zotero.
+
+Switched the apkg pattern to `{citation_key}*.apkg` and updated the loop to glob the output dir, iterating over all matches. The dest_name template now uses `{stem}` so the suffix is preserved in the Zotero attachment name. Backward-compatible: literal patterns still return 0 or 1 matches; the legacy `<key>.apkg` form still works.
+

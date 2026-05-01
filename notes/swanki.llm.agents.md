@@ -15,3 +15,15 @@ Single module defining all pydantic-ai agents used across the codebase -- one ag
 - `get_model_string(config)` helper builds `"provider:model"` strings from Hydra config dicts
 
 Created as part of the instructor-to-pydantic-ai migration (Step 5 of [[plan.major-refactor-sequence.plan-0]]).
+
+## 2026.04.26 - Solution-manual mode agents
+
+Added 4 new structured-output agents for [[swanki.pipeline.problem_set]]:
+
+- `problem_enumeration_agent` (output: `ProblemEnumerationResponse`, retries=3) — LLM-fallback enumeration when regex misses problems.
+- `problem_pairing_agent` (output: `ProblemPairingResponse`, retries=2) — Stage-3 fallback in `pair_problems_across_pages` for problems whose solution markers don't match the regex (Bishop with un-tagged worked solutions).
+- `card_plan_classifier_agent` (output: `CardPlanResponse`, retries=2) — reserved for future LLM-driven card-plan decisions; v1 uses heuristic-only.
+- `problem_card_gen_agent` (output: `ProblemCardBatchResponse`, retries=3) — generates the actual problem-set cards per problem.
+
+All four response types live in [[swanki.models.problem_set]] (NOT in `pipeline/problem_set.py`) so this file's imports don't cycle back through the pipeline module.
+

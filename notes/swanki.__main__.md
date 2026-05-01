@@ -17,3 +17,8 @@ Removed `ConfigGenerator.ensure_configs()` call from `@hydra.main` decorator. Hy
 ## 2026.04.15 - Forward content_key through the CLI
 
 Reads optional `cfg.content_key` from Hydra and passes it into `Pipeline.process_full()` alongside `citation_key`. Lets a single book project drive multiple per-chapter pipeline runs from the same Zotero item without colliding on output directories or filenames.
+
+## 2026.04.26 - Help text for solution_manual mode
+
+Added `solution_manual` to the documented `mode=` options and `solution_manual` / `problem_set` to the `pipeline=`, `prompts=`, and `output=` choice lists. Added an example showing the full invocation: `mode=solution_manual pipeline=solution_manual prompts=solution_manual output=problem_set`.
+

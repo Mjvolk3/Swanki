@@ -55,6 +55,12 @@ LLM-generated cards with broken `$` delimiters (e.g. `$V_{i}^{\min}=$V_{i}^{\max
 
 The LaTeX brace validator was crashing the pipeline when LLMs generated patterns like `$\mathrm{IPP}}$` (excess braces) or `$N_{\mathrm{chem}$` (missing braces) that persisted through all 3 retries. Changed the final brace-balance check from raising `ValueError` to auto-fixing: strips excess closing braces (`depth < 0`) and appends missing ones (`depth > 0`). Both the early fix pass and the final validation pass now handle both directions. This unblocked merzbacherModelingHostPathway2025 and martiPredictionMetabolicDynamics2025 which were failing on `\mathrm{}` patterns.
 
+## 2026.04.26 - card_subtype field on PlainCard
+
+Added a `card_subtype: Literal[...]` discriminator field with default `"regular"` (preserves existing behavior — cloze and image are still inferred from content). Solution-manual mode sets explicit values: `"problem_main"`, `"subproblem"`, `"problem_overview"`, `"full_solution"`. Audit Part 3 in [[swanki.pipeline.problem_set]]'s `audit_coverage` keys on this field — the LLM defaults the value to `"regular"` if it omits the field, so `generate_cards_for_problem` stamps the right subtype from the CardPlan after the LLM call (trusts the plan, not the LLM).
+
+`LongFormCardContent` and `FullSolutionCard` (the uncapped sibling classes for the optional full-solution problem-set card) are NOT yet shipped; they're gated by `enable_full_solution_cards: false` in `swanki/conf/pipeline/solution_manual.yaml`. Will land with the gap-filling provenance work.
+
 ## 2026.05.14 - LectureTranscriptFeedback gains bridge_quality + repeated_phrases dimensions
 
 Two new fields plus a `@model_validator(mode="after")` that flips `done=False` when either dimension flags an issue. Both are defaulted (`bridge_quality=True`, `repeated_phrases=[]`) so existing four-kwarg construction in tests and call sites keeps working unchanged.
