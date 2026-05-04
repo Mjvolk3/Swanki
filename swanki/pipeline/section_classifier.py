@@ -41,6 +41,12 @@ _REVIEW_HEADINGS = re.compile(
     r"^##\s+(Multiple Choice|Matching|True/False|Completion|Review Questions|Problems|Exercises|Practice Problems)\b",
     re.MULTILINE,
 )
+# Schaum's inline form: "Multiple Choice. Select the letter..." — these are
+# section dividers in the chapter body that Mathpix doesn't promote to `##`.
+_REVIEW_INLINE = re.compile(
+    r"^(Multiple Choice|Matching|True/False|Completion)\.\s+(?:[A-Z]|For each|Pick|Select|Match|Fill|Write)",
+    re.MULTILINE,
+)
 _FRONT_MATTER = re.compile(
     r"\b(Preface|Table of Contents|Copyright|Dedication)\b", re.IGNORECASE
 )
@@ -136,8 +142,11 @@ def _heading_classify(clean_md_files: list[Path]) -> ClassificationResult:
             current_anchor = "## Theory and Problems"
             anchor_changed = True
 
-        # Review headings — start a review_exercises section.
-        review_match = _REVIEW_HEADINGS.search(text)
+        # Review headings — start a review_exercises section. Match either the
+        # markdown-promoted form (`## Multiple Choice`) or Schaum's inline form
+        # ("Multiple Choice. Select the letter..."). Inline form is common in
+        # mid-chapter section dividers that Mathpix doesn't promote to headers.
+        review_match = _REVIEW_HEADINGS.search(text) or _REVIEW_INLINE.search(text)
         if review_match:
             current_kind = "review_exercises"
             current_anchor = f"## {review_match.group(1)}"

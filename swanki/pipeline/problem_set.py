@@ -509,16 +509,22 @@ def run_solution_manual_override(
     pipeline: Any,
     cleaned_files: list[Path],
     doc_summary: DocumentSummary,
+    strict: bool = True,
 ) -> tuple[list[PlainCard], ProvenanceLog]:
-    """Whole-document fallback for explicit ``mode=solution_manual`` override.
+    """Whole-document problem-set runner.
 
-    Treats the entire input as a single problem-set. Used when the classifier-
-    driven dispatch is bypassed.
+    Used by ``mode=solution_manual`` (explicit override) AND by ``mode=full``
+    classifier dispatch when feeding a per-section file subset.
 
     Args:
         pipeline: The :class:`Pipeline` instance (passes config + state).
-        cleaned_files: Per-page cleaned markdown.
+        cleaned_files: Per-page cleaned markdown (whole doc OR a section's pages).
         doc_summary: DocumentSummary from the existing summary stage.
+        strict: When True (default, mode=solution_manual contract), raise if no
+            problems are enumerated. When False (mode=full per-section call),
+            warn and return empty results — a section may genuinely lack
+            ``N.M``-numbered theory-problems (e.g. Schaum's MC review which
+            uses ``1.`` / ``2.`` / ... numbering).
 
     Returns:
         ``(all_cards, provenance_log)``.
@@ -539,10 +545,16 @@ def run_solution_manual_override(
     # Enumerate → pair → resolve refs → plan → generate.
     problems = enumerate_problems(cleaned_files, chapter_id=chapter_id)
     if not problems:
-        raise RuntimeError(
-            "No problems enumerated. Verify the input PDF contains numbered "
-            "problems matching the regex N.M (e.g. '1.1', '2.7')."
+        if strict:
+            raise RuntimeError(
+                "No problems enumerated. Verify the input PDF contains numbered "
+                "problems matching the regex N.M (e.g. '1.1', '2.7')."
+            )
+        logger.warning(
+            "No N.M-numbered problems found in the supplied files; "
+            "skipping problem-set pipeline for this section."
         )
+        return [], ProvenanceLog(chapter_id=chapter_id)
 
     pairings = pair_problems_across_pages(problems, cleaned_files, config)
     problems = [

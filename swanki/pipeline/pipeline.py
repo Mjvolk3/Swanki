@@ -473,8 +473,11 @@ class Pipeline:
                     f"Routing {len(review_files)} review_exercises pages through problem-set pipeline"
                 )
                 self.state.current_stage = "problem_set"
+                # strict=False so a review_exercises section without N.M-numbered
+                # problems (e.g. Schaum's MC review which uses 1./2./... numbering)
+                # warns and skips instead of aborting the whole pipeline.
                 problem_set_cards, provenance_log = run_solution_manual_override(
-                    self, review_files, doc_summary
+                    self, review_files, doc_summary, strict=False
                 )
                 all_cards.extend(problem_set_cards)
 
