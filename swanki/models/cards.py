@@ -1392,6 +1392,39 @@ class LectureTranscriptFeedback(BaseModel):
         description="True if SI content does not dominate the section",
     )
 
+    # Inter-section transition quality (Theme 12 — listener reported Ch 2
+    # "space and time" pivot coming out of nowhere). The critic populates
+    # this; defaulted True so existing tests / call sites keep working
+    # without modification.
+    bridge_quality: bool = Field(
+        default=True,
+        description="True if every section after the first opens with a one-sentence bridge from the prior topic. False when the lecture has any cold-open topic shift.",
+    )
+
+    # Repeated-phrase flag (Theme 5 — critic missed 'his last observation'
+    # appearing four times). Populated either by the LLM critic or by the
+    # deterministic detect_repeated_phrases scanner in _common.py. When the
+    # list is non-empty, the @model_validator below forces done=False so the
+    # refine loop is guaranteed to take another pass.
+    repeated_phrases: list[str] = Field(
+        default_factory=list,
+        description="N-gram phrases (5+ words) that appear too many times in the transcript. Each entry is the phrase itself; the refiner will be told to vary or remove repetitions.",
+    )
+
+    @model_validator(mode="after")
+    def _enforce_done_when_quality_issues(self) -> "LectureTranscriptFeedback":
+        """Force done=False when bridge or repeated-phrase issues are present.
+
+        Centralizes the gate so callers can populate the new fields without
+        also remembering to flip ``done``. Pydantic 2's @model_validator runs
+        on construction and on ``model_validate``; ``model_copy(update=...)``
+        does NOT re-run validators -- callers wanting the validator to fire
+        after a field update must use ``model_validate(self.model_dump() | {...})``.
+        """
+        if self.repeated_phrases or not self.bridge_quality:
+            self.done = False
+        return self
+
 
 class RefinementHistory(BaseModel):
     """Track refinement history for debugging and analysis.

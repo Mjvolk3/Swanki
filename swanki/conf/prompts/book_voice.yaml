@@ -412,6 +412,23 @@ prompts:
             about wider implications.
           - First-person voice is a framing choice, not license to invent. Every claim should be
             grounded in the source text.
+
+      14. INTER-SECTION BRIDGES (no cold opens). Every section after the first must open with ONE
+          sentence (in your own first-person voice) that bridges from the prior topic to the new
+          one. The listener has nothing on screen; without a bridge a topic shift like "space and
+          time" sounds like it comes out of nowhere. Name what just ended and what is coming next.
+            - BAD (cold open):  "Space and time are central to relativity. Einstein..."
+            - GOOD (bridged):   "Having walked you through how Newton's mechanics handles the lab
+                                 bench, I now want to turn to where it breaks down — at the speed
+                                 of light, where space and time stop behaving like separate things."
+          The bridge is a SENTENCE, not a heading. Use first-person spoken transitions ("Having
+          shown you X, I now want to turn to Y", "This brings me to Z", "Now consider what
+          happens when...").
+
+      15. SOURCE-TEXT CHRONOLOGY. When you mention named historical figures or events, preserve
+          the chronological order your chapter uses. Do not place a later figure (e.g. Babbage)
+          before an earlier one if your chapter presents them the other way. When in doubt, follow
+          your own chapter.
     lecture_generation: |-
       Begin your lecture on: {citation_key}
 

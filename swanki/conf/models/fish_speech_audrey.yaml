@@ -12,3 +12,20 @@ models:
     reference_text: "Causal inference asks \"What happens to X if we intervene on Y?\"—a fundamentally different question from predicting X from Y. Correlations can be spurious (confounded), but causal structure supports counterfactual reasoning, policy decisions, scientific explanation, and responsible ML (e.g., fairness). A widely used causal representation is the Bayesian network (BN): a directed acyclic graph (DAG) whose edges encode direct cause–effect links and whose structure implies a set of conditional independencies."
     temperature: 0.8
     format: mp3
+    # Mirror of fish_speech.yaml sub-tree shape; no per-paper overrides yet.
+    preprocessor:
+      pronunciations: {}
+      strip_forbidden_tags: true
+      acronym_letter_by_letter: true
+      acronym_allowlist:
+        [USA, UK, NASA, DNA, RNA, PCR, CPU, GPU, API, HTTP, JSON, HTML, XML,
+         SQL, PDF, MP3, WAV, TTS, LLM, AI, ML, NLP]
+    chunking:
+      max_chars: 700
+      paragraph_priority: true
+    postprocessor:
+      gain_match_target_dbfs: -25.0
+      chunk_pause_ms: 700
+      chunk_tail_trim_ms: 250
+      chunk_crossfade_ms: 50
+      section_pause_ms: 5000

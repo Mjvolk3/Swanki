@@ -23,12 +23,17 @@ from ._common import (
     LECTURE_TTS_MODEL,
     add_tts_pauses,
     append_chunk_pause,
+    apply_pronunciation_overrides,
     chunk_text_paragraphs,
     clean_markdown_for_tts,
     combine_audio_with_section_pauses,
+    detect_repeated_phrases,
+    expand_acronyms_for_tts,
     extract_acronyms,
     generate_bookend_audio,
     split_transcript_by_sections,
+    strip_chapter_filename_slug,
+    strip_forbidden_fish_tags,
     text_to_speech,
     tts_chunks_parallel,
     write_chunk_manifest,
@@ -821,7 +826,19 @@ def generate_lecture_audio(
     # Structural guard: drop duplicate lecture restarts the refine loop can inject.
     full_transcript = _strip_duplicate_openers(full_transcript)
 
-    # Save final transcript
+    # Surface deterministic repeated-phrase detector findings into the run log
+    # (Theme 5). The same scanner is used inside _refine_transcript to flip
+    # done=False; this final-pass call exists to log what slipped through after
+    # all refine iterations exhausted (so future tuning can adjust threshold).
+    detected_repeats = detect_repeated_phrases(full_transcript, n=5, threshold=3)
+    if detected_repeats:
+        logger.warning(
+            f"Final transcript still contains {len(detected_repeats)} repeated phrases "
+            f"after refine: {detected_repeats[:3]}{'...' if len(detected_repeats) > 3 else ''}"
+        )
+
+    # Save final transcript (saved BEFORE the TTS-prep scrubbers below so the
+    # human-readable transcript matches what the writer actually produced).
     transcript_path = transcripts_dir / f"{output_path.stem}_transcript.md"
     with open(transcript_path, "w", encoding="utf-8") as f:
         f.write("# Lecture Audio Transcript\n\n")
@@ -829,8 +846,30 @@ def generate_lecture_audio(
             f.write(f"**Citation Key:** {citation_key}\n\n")
         f.write(f"**Generated Transcript:**\n\n{full_transcript}\n")
 
+    # Pre-TTS deterministic scrubbers. Order matters: clean markdown first so
+    # the scrubbers operate on prose, not formatting; slug-stripper before
+    # acronym/pronunciation passes so a slug like
+    # "hammingArtDoingScience2020_03_history-of-computers-hardware" is replaced
+    # before its uppercase chunks could be misread; pronunciation overrides
+    # AFTER acronym expansion so per-paper rewrites win over the generic
+    # acronym pass; forbidden-tag scrubber LAST among the deterministic stage
+    # so any LLM-emitted [sigh] survives long enough for the manifest log,
+    # then `add_tts_pauses` injects the pause tags it needs to.
+    is_fish_for_prep = str(tts_kwargs.get("provider", "")) == "fish_speech"
+    _prep_raw = tts_kwargs.get("preprocessor")
+    prep_cfg: dict = _prep_raw if isinstance(_prep_raw, dict) else {}
+    cleaned = clean_markdown_for_tts(full_transcript)
+    cleaned = strip_chapter_filename_slug(cleaned)
+    if is_fish_for_prep and prep_cfg.get("acronym_letter_by_letter", True):
+        allowlist = set(prep_cfg.get("acronym_allowlist", []))
+        cleaned = expand_acronyms_for_tts(cleaned, allowlist=allowlist)
+    pronunciations = prep_cfg.get("pronunciations", {}) or {}
+    if pronunciations:
+        cleaned = apply_pronunciation_overrides(cleaned, pronunciations)
+    if is_fish_for_prep and prep_cfg.get("strip_forbidden_tags", True):
+        cleaned = strip_forbidden_fish_tags(cleaned)
     tts_transcript = add_tts_pauses(
-        clean_markdown_for_tts(full_transcript),
+        cleaned,
         provider=str(tts_kwargs.get("provider", "elevenlabs")),
     )
 
@@ -886,12 +925,18 @@ def generate_lecture_audio(
         f"{citation_key}_{output_path.stem}" if citation_key else output_path.stem
     )
 
+    # YAML-driven chunking knobs (models.tts.chunking.*) override the
+    # hardcoded defaults. Fish quality decays past ~700 chars (Theme 4) so
+    # fish_speech*.yaml ships max_chars=700; without sub-tree we keep the
+    # legacy 2000/4500 split.
+    _chunk_raw = tts_kwargs.get("chunking")
+    chunking_cfg: dict = _chunk_raw if isinstance(_chunk_raw, dict) else {}
+    chunk_max_chars = int(chunking_cfg.get("max_chars", 2000 if is_fish else 4500))
+
     # Collect all chunks across all sections with section index
     all_jobs: list[tuple[int, str, Path]] = []
     for sec_idx, section in enumerate(sections_text):
-        audio_chunks = chunk_text_paragraphs(
-            section, max_chars=2000 if is_fish else 4500
-        )
+        audio_chunks = chunk_text_paragraphs(section, max_chars=chunk_max_chars)
         for chunk in audio_chunks:
             chunk_path = chunks_dir / f"{prefix}_chunk{chunk_counter}.mp3"
             all_jobs.append((sec_idx, chunk, chunk_path))
@@ -921,16 +966,16 @@ def generate_lecture_audio(
     for sec_idx, _, chunk_path in all_jobs:
         all_section_chunks[sec_idx].append(chunk_path)
 
-    # Lecture uses longer section pauses for distinct section separation.
-    # Listener feedback on Hamming v4 (700 ms inter-chunk): pacing felt right
-    # but boundary artifacts remained — volume jumps between chunks, and a
-    # "sigh" / breath sound at the chunk-end tag artifact. Boundary-fix bundle
-    # (chunk_tail_trim_ms 100→250, gain match in combine, crossfade 0→50 ms)
-    # targets exactly those issues.
-    lecture_pause = 5000 if is_fish else 3000
-    chunk_tail_trim_ms = 250 if is_fish else 0
-    chunk_pause_ms = 700 if is_fish else 0
-    chunk_crossfade_ms = 50 if is_fish else 0
+    # YAML-driven postprocessor knobs (models.tts.postprocessor.*) override
+    # the boundary-fix-bundle defaults. The defaults shipped here match the
+    # Apr-30 tuning and are the fall-through when no sub-tree is provided.
+    _post_raw = tts_kwargs.get("postprocessor")
+    post_cfg: dict = _post_raw if isinstance(_post_raw, dict) else {}
+    lecture_pause = int(post_cfg.get("section_pause_ms", 5000 if is_fish else 3000))
+    chunk_tail_trim_ms = int(post_cfg.get("chunk_tail_trim_ms", 250 if is_fish else 0))
+    chunk_pause_ms = int(post_cfg.get("chunk_pause_ms", 700 if is_fish else 0))
+    chunk_crossfade_ms = int(post_cfg.get("chunk_crossfade_ms", 50 if is_fish else 0))
+    gain_match = post_cfg.get("gain_match_target_dbfs", -25.0 if is_fish else None)
     combine_audio_with_section_pauses(
         all_section_chunks,
         output_path,
@@ -940,7 +985,7 @@ def generate_lecture_audio(
         bookend_end=bookend_end,
         chunk_tail_trim_ms=chunk_tail_trim_ms,
         chunk_pause_ms=chunk_pause_ms,
-        gain_match_target_dbfs=-25.0 if is_fish else None,
+        gain_match_target_dbfs=gain_match,
     )
 
     # Write chunk manifest for surgical regeneration; chunk files are kept.
@@ -1272,9 +1317,32 @@ CRITICAL CHECKS:
     - Single clear closing paragraph with 3-5 takeaways?
     - Woven into prose, not list-like?
 
+12. INTER-SECTION BRIDGES (Theme 12 — set bridge_quality=False if violated):
+    - Every section after the first must open with ONE sentence bridging from the prior topic.
+    - Cold-open topic shifts (e.g. jumping straight into "Space and time are central to relativity"
+      with no bridge from what just ended) sound like they come out of nowhere to a listener
+      with nothing on screen. First-person framings ("Having shown you X, I now turn to Y") are
+      fine and INTENDED for book voice; they are bridges.
+    - DO NOT FLAG first-person speaker framings as meta-commentary -- they are author voice.
+
+13. REPEATED PHRASES (Theme 5 — populate repeated_phrases list when violated):
+    - Multi-word phrases (5+ tokens) that appear three or more times in the transcript without
+      meaningful variation. Example: "his last observation he said" repeated four times across
+      a chapter is unlistenable -- list each repeated phrase verbatim under repeated_phrases
+      so the refiner knows exactly what to vary.
+    - Repetition of a single technical term across many sentences is OK; repetition of a clause
+      or rhetorical opener is not.
+
+14. SOURCE-TEXT CHRONOLOGY:
+    - Are named historical figures placed in the order the source text uses?
+    - If the source mentions Pascal before Babbage and the transcript inverts them, flag it
+      under feedback as a chronology issue.
+
 Return structured feedback with:
 - feedback: List of specific issues with position info
 - done: True if this section passes ALL checks, False if any issues found
+- bridge_quality: True iff every section after the first has a bridging opener (Theme 12)
+- repeated_phrases: List of verbatim 5+ word phrases that repeat 3+ times (Theme 5)
 
 Transcript section to review:
 {transcript}"""
@@ -1397,6 +1465,21 @@ def _refine_transcript(
         if cur_words > target_ceiling or cur_words < target_floor:
             critique_feedback.done = False
 
+        # Deterministic repeated-phrase guard (Theme 5). The LLM critic missed
+        # "his last observation" repeated four times in Hamming Ch 3; fold the
+        # n-gram detector's findings into critique_feedback.repeated_phrases
+        # so the @model_validator on LectureTranscriptFeedback flips done=False
+        # and the next refine iteration gets an explicit phrase list to vary.
+        # Use model_validate (NOT model_copy(update=...)) so the validator runs.
+        deterministic_repeats = detect_repeated_phrases(
+            current_transcript, n=5, threshold=3
+        )
+        if deterministic_repeats:
+            merged = sorted(set(critique_feedback.repeated_phrases) | set(deterministic_repeats))
+            critique_feedback = LectureTranscriptFeedback.model_validate(
+                critique_feedback.model_dump() | {"repeated_phrases": merged}
+            )
+
         if critique_feedback.done:
             logger.info(
                 f"Lecture transcript passed quality check after {iteration} iterations"
@@ -1437,6 +1520,21 @@ def _refine_transcript(
                         "covered concepts — develop the mechanism, the key numbers, and "
                         "why the approach matters. Do NOT repeat material already said; "
                         "deepen it. Do NOT add new meta-commentary or roadmaps."
+                    )
+                if critique_feedback.repeated_phrases:
+                    quoted = "; ".join(
+                        f'"{p}"' for p in critique_feedback.repeated_phrases[:8]
+                    )
+                    feedback_items.append(
+                        f"REPEATED PHRASES (Theme 5): vary or remove these multi-word "
+                        f"phrases that occur 3+ times — {quoted}"
+                    )
+                if not critique_feedback.bridge_quality:
+                    feedback_items.append(
+                        "INTER-SECTION BRIDGES (Theme 12): one or more sections after "
+                        "the first opens cold (no bridge from the prior topic). Open every "
+                        "non-first section with one sentence that names what just ended and "
+                        "what is coming next."
                     )
                 feedback_text = "\n".join(f"- {issue}" for issue in feedback_items)
 

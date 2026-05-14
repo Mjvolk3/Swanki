@@ -254,6 +254,186 @@ def _normalize_fish_speech_punct(text: str) -> str:
     return text
 
 
+# Single source of truth for tags Fish renders as audible breath / wrong
+# register. Mirrored by the writer prompts in default.yaml / book_voice.yaml
+# and by the lecture critic prompt; the deterministic stripper below is the
+# safety net that catches LLM-emitted forbidden tags before TTS.
+FISH_SPEECH_FORBIDDEN_TAGS: tuple[str, ...] = (
+    "inhale", "exhale", "sigh", "clearing throat", "tsk", "panting", "moaning",
+    "whisper", "soft tone", "shouting", "screaming",
+    "sad", "depressed", "crying", "sobbing",
+    "angry", "furious", "panicked", "anxious", "scared", "worried",
+)
+
+_FISH_SPEECH_FORBIDDEN_TAG_RE = re.compile(
+    r"\[\s*(" + "|".join(re.escape(t) for t in FISH_SPEECH_FORBIDDEN_TAGS) + r")\s*\]",
+    flags=re.IGNORECASE,
+)
+
+
+def strip_forbidden_fish_tags(text: str) -> str:
+    """Strip Fish Speech bracket tags Fish renders as breath / wrong register.
+
+    Idempotent. Logs each stripped tag at WARNING so prompt drift surfaces in
+    the run log instead of disappearing silently into the audio.
+
+    Args:
+        text: Transcript bound for Fish Speech TTS.
+
+    Returns:
+        Text with forbidden tags removed and double spaces collapsed.
+    """
+
+    def _sub(m: re.Match) -> str:
+        logger.warning(f"Stripped forbidden Fish Speech tag: {m.group(0)!r}")
+        return ""
+
+    cleaned = _FISH_SPEECH_FORBIDDEN_TAG_RE.sub(_sub, text)
+    cleaned = re.sub(r"  +", " ", cleaned)
+    cleaned = re.sub(r" +\n", "\n", cleaned)
+    return cleaned
+
+
+# Standalone uppercase token of length 2-6, not part of camelCase. Camel-case
+# (myACRONYM, ACRONYMfoo) is excluded so identifiers in body prose aren't
+# mangled into letter spellings.
+_STANDALONE_ACRONYM_RE = re.compile(r"(?<![A-Za-z])([A-Z]{2,6})(?![A-Za-z])")
+
+
+def expand_acronyms_for_tts(
+    text: str, allowlist: set[str] | None = None
+) -> str:
+    """Rewrite standalone uppercase tokens as letter-by-letter for Fish Speech.
+
+    Fish reads ``S-A-R`` cleanly as letters (per the existing
+    `_FISH_SPEECH_PUNCT_MAP` design) but reads bare ``SAR`` as ``"say R"``.
+
+    Args:
+        text: Transcript bound for TTS.
+        allowlist: Tokens to skip (already pronounceable, e.g. ``USA``,
+            ``NASA``). When None, no tokens are skipped.
+
+    Returns:
+        Text with bare acronyms rewritten as ``S-A-R`` form.
+    """
+    skip = allowlist or set()
+
+    def _sub(m: re.Match) -> str:
+        tok = m.group(1)
+        if tok in skip:
+            return tok
+        return "-".join(tok)
+
+    return _STANDALONE_ACRONYM_RE.sub(_sub, text)
+
+
+def apply_pronunciation_overrides(
+    text: str, overrides: dict[str, str]
+) -> str:
+    """Whole-word case-sensitive substitutions applied before TTS.
+
+    The override key wins over `expand_acronyms_for_tts`: callers should run
+    overrides AFTER the acronym pass so a per-paper rewrite for a specific
+    token (e.g. ``SAR -> "sar"``) preempts the generic ``S-A-R`` rewrite.
+
+    Args:
+        text: Transcript bound for TTS.
+        overrides: Mapping of source token to replacement. Empty dict is a
+            no-op.
+
+    Returns:
+        Text with overrides applied.
+    """
+    for src, dst in overrides.items():
+        text = re.sub(rf"\b{re.escape(src)}\b", dst, text)
+    return text
+
+
+_REPEATED_PHRASE_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'-]*")
+_REPEATED_PHRASE_STOPWORDS = frozenset({
+    "the", "a", "an", "of", "to", "and", "or", "but", "is", "are", "was",
+    "were", "be", "been", "being", "in", "on", "at", "by", "for", "with",
+    "that", "this", "it", "its", "as", "from", "we", "you", "i", "he", "she",
+    "they", "them", "our",
+})
+
+
+def detect_repeated_phrases(
+    transcript: str,
+    n: int = 5,
+    threshold: int = 3,
+    min_distinct_content_words: int = 3,
+) -> list[str]:
+    """Find n-gram phrases repeated above ``threshold`` times.
+
+    Used by the lecture refine loop as a deterministic guard against the
+    "his last observation" failure mode the LLM critic missed (Theme 5).
+    Filters chatter like "the way that you can" by requiring at least
+    ``min_distinct_content_words`` non-stopword tokens per shingle.
+
+    Args:
+        transcript: Lecture transcript text (post-refine, pre-TTS).
+        n: Phrase length in tokens.
+        threshold: Minimum repetition count to flag.
+        min_distinct_content_words: Drop n-grams that are mostly function
+            words (avoids false positives on common phrasing).
+
+    Returns:
+        Repeated phrases in descending frequency order.
+    """
+    tokens = [t.lower() for t in _REPEATED_PHRASE_WORD_RE.findall(transcript)]
+    if len(tokens) < n:
+        return []
+    counts: dict[tuple[str, ...], int] = {}
+    for i in range(len(tokens) - n + 1):
+        gram = tuple(tokens[i : i + n])
+        content = sum(1 for t in gram if t not in _REPEATED_PHRASE_STOPWORDS)
+        if content < min_distinct_content_words:
+            continue
+        counts[gram] = counts.get(gram, 0) + 1
+    repeats = [(gram, c) for gram, c in counts.items() if c >= threshold]
+    repeats.sort(key=lambda x: -x[1])
+    return [" ".join(gram) for gram, _ in repeats]
+
+
+# Citation-key chapter pattern: <base>_<NN>_<slug>. The leading-zero numeric
+# segment is the chapter index; the slug uses hyphens and is humanized into
+# spaces by humanize_chapter_slug() in swanki/utils/formatting.py. The match
+# here is a fast deterministic pre-check used by the slug-stripper.
+_CHAPTER_SLUG_PATTERN = re.compile(
+    r"\b([A-Za-z][A-Za-z0-9]+)_(\d{1,3})_([a-z][a-z0-9-]+)\b"
+)
+
+
+def strip_chapter_filename_slug(text: str) -> str:
+    """Replace raw ``<base>_<NN>_<slug>`` tokens with humanized chapter form.
+
+    Catches Theme 8: the lecture writer occasionally interpolates the raw
+    chapter content_key (e.g. ``hammingArtDoingScience2020_03_history-of-
+    computers-hardware``) into transcript text. Without this stripper, Fish
+    reads the underscored slug aloud verbatim — ``"zero three"`` and all.
+
+    Replaces matches with ``Chapter <N>: <human slug>`` (slug hyphens become
+    spaces). Fall-through routing: bookend templates should call
+    ``swanki.utils.formatting.humanize_chapter_slug`` directly when they have
+    the citation_key in hand; this function is the safety net for any leakage
+    that escapes the templating layer.
+
+    Args:
+        text: Transcript text.
+
+    Returns:
+        Text with chapter-slug tokens replaced.
+    """
+
+    def _sub(m: re.Match) -> str:
+        num = int(m.group(2))
+        slug = m.group(3).replace("-", " ")
+        return f"Chapter {num}: {slug}"
+
+    return _CHAPTER_SLUG_PATTERN.sub(_sub, text)
+
+
 def _apply_speed(data: bytes, output_path: Path, speed: float) -> None:
     """Write audio bytes to output_path, applying FFmpeg atempo if speed != 1.0."""
     if speed != 1.0:
@@ -992,20 +1172,34 @@ def generate_bookend_audio(
     Returns:
         Path to the generated bookend MP3.
     """
-    from ..utils.formatting import humanize_citation_key
+    from ..utils.formatting import humanize_chapter_slug, humanize_citation_key
 
-    humanized = humanize_citation_key(citation_key)
+    # For book chapters keyed as <base>_<NN>_<slug>, prefer the humanized
+    # chapter label over the raw underscore-suffixed citation key. Without
+    # this branch the listener hears "zero three, history of computers
+    # hardware" (Theme 8) instead of "Chapter 3: history of computers
+    # hardware".
+    chapter_label = humanize_chapter_slug(citation_key)
+    humanized_full = humanize_citation_key(citation_key)
     cache_path = output_dir / f"{citation_key}_{audio_type}_{position}.mp3"
 
     if audio_type == "lecture":
         if position == "start":
-            title_part = f" We are covering: {paper_title}." if paper_title else ""
-            text = f"Today's lecture is posted as: {humanized}.{title_part}"
+            if chapter_label:
+                base_part = humanize_citation_key(citation_key.split("_", 1)[0])
+                title_part = f" {paper_title}." if paper_title else ""
+                text = f"{chapter_label}. From {base_part}.{title_part}"
+            else:
+                title_part = f" We are covering: {paper_title}." if paper_title else ""
+                text = f"Today's lecture is posted as: {humanized_full}.{title_part}"
         else:
-            text = f"And with that we conclude: {humanized}."
+            if chapter_label:
+                text = f"And with that we conclude {chapter_label}."
+            else:
+                text = f"And with that we conclude: {humanized_full}."
     else:
         label = position.upper()
-        text = f"{label}: {humanized}."
+        text = f"{label}: {humanized_full}."
 
     output_dir.mkdir(parents=True, exist_ok=True)
     text_to_speech(text, voice_id, cache_path, elevenlabs_api_key, speed, **tts_kwargs)

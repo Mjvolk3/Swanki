@@ -54,3 +54,12 @@ LLM-generated cards with broken `$` delimiters (e.g. `$V_{i}^{\min}=$V_{i}^{\max
 ## 2026.03.14 - Robust LaTeX brace auto-fix replaces crash-on-retry
 
 The LaTeX brace validator was crashing the pipeline when LLMs generated patterns like `$\mathrm{IPP}}$` (excess braces) or `$N_{\mathrm{chem}$` (missing braces) that persisted through all 3 retries. Changed the final brace-balance check from raising `ValueError` to auto-fixing: strips excess closing braces (`depth < 0`) and appends missing ones (`depth > 0`). Both the early fix pass and the final validation pass now handle both directions. This unblocked merzbacherModelingHostPathway2025 and martiPredictionMetabolicDynamics2025 which were failing on `\mathrm{}` patterns.
+
+## 2026.05.14 - LectureTranscriptFeedback gains bridge_quality + repeated_phrases dimensions
+
+Two new fields plus a `@model_validator(mode="after")` that flips `done=False` when either dimension flags an issue. Both are defaulted (`bridge_quality=True`, `repeated_phrases=[]`) so existing four-kwarg construction in tests and call sites keeps working unchanged.
+
+- `bridge_quality: bool` — Theme 12. Set to `False` by the lecture critic when any section after the first opens cold (no one-sentence bridge from the prior topic). The Hamming Ch 2 "space and time" pivot was the listener's reported failure mode.
+- `repeated_phrases: list[str]` — Theme 5. Populated either by the LLM critic or by `swanki.audio._common.detect_repeated_phrases` (deterministic n-gram scanner) wired into `_refine_transcript`. Each entry is a verbatim 5+ word phrase that occurred 3+ times; the refiner gets the list as explicit feedback to vary.
+
+The validator centralizes the gate: callers populate fields without also remembering to flip `done`. Pydantic 2 quirk recorded in the docstring — `model_copy(update=...)` does NOT re-run validators; callers wanting the validator to fire after a field update must use `model_validate(self.model_dump() | {...})`.

@@ -351,6 +351,32 @@ prompts:
             public-health implications, ethics, AI policy) unless the paper itself develops them.
           - When in doubt, prefer reporting what the paper does over speculating about what it means
             for the wider world.
+
+      14. INTER-SECTION BRIDGES (no cold opens). Every section after the first must open with
+          ONE sentence that bridges from the prior topic to the new one. The listener has nothing
+          on screen; without a bridge a topic shift like "space and time" sounds like it comes out
+          of nowhere. The bridge names what just ended and what is coming next.
+            - BAD (cold open):  "Space and time are central to relativity. Einstein..."
+            - GOOD (bridged):   "Having seen how Newton's mechanics handles the lab bench, we now
+                                 turn to where it breaks down: at the speed of light, where
+                                 space and time stop behaving like separate things."
+          The bridge is a SENTENCE, not a heading. Use spoken transitions ("Having seen X, we now
+          turn to Y", "This brings us to Z", "Now consider what happens when...").
+
+      15. INTRA-PASSAGE CONNECTIVES. Within a passage, do not pile up bare facts. Use connective
+          tissue between consecutive ideas so the listener has a thread to follow:
+            - "and then there is..."
+            - "but here is the trouble..."
+            - "what makes this surprising is..."
+            - "the consequence of this is..."
+            - "now consider..."
+          Aim for at least one connective every 3-5 sentences. Vary the phrasing — the connectives
+          themselves must not become a tic.
+
+      16. SOURCE-TEXT CHRONOLOGY. When the lecture mentions named historical figures or events,
+          preserve the chronological order the source text uses. Do not place a later figure
+          (e.g. Babbage) before an earlier one if the source presents them the other way.
+          When in doubt, follow the source.
     lecture_generation: |-
       Begin your lecture on: {citation_key}
 

@@ -19,3 +19,7 @@ Added tests covering all new functionality from Step 4 of the major refactor seq
 ## 2026.03.12 - Update mocks for pydantic-ai migration
 
 Updated test mocks from patching `instructor`/`OpenAI` clients to patching `swanki.audio.lecture.lecture_critic_agent.run_sync` and `swanki.audio.lecture.text_agent.run_sync`. Mock return values now use pydantic-ai `RunResult`-style objects with `.output` attribute.
+
+## 2026.05.14 - LectureTranscriptFeedback validator coverage
+
+Four tests for the `@model_validator(mode="after")` that flips `done=False` when bridge/repeated-phrase issues are populated. The default-construction test (`test_lecture_feedback_default_done_passes_through`) is the regression guard for existing call sites that construct with the original four kwargs — the new fields are defaulted so nothing breaks. The three flip tests cover the validator firing on `repeated_phrases` non-empty, `bridge_quality=False`, and the Pydantic 2 `model_validate(model.model_dump() | {...})` round-trip pattern that callers must use (because `model_copy(update=...)` does NOT re-run validators).
