@@ -73,3 +73,52 @@ Replaced 200ms cross-fade between TTS chunks with direct concatenation, letting 
 - **Units**: numeric-adjacent `h`/`s`/`min`/`ms`/`bp`/`kb`/`Mb`/`GB`/`TB` expand to full words; acronym units like `CPU`/`GPU` stay as acronyms.
 - **Version numbers**: `NCCL 2.10.3` → "N C C L version 2.10.3" — prefix "version" and keep the dotted sequence intact.
 - **Bare Greek in prose**: covers the common case where a figure caption or inline math loses its delimiters after markdown conversion, leaving unicode Greek letters floating in prose.
+
+## 2026.04.26 - Sentence-boundary pacing and Fish Speech punctuation/concat fixes
+
+Three independent fixes targeting Fish Speech S2-Pro pacing and pronunciation. Fish is fully tag-driven for pauses (newlines aren't respected), so previous heuristics that relied on `\n\n` paragraph breaks produced lectures that "blazed through" any LLM output emitted as one long paragraph.
+
+- `add_tts_pauses`: when no paragraph breaks exist, inject `[short pause]` every third sentence boundary (`(?<=[.!?])(?=\s+[A-Z])`). Restores lecture cadence without depending on LLM formatting.
+- `append_chunk_pause`: chunk-end tag changed from `[long pause]` to `[pause]`. Fish was rendering `[long pause]` as an audible breath/sigh at every chunk concatenation point; `[pause]` is reliably silent. Real silence between chunks is now supplied deterministically by the combine helper.
+- `combine_audio_with_section_pauses` gains two parameters:
+  - `chunk_tail_trim_ms` — strip this many ms from the end of each chunk before concat (clip residual tag artifacts without cutting speech; lecture path uses 100 ms for Fish).
+  - `chunk_pause_ms` — insert real `AudioSegment.silent()` gap between chunks within a section (lecture path uses 300 ms for Fish).
+- New `_normalize_fish_speech_punct(text)` folds Unicode punctuation into ASCII before TTS: em-dash to comma+space, en-dash/minus to hyphen, curly quotes to straight, ellipsis to three periods, NBSP to space. Wired into `_tts_fish_speech` after SSML stripping. Fish's tokenizer was otherwise garbling these characters or dropping them silently.
+
+## 2026.04.30 - Silence-aware trim, gain match, and crossfade co-existence
+
+Three independent fixes to `combine_audio_with_section_pauses`, all driven by Hamming-book listener bookmarks reporting chunk-boundary artifacts (volume jumps, sigh between chunks, sentences crashing together, last syllable getting clipped). All three preserve intra-chunk dynamics — no compression, no flattening — and target only the seams.
+
+### Silence-aware trim replaces blind tail cut
+
+The blind `seg = seg[:len(seg) - chunk_tail_trim_ms]` cut was risky: if Fish rendered speech in the trim region, the trim chopped off the last word's decay tail. Replaced with a `pydub.silence.detect_silence` scan over the last `(chunk_tail_trim_ms + 200)` ms of the chunk:
+
+- `silence_thresh = max(seg.dBFS - 16, -50.0)` — relative to chunk's own mean, so quiet chunks aren't over-trimmed.
+- `min_silence_len = 80` — short enough to detect natural inter-word silence, long enough to ignore brief pops.
+- `trailing` = silences whose end touches the scan window's end (within 30 ms tolerance).
+- If no trailing silence is detected (chunk ends mid-speech), the chunk is left intact — no blind trim.
+- If trailing silence is detected, we cut **inside** that silence with a `tail_buffer_ms = 350` post-speech buffer. This was tuned over v7-v9: 0 ms (cut at speech-silence transition) felt clipped, 150 ms still sounded clipped to the listener even though speech wasn't being cut, 350 ms gives enough room that no chunk is perceived as truncated. Fish's sigh-then-silence tag artifact still gets eaten when a chunk ends with one because the 350 ms buffer lands inside the silence portion before the silence ends.
+
+Side effect: `chunk_tail_trim_ms` is now effectively a **scan-window** parameter (how far back to look for silence) rather than a guaranteed cut amount. Net trim varies per-chunk; ranges from "no trim" (speech to end) to "much more than `chunk_tail_trim_ms`" (long trailing silence + sigh).
+
+### Per-chunk RMS gain match
+
+`gain_match_target_dbfs` parameter (None disables, default None — preserves prior behavior for non-Fish callers). When set, each chunk + bookend is shifted by `(target - seg.dBFS)` so all components land at the same mean dBFS. Empirically the Hamming Fish output drifted ~2.5 dB chunk-to-chunk and bookends were 4-6 dB hotter than chunks. The shift is a single multiplicative scalar — pure gain, no compression, no peak limiting — so emphasized syllables stay loud relative to their surroundings within each chunk. Lecture path uses `-25.0` as the target (close to the Fish output's mean); silent segments (`dBFS == -inf`) skip the math.
+
+### Crossfade and chunk_pause_ms now stack
+
+Old code skipped `chunk_pause_ms` insertion when `chunk_crossfade_ms > 0` (the `if chunk_pause_ms > 0 and chunk_crossfade_ms == 0` guard). Removed the guard. Now both apply: silence is inserted first, then the next chunk crossfades into the trailing silence. Net effect is a smooth fade-in of the next chunk over the existing inter-chunk gap — addresses listener complaint about "abrupt prosody jump" at chunk transitions. Lecture path uses `chunk_pause_ms=700` + `chunk_crossfade_ms=50` together.
+
+## 2026.05.14 - Hamming bookmark response: deterministic TTS-prep scrubbers + chapter-slug helper
+
+Five new helpers + one constant land alongside `_normalize_fish_speech_punct` and follow the same "deterministic post-refine guard" idiom as `_strip_duplicate_openers` in lecture.py. They run between the refine loop and `add_tts_pauses`, in this order: `strip_chapter_filename_slug` -> `expand_acronyms_for_tts` -> `apply_pronunciation_overrides` -> `strip_forbidden_fish_tags`. The `detect_repeated_phrases` n-gram scanner is folded into the refine loop itself so a repeat triggers another iteration via `LectureTranscriptFeedback.repeated_phrases` + the new validator.
+
+- `FISH_SPEECH_FORBIDDEN_TAGS` (constant): single source of truth for the 21 tags (`[sigh]`, `[inhale]`, `[exhale]`, `[clearing throat]`, ...) the writer prompts already forbid and the critic flags. The new `strip_forbidden_fish_tags` regex strips any leak through the LLM with a WARNING-level log so prompt drift surfaces instead of disappearing into the audio (Theme 9 — listener heard "breathing through a straw" sigh artifacts).
+- `expand_acronyms_for_tts(text, allowlist)`: rewrites standalone uppercase 2-6-letter tokens as letter-by-letter (`SAR -> S-A-R`). Camel-case identifiers (`myACRONYM`, `ABCfoo`) are skipped via a `(?<![A-Za-z])`/`(?![A-Za-z])` lookaround. The allowlist (USA, NASA, DNA, RNA, ...) keeps already-pronounceable tokens intact. Theme 6 — fixes Hamming Ch 3 reading "SAR" as "say R".
+- `apply_pronunciation_overrides(text, dict)`: whole-word case-sensitive substitution. Per-paper YAML carries the dict (`fish_speech_hamming.yaml` ships `Decisively -> "decisively,"`); empty dict is a no-op. Runs AFTER `expand_acronyms_for_tts` so a per-paper rewrite for a specific token wins over the generic letter-by-letter pass. Theme 7.
+- `detect_repeated_phrases(transcript, n=5, threshold=3, min_distinct_content_words=3)`: n-gram shingle scanner with a stopword filter (drops "the way that you can" style chatter). Returns repeated phrases in descending frequency order. Wired into `_refine_transcript` so the LLM critic gets explicit phrases to vary on the next iteration. Theme 5 — caught the "his last observation he said" repetition the LLM critic missed.
+- `strip_chapter_filename_slug(text)`: regex safety net that catches any raw `<base>_<NN>_<slug>` chapter content_key that leaks into transcript prose, replacing it with `Chapter <N>: <human slug>`. The proper humanization happens earlier in `generate_bookend_audio` via `humanize_chapter_slug`; this stripper is for stray interpolation. Theme 8.
+
+`generate_bookend_audio` now branches on `humanize_chapter_slug`: when the citation_key matches the `<base>_<NN>_<slug>` shape, the lecture-start announcement reads "Chapter 3: history of computers hardware. From Hamming, Art Doing Science, 2020." instead of the listener-reported "zero three, history of computers hardware". Non-chapter inputs fall through to the existing `humanize_citation_key` path.
+
+`combine_audio_with_section_pauses` is unchanged at the function level — the existing `tail_buffer_ms=350` constant remains the empirically-tuned sweet spot (v7=0 clipped, v8=150 clipped, v9=350 clean). Theme 1 (edge cutoffs) is addressed downstream of Theme 4 by the tighter chunk cap, which keeps body sentences from being cut mid-thought.

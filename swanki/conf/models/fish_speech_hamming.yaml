@@ -1,0 +1,39 @@
+models:
+  llm:
+    provider: openai
+    model: gpt-5.4-2026-03-05
+    temperature: 0.7
+    max_retries: 3
+  tts:
+    provider: fish_speech
+    server_url: http://localhost:8080
+    reference_id: hamming-20260428T1135-science-vs-engineering
+    reference_audio_path: /scratch/projects/torchcell-scratch/Swanki_Models/voice_refs/hamming/clips/20260428T1135-science-vs-engineering/denoised.wav
+    reference_text: "Now I need to discus science versus engineering. science, if you are doing it, you shouldn't know what you're doing. If you know what you're doing you shouldn't be doing it. Not in science because science is supposed to be exploration of what you don't know. Engineering you shouldn't be doing it unless you do know what you are doing. Well nothing is pure, science involves a great deal of engineering and engineering involves great deal of new material, so its a great blend."
+    temperature: 0.8
+    format: mp3
+    # Mirror of fish_speech.yaml sub-tree shape; Hamming-specific overrides
+    # only on `pronunciations` (Theme 6, 7 — SAR / Decisively).
+    preprocessor:
+      pronunciations:
+        # SAR is Hamming-domain: Search-and-Rescue / Synthetic-Aperture-Radar
+        # acronym era. Preempt the letter-by-letter rewrite so it reads as a
+        # word, not "S-A-R" (this user-tuned override wins over the generic
+        # acronym pass).
+        SAR: "sar"
+        # Theme 7 — heard mispronunciation in Ch 2 audio.
+        Decisively: "decisively,"
+      strip_forbidden_tags: true
+      acronym_letter_by_letter: true
+      acronym_allowlist:
+        [USA, UK, NASA, DNA, RNA, PCR, CPU, GPU, API, HTTP, JSON, HTML, XML,
+         SQL, PDF, MP3, WAV, TTS, LLM, AI, ML, NLP, SAR]
+    chunking:
+      max_chars: 700
+      paragraph_priority: true
+    postprocessor:
+      gain_match_target_dbfs: -25.0
+      chunk_pause_ms: 700
+      chunk_tail_trim_ms: 250
+      chunk_crossfade_ms: 50
+      section_pause_ms: 5000

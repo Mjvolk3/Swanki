@@ -331,3 +331,59 @@ def test_extract_relevant_si_fuzzy_match():
     result = extract_relevant_si(section, si_index)
     assert result is not None
     assert "SF1 content" in result
+
+
+# ---------------------------------------------------------------------------
+# LectureTranscriptFeedback validator (Themes 5 + 12)
+# ---------------------------------------------------------------------------
+
+
+def test_lecture_feedback_default_done_passes_through():
+    from swanki.models.cards import LectureTranscriptFeedback
+
+    fb = LectureTranscriptFeedback(
+        feedback=[], done=True, word_count=2000, meets_length_target=True,
+    )
+    # Existing four-kwarg construction must keep working with defaults.
+    assert fb.done is True
+    assert fb.bridge_quality is True
+    assert fb.repeated_phrases == []
+
+
+def test_lecture_feedback_repeated_phrases_force_done_false():
+    from swanki.models.cards import LectureTranscriptFeedback
+
+    fb = LectureTranscriptFeedback(
+        feedback=[],
+        done=True,
+        word_count=2000,
+        meets_length_target=True,
+        repeated_phrases=["his last observation he said"],
+    )
+    assert fb.done is False  # validator flipped it
+
+
+def test_lecture_feedback_bridge_quality_false_forces_done_false():
+    from swanki.models.cards import LectureTranscriptFeedback
+
+    fb = LectureTranscriptFeedback(
+        feedback=[],
+        done=True,
+        word_count=2000,
+        meets_length_target=True,
+        bridge_quality=False,
+    )
+    assert fb.done is False
+
+
+def test_lecture_feedback_model_validate_round_trip_runs_validator():
+    from swanki.models.cards import LectureTranscriptFeedback
+
+    base = LectureTranscriptFeedback(
+        feedback=[], done=True, word_count=2000, meets_length_target=True,
+    )
+    # The Pydantic 2 idiom: dump + reconstruct so @model_validator fires.
+    refreshed = LectureTranscriptFeedback.model_validate(
+        base.model_dump() | {"repeated_phrases": ["foo bar baz qux quux"]}
+    )
+    assert refreshed.done is False

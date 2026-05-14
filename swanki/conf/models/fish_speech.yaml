@@ -1,7 +1,7 @@
 models:
   llm:
     provider: openai
-    model: gpt-5.2-2025-12-11
+    model: gpt-5.4-2026-03-05
     temperature: 0.7
     max_retries: 3
   tts:
@@ -14,3 +14,36 @@ models:
     reference_text: ""
     temperature: 0.8
     format: mp3
+    # Nested sub-trees plumbed through pipeline.py:tts_kwargs and consumed by
+    # the audio modules. Per-paper variants (fish_speech_hamming.yaml etc.)
+    # override only the sub-keys they need; Hydra merges per group.
+    preprocessor:
+      # Whole-word case-sensitive pronunciation overrides applied before TTS.
+      # Per-paper context goes in fish_speech_<paper>.yaml, not here.
+      pronunciations: {}
+      # Strip Fish-Speech tags not on the writer/critic whitelist before TTS.
+      strip_forbidden_tags: true
+      # Letter-by-letter rewrite for standalone uppercase tokens (SAR -> S-A-R).
+      acronym_letter_by_letter: true
+      # Tokens to skip during acronym detection (already pronounceable).
+      acronym_allowlist:
+        [USA, UK, NASA, DNA, RNA, PCR, CPU, GPU, API, HTTP, JSON, HTML, XML,
+         SQL, PDF, MP3, WAV, TTS, LLM, AI, ML, NLP]
+    chunking:
+      # Per-chunk char cap. Fish quality decays past ~700 chars (Theme 4).
+      max_chars: 700
+      # Prefer paragraph boundaries; fall back to sentence-greedy only when
+      # a single paragraph exceeds max_chars.
+      paragraph_priority: true
+    postprocessor:
+      # Pure mean-dBFS shift per chunk to land at this target.
+      gain_match_target_dbfs: -25.0
+      # Deterministic silence between chunks within a section.
+      chunk_pause_ms: 700
+      # Silence-aware tail-trim scan window (NOT cut amount). Trim respects
+      # the empirically-tuned 350 ms post-speech buffer in _common.py.
+      chunk_tail_trim_ms: 250
+      # pydub crossfade applied via append(seg, crossfade=...).
+      chunk_crossfade_ms: 50
+      # Silence between sections.
+      section_pause_ms: 5000

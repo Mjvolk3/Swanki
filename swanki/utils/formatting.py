@@ -295,3 +295,42 @@ def humanize_citation_key(citation_key: str) -> str:
             segments.append(s.strip())
 
     return ", ".join(segments)
+
+
+_CHAPTER_KEY_PATTERN = re.compile(
+    r"^(?P<base>[A-Za-z][A-Za-z0-9]+)_(?P<num>\d{1,3})_(?P<slug>[a-z][a-z0-9-]+)$"
+)
+
+
+def humanize_chapter_slug(citation_key: str) -> str | None:
+    """Render ``<base>_<NN>_<slug>`` keys as ``Chapter <N>: <human slug>``.
+
+    Returns ``None`` for non-chapter inputs so callers can fall back to
+    :func:`humanize_citation_key`. The numeric segment drops leading zeros
+    so ``03`` becomes ``"3"`` (not ``"zero three"``); the slug's hyphens
+    become spaces.
+
+    Examples:
+        >>> humanize_chapter_slug("hammingArtDoingScience2020_03_history-of-computers-hardware")
+        'Chapter 3: history of computers hardware'
+        >>> humanize_chapter_slug("hammingArtDoingScience2020_1_orientation")
+        'Chapter 1: orientation'
+        >>> humanize_chapter_slug("bishopDeepLearning2024") is None
+        True
+
+    Args:
+        citation_key: Raw citation key (book chapter form preferred).
+
+    Returns:
+        Humanized chapter label, or ``None`` if the key has no chapter pattern.
+    """
+    if not citation_key:
+        return None
+    if citation_key.startswith("@"):
+        citation_key = citation_key[1:]
+    m = _CHAPTER_KEY_PATTERN.match(citation_key)
+    if not m:
+        return None
+    num = int(m.group("num"))
+    slug = m.group("slug").replace("-", " ")
+    return f"Chapter {num}: {slug}"

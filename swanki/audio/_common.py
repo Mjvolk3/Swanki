@@ -66,9 +66,22 @@ def add_tts_pauses(text: str, provider: str = "elevenlabs") -> str:
         text = re.sub(r":\s*\n", ":\n[short pause]\n", text)
         # Add pause after sentences ending with period followed by newline
         text = re.sub(r"\.\s*\n", ".\n[short pause]\n", text)
+        # Inject [short pause] every 3 sentences inside continuous prose so
+        # long single paragraphs (which Fish S2-Pro otherwise speaks without
+        # noticeable breath) still get lecture cadence. Newlines are not used
+        # by S2-Pro for pacing — every pause is tag-driven.
+        _sent_counter = [0]
+
+        def _inject_pause(_match: re.Match) -> str:
+            _sent_counter[0] += 1
+            if _sent_counter[0] % 3 == 0:
+                return " [short pause] "
+            return ""
+
+        text = re.sub(r"(?<=[.!?])(?=\s+[A-Z])", _inject_pause, text)
         # Collapse stacked tags
         text = re.sub(r"(\[pause\]\s*){2,}", "[pause]\n\n", text)
-        text = re.sub(r"(\[short pause\]\s*){2,}", "[short pause]\n", text)
+        text = re.sub(r"(\[short pause\]\s*){2,}", "[short pause] ", text)
     else:
         text = re.sub(r"\n\n+", '\n\n<break time="0.7s" />\n\n', text)
         text = re.sub(r":\s*\n", ':\n<break time="0.4s" />\n', text)
@@ -98,8 +111,11 @@ def append_chunk_pause(text: str, provider: str = "elevenlabs") -> str:
     """
     text = text.rstrip()
     if provider == "fish_speech":
-        if not text.endswith("[long pause]"):
-            text += " [long pause]"
+        # Fish renders [long pause] as an audible breath/sigh at chunk
+        # boundaries; use [pause] (reliable silence) and supply the rest of
+        # the chunk gap deterministically via combine_audio_with_section_pauses.
+        if not (text.endswith("[pause]") or text.endswith("[long pause]")):
+            text += " [pause]"
     else:
         # Any trailing self-closing SSML tag (commonly <break.../>) is treated
         # as an existing pause and not stacked. This is intentional.
@@ -207,6 +223,215 @@ def chunk_text_paragraphs(text: str, max_chars: int = 4500) -> list[str]:
 def _strip_ssml(text: str) -> str:
     """Remove SSML break tags that Fish Speech cannot handle."""
     return re.sub(r'<break[^>]*/?\s*>', '', text)
+
+
+_FISH_SPEECH_PUNCT_MAP = {
+    "\u2014": ", ",   # em dash → comma + space (reads as a natural pause)
+    "\u2013": "-",    # en dash → ASCII hyphen
+    "\u2212": "-",    # minus sign → ASCII hyphen
+    "\u2018": "'",    # left single quote
+    "\u2019": "'",    # right single quote / apostrophe
+    "\u201A": "'",    # single low-9 quote
+    "\u201B": "'",    # single high-reversed-9 quote
+    "\u201C": '"',    # left double quote
+    "\u201D": '"',    # right double quote
+    "\u201E": '"',    # double low-9 quote
+    "\u2026": "...",  # horizontal ellipsis
+    "\u00A0": " ",    # non-breaking space
+}
+
+
+def _normalize_fish_speech_punct(text: str) -> str:
+    """Fold Unicode punctuation into ASCII for Fish Speech TTS.
+
+    Fish Speech's tokenizer garbles Unicode dashes, curly quotes, and
+    ellipses rather than voicing them as pauses or apostrophes. Mapping
+    each to an ASCII equivalent before synthesis removes the garble
+    without changing perceived prosody.
+    """
+    for src, dst in _FISH_SPEECH_PUNCT_MAP.items():
+        text = text.replace(src, dst)
+    return text
+
+
+# Single source of truth for tags Fish renders as audible breath / wrong
+# register. Mirrored by the writer prompts in default.yaml / book_voice.yaml
+# and by the lecture critic prompt; the deterministic stripper below is the
+# safety net that catches LLM-emitted forbidden tags before TTS.
+FISH_SPEECH_FORBIDDEN_TAGS: tuple[str, ...] = (
+    "inhale", "exhale", "sigh", "clearing throat", "tsk", "panting", "moaning",
+    "whisper", "soft tone", "shouting", "screaming",
+    "sad", "depressed", "crying", "sobbing",
+    "angry", "furious", "panicked", "anxious", "scared", "worried",
+)
+
+_FISH_SPEECH_FORBIDDEN_TAG_RE = re.compile(
+    r"\[\s*(" + "|".join(re.escape(t) for t in FISH_SPEECH_FORBIDDEN_TAGS) + r")\s*\]",
+    flags=re.IGNORECASE,
+)
+
+
+def strip_forbidden_fish_tags(text: str) -> str:
+    """Strip Fish Speech bracket tags Fish renders as breath / wrong register.
+
+    Idempotent. Logs each stripped tag at WARNING so prompt drift surfaces in
+    the run log instead of disappearing silently into the audio.
+
+    Args:
+        text: Transcript bound for Fish Speech TTS.
+
+    Returns:
+        Text with forbidden tags removed and double spaces collapsed.
+    """
+
+    def _sub(m: re.Match) -> str:
+        logger.warning(f"Stripped forbidden Fish Speech tag: {m.group(0)!r}")
+        return ""
+
+    cleaned = _FISH_SPEECH_FORBIDDEN_TAG_RE.sub(_sub, text)
+    cleaned = re.sub(r"  +", " ", cleaned)
+    cleaned = re.sub(r" +\n", "\n", cleaned)
+    return cleaned
+
+
+# Standalone uppercase token of length 2-6, not part of camelCase. Camel-case
+# (myACRONYM, ACRONYMfoo) is excluded so identifiers in body prose aren't
+# mangled into letter spellings.
+_STANDALONE_ACRONYM_RE = re.compile(r"(?<![A-Za-z])([A-Z]{2,6})(?![A-Za-z])")
+
+
+def expand_acronyms_for_tts(
+    text: str, allowlist: set[str] | None = None
+) -> str:
+    """Rewrite standalone uppercase tokens as letter-by-letter for Fish Speech.
+
+    Fish reads ``S-A-R`` cleanly as letters (per the existing
+    `_FISH_SPEECH_PUNCT_MAP` design) but reads bare ``SAR`` as ``"say R"``.
+
+    Args:
+        text: Transcript bound for TTS.
+        allowlist: Tokens to skip (already pronounceable, e.g. ``USA``,
+            ``NASA``). When None, no tokens are skipped.
+
+    Returns:
+        Text with bare acronyms rewritten as ``S-A-R`` form.
+    """
+    skip = allowlist or set()
+
+    def _sub(m: re.Match) -> str:
+        tok = m.group(1)
+        if tok in skip:
+            return tok
+        return "-".join(tok)
+
+    return _STANDALONE_ACRONYM_RE.sub(_sub, text)
+
+
+def apply_pronunciation_overrides(
+    text: str, overrides: dict[str, str]
+) -> str:
+    """Whole-word case-sensitive substitutions applied before TTS.
+
+    The override key wins over `expand_acronyms_for_tts`: callers should run
+    overrides AFTER the acronym pass so a per-paper rewrite for a specific
+    token (e.g. ``SAR -> "sar"``) preempts the generic ``S-A-R`` rewrite.
+
+    Args:
+        text: Transcript bound for TTS.
+        overrides: Mapping of source token to replacement. Empty dict is a
+            no-op.
+
+    Returns:
+        Text with overrides applied.
+    """
+    for src, dst in overrides.items():
+        text = re.sub(rf"\b{re.escape(src)}\b", dst, text)
+    return text
+
+
+_REPEATED_PHRASE_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'-]*")
+_REPEATED_PHRASE_STOPWORDS = frozenset({
+    "the", "a", "an", "of", "to", "and", "or", "but", "is", "are", "was",
+    "were", "be", "been", "being", "in", "on", "at", "by", "for", "with",
+    "that", "this", "it", "its", "as", "from", "we", "you", "i", "he", "she",
+    "they", "them", "our",
+})
+
+
+def detect_repeated_phrases(
+    transcript: str,
+    n: int = 5,
+    threshold: int = 3,
+    min_distinct_content_words: int = 3,
+) -> list[str]:
+    """Find n-gram phrases repeated above ``threshold`` times.
+
+    Used by the lecture refine loop as a deterministic guard against the
+    "his last observation" failure mode the LLM critic missed (Theme 5).
+    Filters chatter like "the way that you can" by requiring at least
+    ``min_distinct_content_words`` non-stopword tokens per shingle.
+
+    Args:
+        transcript: Lecture transcript text (post-refine, pre-TTS).
+        n: Phrase length in tokens.
+        threshold: Minimum repetition count to flag.
+        min_distinct_content_words: Drop n-grams that are mostly function
+            words (avoids false positives on common phrasing).
+
+    Returns:
+        Repeated phrases in descending frequency order.
+    """
+    tokens = [t.lower() for t in _REPEATED_PHRASE_WORD_RE.findall(transcript)]
+    if len(tokens) < n:
+        return []
+    counts: dict[tuple[str, ...], int] = {}
+    for i in range(len(tokens) - n + 1):
+        gram = tuple(tokens[i : i + n])
+        content = sum(1 for t in gram if t not in _REPEATED_PHRASE_STOPWORDS)
+        if content < min_distinct_content_words:
+            continue
+        counts[gram] = counts.get(gram, 0) + 1
+    repeats = [(gram, c) for gram, c in counts.items() if c >= threshold]
+    repeats.sort(key=lambda x: -x[1])
+    return [" ".join(gram) for gram, _ in repeats]
+
+
+# Citation-key chapter pattern: <base>_<NN>_<slug>. The leading-zero numeric
+# segment is the chapter index; the slug uses hyphens and is humanized into
+# spaces by humanize_chapter_slug() in swanki/utils/formatting.py. The match
+# here is a fast deterministic pre-check used by the slug-stripper.
+_CHAPTER_SLUG_PATTERN = re.compile(
+    r"\b([A-Za-z][A-Za-z0-9]+)_(\d{1,3})_([a-z][a-z0-9-]+)\b"
+)
+
+
+def strip_chapter_filename_slug(text: str) -> str:
+    """Replace raw ``<base>_<NN>_<slug>`` tokens with humanized chapter form.
+
+    Catches Theme 8: the lecture writer occasionally interpolates the raw
+    chapter content_key (e.g. ``hammingArtDoingScience2020_03_history-of-
+    computers-hardware``) into transcript text. Without this stripper, Fish
+    reads the underscored slug aloud verbatim — ``"zero three"`` and all.
+
+    Replaces matches with ``Chapter <N>: <human slug>`` (slug hyphens become
+    spaces). Fall-through routing: bookend templates should call
+    ``swanki.utils.formatting.humanize_chapter_slug`` directly when they have
+    the citation_key in hand; this function is the safety net for any leakage
+    that escapes the templating layer.
+
+    Args:
+        text: Transcript text.
+
+    Returns:
+        Text with chapter-slug tokens replaced.
+    """
+
+    def _sub(m: re.Match) -> str:
+        num = int(m.group(2))
+        slug = m.group(3).replace("-", " ")
+        return f"Chapter {num}: {slug}"
+
+    return _CHAPTER_SLUG_PATTERN.sub(_sub, text)
 
 
 def _apply_speed(data: bytes, output_path: Path, speed: float) -> None:
@@ -361,6 +586,7 @@ def _tts_fish_speech(
 ) -> None:
     """Fish Speech S2 Pro TTS backend."""
     clean_text = _strip_ssml(text)
+    clean_text = _normalize_fish_speech_punct(clean_text)
 
     payload: dict = {
         "text": clean_text,
@@ -710,6 +936,9 @@ def combine_audio_with_section_pauses(
     bookend_start: Path | None = None,
     bookend_end: Path | None = None,
     bookend_pause_ms: int = 500,
+    chunk_tail_trim_ms: int = 0,
+    chunk_pause_ms: int = 0,
+    gain_match_target_dbfs: float | None = None,
 ) -> None:
     """Combine audio chunks grouped by section with real silence between sections.
 
@@ -721,30 +950,93 @@ def combine_audio_with_section_pauses(
         output: Path for the combined output file.
         section_pause_ms: Silence duration between sections.
         chunk_crossfade_ms: Crossfade duration between chunks within a section.
+            Combines with ``chunk_pause_ms``: when both are set, the silence is
+            inserted first and the next chunk crossfades into the trailing silence,
+            smoothing the join without bleeding speech.
         bookend_start: Optional start bookend audio file.
         bookend_end: Optional end bookend audio file.
         bookend_pause_ms: Silence after start bookend / before end bookend.
+        chunk_tail_trim_ms: Strip this many ms from the end of each chunk before
+            concatenation. Used to clip Fish Speech tag-rendering artifacts
+            (audible inhale/sigh that the [pause] tag renders as).
+        chunk_pause_ms: Deterministic silence inserted between chunks within a
+            section. Replaces relying on TTS-rendered ``[long pause]`` tags.
+        gain_match_target_dbfs: If set, each chunk + bookend is shifted by a
+            single gain scalar so its mean dBFS lands at the target. Pure gain,
+            no compression — preserves intra-chunk dynamics (Hamming's
+            expressive emphasis stays loud relative to surrounding speech).
+            Eliminates audible loudness jumps between consecutive chunks.
     """
     if not sections:
         logger.error("No sections provided to combine_audio_with_section_pauses")
         return
 
+    def _gain_match(seg: AudioSegment) -> AudioSegment:
+        if gain_match_target_dbfs is None:
+            return seg
+        # pydub returns -inf for silent segments; only normalize voiced audio
+        if seg.dBFS == float("-inf"):
+            return seg
+        delta = gain_match_target_dbfs - seg.dBFS
+        return seg + delta
+
+    def _load(path: Path) -> AudioSegment:
+        seg = AudioSegment.from_mp3(str(path))
+        if chunk_tail_trim_ms > 0 and len(seg) > chunk_tail_trim_ms + 200:
+            # Silence-aware trim: cut inside the trailing silence (NOT at its
+            # leading edge). Cutting right at the speech-silence transition
+            # makes the chunk-end sound clipped — the listener perceives the
+            # last syllable as truncated. We keep ~150 ms of post-speech
+            # silence as breathing room before the inter-chunk pause kicks in.
+            from pydub.silence import detect_silence
+
+            scan_window_ms = chunk_tail_trim_ms + 200
+            scan = seg[-scan_window_ms:]
+            silence_thresh = max(seg.dBFS - 16, -50.0)
+            silences = detect_silence(
+                scan, min_silence_len=80, silence_thresh=silence_thresh
+            )
+            # Trailing silence: a range whose end touches the end of the scan
+            # window (within a small tolerance).
+            trailing = [s for s in silences if s[1] >= scan_window_ms - 30]
+            if trailing:
+                silence_start_in_scan = trailing[-1][0]
+                # 350 ms of post-speech silence buffer. Listener feedback on v8
+                # (150 ms): still perceived as clipped at chunk boundaries even
+                # though no speech was actually being cut. The buffer needs to
+                # leave enough silence after the last syllable that the chunk
+                # never feels truncated. With this width, only chunks with
+                # genuinely long trailing silence get any trim at all.
+                tail_buffer_ms = 350
+                abs_cut = min(
+                    len(seg)
+                    - scan_window_ms
+                    + silence_start_in_scan
+                    + tail_buffer_ms,
+                    len(seg),
+                )
+                seg = seg[:abs_cut]
+            # else: chunk ends mid-speech — leave intact, no blind trim.
+        return _gain_match(seg)
+
     combined: AudioSegment | None = None
 
-    # Start bookend
+    # Start bookend (also gain-matched so it doesn't punch over the chunk level)
     if bookend_start and bookend_start.exists():
-        combined = AudioSegment.from_mp3(str(bookend_start))
+        combined = _gain_match(AudioSegment.from_mp3(str(bookend_start)))
         combined += AudioSegment.silent(duration=bookend_pause_ms)
 
     for sec_idx, section_chunks in enumerate(sections):
         if not section_chunks:
             continue
 
-        # Build section audio from chunks with crossfade
-        section_audio = AudioSegment.from_mp3(str(section_chunks[0]))
+        # Build section audio from chunks: silence first, then crossfade-append.
+        section_audio = _load(section_chunks[0])
         for chunk_path in section_chunks[1:]:
+            if chunk_pause_ms > 0:
+                section_audio += AudioSegment.silent(duration=chunk_pause_ms)
             section_audio = section_audio.append(
-                AudioSegment.from_mp3(str(chunk_path)), crossfade=chunk_crossfade_ms
+                _load(chunk_path), crossfade=chunk_crossfade_ms
             )
 
         # Append section with silence gap (except before first section)
@@ -761,7 +1053,7 @@ def combine_audio_with_section_pauses(
     # End bookend
     if bookend_end and bookend_end.exists():
         combined += AudioSegment.silent(duration=bookend_pause_ms)
-        combined += AudioSegment.from_mp3(str(bookend_end))
+        combined += _gain_match(AudioSegment.from_mp3(str(bookend_end)))
 
     combined.export(str(output), format="mp3", bitrate="192k")
 
@@ -880,20 +1172,34 @@ def generate_bookend_audio(
     Returns:
         Path to the generated bookend MP3.
     """
-    from ..utils.formatting import humanize_citation_key
+    from ..utils.formatting import humanize_chapter_slug, humanize_citation_key
 
-    humanized = humanize_citation_key(citation_key)
+    # For book chapters keyed as <base>_<NN>_<slug>, prefer the humanized
+    # chapter label over the raw underscore-suffixed citation key. Without
+    # this branch the listener hears "zero three, history of computers
+    # hardware" (Theme 8) instead of "Chapter 3: history of computers
+    # hardware".
+    chapter_label = humanize_chapter_slug(citation_key)
+    humanized_full = humanize_citation_key(citation_key)
     cache_path = output_dir / f"{citation_key}_{audio_type}_{position}.mp3"
 
     if audio_type == "lecture":
         if position == "start":
-            title_part = f" We are covering: {paper_title}." if paper_title else ""
-            text = f"Today's lecture is posted as: {humanized}.{title_part}"
+            if chapter_label:
+                base_part = humanize_citation_key(citation_key.split("_", 1)[0])
+                title_part = f" {paper_title}." if paper_title else ""
+                text = f"{chapter_label}. From {base_part}.{title_part}"
+            else:
+                title_part = f" We are covering: {paper_title}." if paper_title else ""
+                text = f"Today's lecture is posted as: {humanized_full}.{title_part}"
         else:
-            text = f"And with that we conclude: {humanized}."
+            if chapter_label:
+                text = f"And with that we conclude {chapter_label}."
+            else:
+                text = f"And with that we conclude: {humanized_full}."
     else:
         label = position.upper()
-        text = f"{label}: {humanized}."
+        text = f"{label}: {humanized_full}."
 
     output_dir.mkdir(parents=True, exist_ok=True)
     text_to_speech(text, voice_id, cache_path, elevenlabs_api_key, speed, **tts_kwargs)

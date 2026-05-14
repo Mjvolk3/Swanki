@@ -111,6 +111,6 @@ def classify_pdf(pdf_path: Path) -> PDFCutPlan:
     result = pdf_cut_agent.run_sync(
         user_msg,
         instructions=SYSTEM_PROMPT,
-        model="openai:gpt-5-nano",
+        model="openai:gpt-5.4-nano-2026-03-17",
     )
     return result.output  # type: ignore[no-any-return]

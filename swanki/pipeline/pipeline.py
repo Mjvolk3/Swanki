@@ -1880,6 +1880,23 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         tts_config = models_config.get("tts", {})
         tts_provider = tts_config.get("provider", "elevenlabs")
 
+        # Convert any nested OmegaConf nodes to plain dicts ONCE at this build
+        # site so the audio layer never has to know about DictConfig. Each
+        # sub-tree (preprocessor / chunking / postprocessor) is passed through
+        # tts_kwargs as a nested dict; without this plumbing the YAML keys are
+        # silently dropped by the downstream audio modules.
+        from omegaconf import DictConfig, OmegaConf
+
+        def _sub(name: str) -> dict:
+            node = tts_config.get(name, {})
+            if isinstance(node, DictConfig):
+                return OmegaConf.to_container(node, resolve=True)  # type: ignore[return-value]
+            return node or {}
+
+        prep_cfg = _sub("preprocessor")
+        chunk_cfg = _sub("chunking")
+        post_cfg = _sub("postprocessor")
+
         tts_kwargs: dict[str, object] = {}
         if tts_provider == "fish_speech":
             from ..audio._common import ensure_fish_speech_reference
@@ -1905,12 +1922,21 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 "reference_id": reference_id,
                 "temperature": tts_config.get("temperature", 0.8),
                 "format": tts_config.get("format", "mp3"),
+                "preprocessor": prep_cfg,
+                "chunking": chunk_cfg,
+                "postprocessor": post_cfg,
             }
         else:
             elevenlabs_api_key = os.getenv("ELEVEN_LABS_API_KEY")
             if not elevenlabs_api_key:
                 raise RuntimeError("ELEVEN_LABS_API_KEY not set in environment.")
             voice_id = tts_config.get("voice_id")
+            tts_kwargs = {
+                "provider": "elevenlabs",
+                "preprocessor": prep_cfg,
+                "chunking": chunk_cfg,
+                "postprocessor": post_cfg,
+            }
 
         # Generate complementary audio (card audio)
         if audio_config.get("generate_complementary", False):

@@ -12,16 +12,24 @@ import json
 from pydub import AudioSegment
 
 from swanki.audio._common import (
+    FISH_SPEECH_FORBIDDEN_TAGS,
+    _normalize_fish_speech_punct,
     append_chunk_pause,
+    apply_pronunciation_overrides,
     chunk_text,
+    chunk_text_paragraphs,
     clean_markdown_for_tts,
     combine_audio,
     combine_audio_with_section_pauses,
+    detect_repeated_phrases,
+    expand_acronyms_for_tts,
     extract_acronyms,
     filter_metadata,
     generate_silence,
     restitch_from_chunks,
     split_transcript_by_sections,
+    strip_chapter_filename_slug,
+    strip_forbidden_fish_tags,
     validate_audio_file,
     write_chunk_manifest,
 )
@@ -347,7 +355,10 @@ def test_combine_sections_zero_crossfade_default(tmp_path):
 
 
 def test_append_chunk_pause_fish_speech():
-    assert append_chunk_pause("Hello.", "fish_speech") == "Hello. [long pause]"
+    # Fish renders [long pause] as audible breath/sigh (Apr-26 fix); the
+    # production helper now emits [pause] and supplies real silence via
+    # combine_audio_with_section_pauses(chunk_pause_ms=...) instead.
+    assert append_chunk_pause("Hello.", "fish_speech") == "Hello. [pause]"
 
 
 def test_append_chunk_pause_elevenlabs():
@@ -371,7 +382,7 @@ def test_append_chunk_pause_idempotent_elevenlabs():
 
 
 def test_append_chunk_pause_strips_trailing_whitespace():
-    assert append_chunk_pause("Hello.   ", "fish_speech") == "Hello. [long pause]"
+    assert append_chunk_pause("Hello.   ", "fish_speech") == "Hello. [pause]"
 
 
 # ---------------------------------------------------------------------------
@@ -485,3 +496,277 @@ def test_restitch_from_chunks_missing_file_fails(tmp_path):
         assert "Chunk file missing" in str(e)
     else:
         raise AssertionError("Expected AssertionError for missing chunk file")
+
+
+# ---------------------------------------------------------------------------
+# _normalize_fish_speech_punct
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_fish_speech_punct_dashes():
+    text = "diseases\u2014such as tumors with type 1\u2013associated lesions."
+    out = _normalize_fish_speech_punct(text)
+    assert out == "diseases, such as tumors with type 1-associated lesions."
+
+
+def test_normalize_fish_speech_punct_quotes_and_ellipsis():
+    text = "the cell\u2019s ability \u201cto detour\u201d\u2026 continues"
+    out = _normalize_fish_speech_punct(text)
+    assert out == "the cell's ability \"to detour\"... continues"
+
+
+def test_normalize_fish_speech_punct_passthrough_ascii():
+    text = "plain ASCII - no changes needed."
+    assert _normalize_fish_speech_punct(text) == text
+
+
+# ---------------------------------------------------------------------------
+# strip_forbidden_fish_tags (Theme 9)
+# ---------------------------------------------------------------------------
+
+
+def test_strip_forbidden_fish_tags_removes_sigh():
+    out = strip_forbidden_fish_tags("hello [sigh] world")
+    assert out == "hello world"
+
+
+def test_strip_forbidden_fish_tags_preserves_allowed():
+    text = "First. [pause] Second. [short pause] Third. [emphasis] Done."
+    assert strip_forbidden_fish_tags(text) == text
+
+
+def test_strip_forbidden_fish_tags_idempotent():
+    text = "hello [inhale] [sigh] world"
+    once = strip_forbidden_fish_tags(text)
+    twice = strip_forbidden_fish_tags(once)
+    assert once == twice == "hello world"
+
+
+def test_strip_forbidden_fish_tags_case_insensitive():
+    assert strip_forbidden_fish_tags("a [SIGH] b [Inhale] c") == "a b c"
+
+
+def test_strip_forbidden_fish_tags_constant_complete():
+    # Sanity: all forbidden tags surface in the regex by being stripped.
+    text = " ".join(f"[{t}]" for t in FISH_SPEECH_FORBIDDEN_TAGS)
+    out = strip_forbidden_fish_tags(text)
+    assert out.strip() == ""
+
+
+# ---------------------------------------------------------------------------
+# expand_acronyms_for_tts (Theme 6)
+# ---------------------------------------------------------------------------
+
+
+def test_expand_acronyms_for_tts_letter_by_letter():
+    assert expand_acronyms_for_tts("the SAR system") == "the S-A-R system"
+
+
+def test_expand_acronyms_for_tts_skips_allowlist():
+    assert (
+        expand_acronyms_for_tts("USA and SAR", allowlist={"USA"})
+        == "USA and S-A-R"
+    )
+
+
+def test_expand_acronyms_for_tts_skips_camelcase_lower_prefix():
+    # myACRONYM is preceded by a lowercase letter -> not standalone.
+    assert (
+        expand_acronyms_for_tts("myACRONYM stays put") == "myACRONYM stays put"
+    )
+
+
+def test_expand_acronyms_for_tts_skips_camelcase_lower_suffix():
+    # ABCfoo is followed by lowercase -> not standalone.
+    assert expand_acronyms_for_tts("ABCfoo bar") == "ABCfoo bar"
+
+
+def test_expand_acronyms_for_tts_no_change_for_lowercase():
+    assert expand_acronyms_for_tts("nothing to do here") == "nothing to do here"
+
+
+def test_expand_acronyms_for_tts_skips_single_letter():
+    assert expand_acronyms_for_tts("the X factor and A team") == "the X factor and A team"
+
+
+# ---------------------------------------------------------------------------
+# apply_pronunciation_overrides (Theme 7)
+# ---------------------------------------------------------------------------
+
+
+def test_apply_pronunciation_overrides_whole_word():
+    out = apply_pronunciation_overrides(
+        "Decisively important", {"Decisively": "decisively,"}
+    )
+    assert out == "decisively, important"
+
+
+def test_apply_pronunciation_overrides_does_not_match_substring():
+    # "Indecisively" contains "Decisively" as a suffix; whole-word boundary
+    # should leave it alone.
+    out = apply_pronunciation_overrides(
+        "Indecisively yours", {"Decisively": "decisively,"}
+    )
+    assert out == "Indecisively yours"
+
+
+def test_apply_pronunciation_overrides_empty_dict_noop():
+    text = "no overrides here"
+    assert apply_pronunciation_overrides(text, {}) == text
+
+
+# ---------------------------------------------------------------------------
+# strip_chapter_filename_slug (Theme 8 safety net)
+# ---------------------------------------------------------------------------
+
+
+def test_strip_chapter_filename_slug_basic():
+    text = "now we present hammingArtDoingScience2020_03_history-of-computers-hardware here"
+    out = strip_chapter_filename_slug(text)
+    assert out == "now we present Chapter 3: history of computers hardware here"
+
+
+def test_strip_chapter_filename_slug_no_match_no_change():
+    text = "ordinary text without any chapter slug"
+    assert strip_chapter_filename_slug(text) == text
+
+
+def test_strip_chapter_filename_slug_drops_leading_zero():
+    out = strip_chapter_filename_slug("paper2024_07_some-slug")
+    assert "Chapter 7" in out
+    assert "07" not in out
+
+
+# ---------------------------------------------------------------------------
+# detect_repeated_phrases (Theme 5)
+# ---------------------------------------------------------------------------
+
+
+def test_detect_repeated_phrases_basic():
+    transcript = (
+        "his last observation he said. " * 4
+        + "different prose with no repetition follows."
+    )
+    repeats = detect_repeated_phrases(transcript, n=5, threshold=3)
+    assert any("his last observation he said" in r for r in repeats)
+
+
+def test_detect_repeated_phrases_filters_stopword_chatter():
+    # "the way that you can" repeated 5 times -> insufficient content words.
+    transcript = "the way that you can " * 5 + "but real prose contains many words."
+    repeats = detect_repeated_phrases(
+        transcript, n=5, threshold=3, min_distinct_content_words=3
+    )
+    assert all("the way that you can" not in r for r in repeats)
+
+
+def test_detect_repeated_phrases_no_repetition_returns_empty():
+    transcript = "one short transcript with no repeats whatsoever today."
+    assert detect_repeated_phrases(transcript) == []
+
+
+def test_detect_repeated_phrases_below_threshold_not_flagged():
+    transcript = "a meaningful unique five-word phrase. " * 2
+    assert detect_repeated_phrases(transcript, n=5, threshold=3) == []
+
+
+# ---------------------------------------------------------------------------
+# chunk_text_paragraphs - tighter max_chars (Theme 4)
+# ---------------------------------------------------------------------------
+
+
+def test_chunk_text_paragraphs_respects_700_char_cap():
+    paragraphs = "\n\n".join(
+        f"Paragraph {i}. " + ("filler. " * 30)
+        for i in range(5)
+    )
+    chunks = chunk_text_paragraphs(paragraphs, max_chars=700)
+    assert all(len(c) <= 700 for c in chunks), [len(c) for c in chunks]
+
+
+def test_chunk_text_paragraphs_oversize_paragraph_falls_back_to_sentences():
+    big = " ".join(f"Sentence {i} ends here." for i in range(60))
+    chunks = chunk_text_paragraphs(big, max_chars=200)
+    # Single oversize paragraph triggers sentence-fallback; chunks must stay
+    # under the cap.
+    assert all(len(c) <= 200 for c in chunks)
+    assert len(chunks) > 1
+
+
+def test_chunk_text_paragraphs_packs_under_budget():
+    text = "Para one is short.\n\nPara two is also short."
+    chunks = chunk_text_paragraphs(text, max_chars=200)
+    # Both paragraphs fit in one chunk.
+    assert chunks == ["Para one is short.\n\nPara two is also short."]
+
+
+# ---------------------------------------------------------------------------
+# combine_audio_with_section_pauses - previously-untested params
+# ---------------------------------------------------------------------------
+
+
+def test_combine_audio_with_section_pauses_chunk_pause_inserts_silence(tmp_path):
+    # Two 1-second sine-wave-ish chunks, 500ms inter-chunk silence -> 2.5s.
+    a = tmp_path / "a.mp3"
+    b = tmp_path / "b.mp3"
+    AudioSegment.silent(duration=1000).export(str(a), format="mp3")
+    AudioSegment.silent(duration=1000).export(str(b), format="mp3")
+    out = tmp_path / "out.mp3"
+    combine_audio_with_section_pauses(
+        [[a, b]], out, section_pause_ms=0, chunk_pause_ms=500,
+    )
+    combined = AudioSegment.from_mp3(str(out))
+    assert 2400 <= len(combined) <= 2600
+
+
+def test_combine_audio_with_section_pauses_zero_chunk_pause_no_extra_silence(tmp_path):
+    a = tmp_path / "a.mp3"
+    b = tmp_path / "b.mp3"
+    AudioSegment.silent(duration=1000).export(str(a), format="mp3")
+    AudioSegment.silent(duration=1000).export(str(b), format="mp3")
+    out = tmp_path / "out.mp3"
+    combine_audio_with_section_pauses(
+        [[a, b]], out, section_pause_ms=0, chunk_pause_ms=0,
+    )
+    combined = AudioSegment.from_mp3(str(out))
+    # No inter-chunk silence requested -> ~2 seconds.
+    assert 1900 <= len(combined) <= 2100
+
+
+def test_combine_audio_with_section_pauses_gain_match_normalizes(tmp_path):
+    # Two chunks at very different sustained levels; gain_match flattens the
+    # mean dBFS to the target.
+    from pydub.generators import Sine
+
+    loud = Sine(440).to_audio_segment(duration=1000)
+    quiet = loud - 12  # 12 dB quieter
+    a = tmp_path / "a.mp3"
+    b = tmp_path / "b.mp3"
+    loud.export(str(a), format="mp3")
+    quiet.export(str(b), format="mp3")
+    out_with = tmp_path / "with.mp3"
+    out_without = tmp_path / "without.mp3"
+    combine_audio_with_section_pauses(
+        [[a, b]], out_with, section_pause_ms=0, gain_match_target_dbfs=-25.0,
+    )
+    combine_audio_with_section_pauses(
+        [[a, b]], out_without, section_pause_ms=0,
+    )
+    combined_with = AudioSegment.from_mp3(str(out_with))
+    combined_without = AudioSegment.from_mp3(str(out_without))
+    # With gain match, the combined dBFS should be closer to -25 than without.
+    assert abs(combined_with.dBFS - (-25.0)) < abs(combined_without.dBFS - (-25.0))
+
+
+def test_combine_audio_with_section_pauses_chunk_tail_trim_zero_no_op(tmp_path):
+    # chunk_tail_trim_ms=0 must NOT trim anything (regression guard).
+    a = tmp_path / "a.mp3"
+    b = tmp_path / "b.mp3"
+    AudioSegment.silent(duration=1000).export(str(a), format="mp3")
+    AudioSegment.silent(duration=1000).export(str(b), format="mp3")
+    out = tmp_path / "out.mp3"
+    combine_audio_with_section_pauses(
+        [[a, b]], out, section_pause_ms=0, chunk_tail_trim_ms=0,
+    )
+    combined = AudioSegment.from_mp3(str(out))
+    assert 1900 <= len(combined) <= 2100
