@@ -122,3 +122,13 @@ Five new helpers + one constant land alongside `_normalize_fish_speech_punct` an
 `generate_bookend_audio` now branches on `humanize_chapter_slug`: when the citation_key matches the `<base>_<NN>_<slug>` shape, the lecture-start announcement reads "Chapter 3: history of computers hardware. From Hamming, Art Doing Science, 2020." instead of the listener-reported "zero three, history of computers hardware". Non-chapter inputs fall through to the existing `humanize_citation_key` path.
 
 `combine_audio_with_section_pauses` is unchanged at the function level — the existing `tail_buffer_ms=350` constant remains the empirically-tuned sweet spot (v7=0 clipped, v8=150 clipped, v9=350 clean). Theme 1 (edge cutoffs) is addressed downstream of Theme 4 by the tighter chunk cap, which keeps body sentences from being cut mid-thought.
+
+## 2026.05.14 - Strip chunk-boundary pause tags instead of appending one (Fish stutter fix)
+
+Listener flagged audible stutter at every chunk boundary in the post-merge Hamming audio. Inspecting the chunk manifest text confirmed each Fish chunk ended with `\n[short pause]\n[pause]` — `add_tts_pauses` injects `[short pause]` after sentence-end+newline and `[pause]` between paragraphs, then the (now-removed) fish branch of `append_chunk_pause` added one more ` [pause]`. Fish renders these tokens as a brief audible artifact, then the deterministic `chunk_pause_ms=700` silence plays — listener perceives a double-beat stutter at every join.
+
+Fish branch of `append_chunk_pause` now strips trailing AND leading pause tags via the new `strip_chunk_boundary_pause_tags` helper instead of appending one. Inter-chunk silence is supplied entirely by `combine_audio_with_section_pauses` `chunk_pause_ms`. Mid-chunk pause tags are preserved — they signal complex-sentence comprehension breaks or dramatic effect (the listener's stated design principle).
+
+ElevenLabs branch unchanged: the `<break time="1.0s" />` SSML tag IS the pause mechanism for ElevenLabs (no deterministic inter-chunk silence at concat time), so the append behavior is correct for that provider.
+
+Test fallout: `test_append_chunk_pause_fish_speech` and `test_append_chunk_pause_strips_trailing_whitespace` updated; new tests cover trailing-tag stripping (single, stacked, mixed forms), leading-tag stripping, mid-chunk preservation, and idempotency.

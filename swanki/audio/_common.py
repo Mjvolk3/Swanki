@@ -94,33 +94,68 @@ def add_tts_pauses(text: str, provider: str = "elevenlabs") -> str:
     return text
 
 
-def append_chunk_pause(text: str, provider: str = "elevenlabs") -> str:
-    """Append a trailing pause tag to a TTS chunk.
+_CHUNK_BOUNDARY_PAUSE_RE = re.compile(
+    r"(\s*\[(?:pause|short pause|long pause)\])+\s*$"
+)
+_CHUNK_LEADING_PAUSE_RE = re.compile(
+    r"^(\s*\[(?:pause|short pause|long pause)\])+\s*"
+)
 
-    Ensures each chunk's audio ends with a natural pause so direct
-    concatenation of chunks sounds seamless. Idempotent: returns the
-    text unchanged when a trailing pause tag is already present.
+
+def strip_chunk_boundary_pause_tags(text: str) -> str:
+    """Strip ``[pause]`` / ``[short pause]`` / ``[long pause]`` from chunk ends.
+
+    Pause tags at chunk boundaries cause audible stutter when Fish renders the
+    token immediately before (or after) the deterministic inter-chunk silence
+    supplied by :func:`combine_audio_with_section_pauses` (``chunk_pause_ms``).
+    Pause tags should appear MID-chunk only -- where they signal complex-
+    sentence comprehension breaks or dramatic effect. Mid-chunk tags are
+    preserved.
+
+    Idempotent. Operates only on text that begins or ends with a (possibly
+    stacked) sequence of pause tags; mid-chunk content is untouched.
 
     Args:
-        text: Chunk text to append a pause to.
+        text: Chunk text bound for TTS.
+
+    Returns:
+        Text with leading and trailing pause tags removed (and surrounding
+        whitespace trimmed).
+    """
+    text = _CHUNK_LEADING_PAUSE_RE.sub("", text)
+    text = _CHUNK_BOUNDARY_PAUSE_RE.sub("", text)
+    return text.strip()
+
+
+def append_chunk_pause(text: str, provider: str = "elevenlabs") -> str:
+    """Prepare a chunk's tail for TTS provider-specific concatenation.
+
+    For Fish Speech: STRIP any trailing ``[pause]`` / ``[short pause]`` /
+    ``[long pause]`` tag (and any leading one). Inter-chunk silence is supplied
+    deterministically by :func:`combine_audio_with_section_pauses` via
+    ``chunk_pause_ms``; the trailing pause tags previously emitted here caused
+    audible stutter at chunk boundaries (Fish renders the token, then the
+    silence plays, producing a perceptible double-beat). Pause tags belong
+    MID-chunk only -- for complex-sentence comprehension breaks or dramatic
+    effect.
+
+    For ElevenLabs: APPEND a self-closing ``<break time="1.0s" />`` SSML tag.
+    ElevenLabs does NOT receive deterministic inter-chunk silence at
+    concatenation time, so the SSML break is the pause mechanism. Idempotent:
+    skips when a ``/>``-terminated tag is already present.
+
+    Args:
+        text: Chunk text.
         provider: TTS provider name (``"fish_speech"`` or ``"elevenlabs"``).
 
     Returns:
-        Text with a trailing pause tag appended (or unchanged if already
-        present).
+        Provider-appropriate chunk-tail text.
     """
-    text = text.rstrip()
     if provider == "fish_speech":
-        # Fish renders [long pause] as an audible breath/sigh at chunk
-        # boundaries; use [pause] (reliable silence) and supply the rest of
-        # the chunk gap deterministically via combine_audio_with_section_pauses.
-        if not (text.endswith("[pause]") or text.endswith("[long pause]")):
-            text += " [pause]"
-    else:
-        # Any trailing self-closing SSML tag (commonly <break.../>) is treated
-        # as an existing pause and not stacked. This is intentional.
-        if not text.endswith("/>"):
-            text += ' <break time="1.0s" />'
+        return strip_chunk_boundary_pause_tags(text)
+    text = text.rstrip()
+    if not text.endswith("/>"):
+        text += ' <break time="1.0s" />'
     return text
 
 

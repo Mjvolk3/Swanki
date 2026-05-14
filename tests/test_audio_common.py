@@ -354,11 +354,38 @@ def test_combine_sections_zero_crossfade_default(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_append_chunk_pause_fish_speech():
-    # Fish renders [long pause] as audible breath/sigh (Apr-26 fix); the
-    # production helper now emits [pause] and supplies real silence via
-    # combine_audio_with_section_pauses(chunk_pause_ms=...) instead.
-    assert append_chunk_pause("Hello.", "fish_speech") == "Hello. [pause]"
+def test_append_chunk_pause_fish_speech_no_append():
+    # May-14 fix: Fish chunks land at TTS with NO trailing pause tag. Inter-
+    # chunk silence comes from chunk_pause_ms in combine_audio_with_section_pauses;
+    # emitting a token here caused audible stutter at chunk boundaries (Fish
+    # rendered the token first and then the silence played).
+    assert append_chunk_pause("Hello.", "fish_speech") == "Hello."
+
+
+def test_append_chunk_pause_fish_strips_existing_trailing_pause():
+    assert append_chunk_pause("Hello. [pause]", "fish_speech") == "Hello."
+    assert (
+        append_chunk_pause("Hello.\n[short pause]\n[pause]", "fish_speech")
+        == "Hello."
+    )
+    assert (
+        append_chunk_pause("Hello. [short pause] [pause] [long pause]", "fish_speech")
+        == "Hello."
+    )
+
+
+def test_append_chunk_pause_fish_strips_leading_pause():
+    # Defensive: a chunk that starts at a paragraph boundary could have a
+    # leading [pause] from add_tts_pauses. Strip those too — same reasoning as
+    # trailing: chunk_pause_ms supplies the silence between chunks.
+    assert append_chunk_pause("[pause] Hello.", "fish_speech") == "Hello."
+
+
+def test_append_chunk_pause_fish_preserves_mid_chunk_pause():
+    # Mid-chunk pauses signal complex-sentence comprehension or dramatic
+    # effect; they must survive untouched.
+    text = "Mid [pause] chunk text. End sentence."
+    assert append_chunk_pause(text, "fish_speech") == text
 
 
 def test_append_chunk_pause_elevenlabs():
@@ -370,9 +397,10 @@ def test_append_chunk_pause_elevenlabs():
 
 
 def test_append_chunk_pause_idempotent_fish():
-    once = append_chunk_pause("Hello.", "fish_speech")
+    # Stripping is idempotent; second pass on stripped text is a no-op.
+    once = append_chunk_pause("Hello. [pause]", "fish_speech")
     twice = append_chunk_pause(once, "fish_speech")
-    assert once == twice
+    assert once == twice == "Hello."
 
 
 def test_append_chunk_pause_idempotent_elevenlabs():
@@ -382,7 +410,7 @@ def test_append_chunk_pause_idempotent_elevenlabs():
 
 
 def test_append_chunk_pause_strips_trailing_whitespace():
-    assert append_chunk_pause("Hello.   ", "fish_speech") == "Hello. [pause]"
+    assert append_chunk_pause("Hello.   ", "fish_speech") == "Hello."
 
 
 # ---------------------------------------------------------------------------
