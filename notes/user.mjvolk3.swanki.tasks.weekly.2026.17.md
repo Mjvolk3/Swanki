@@ -73,3 +73,22 @@ created: 1776884900886
 - [x] First end-to-end Schaum's Microbiology Ch1 run: 30 `problem_main` + 1 `problem_overview` cards + summary/lecture/reading audio + Zotero sync. Caught and fixed the LLM-default-card_subtype bug via plan-driven stamping; caught and fixed the Zotero apkg-glob bug missing the `-problem-set` suffix [[swanki.sync.zotero#20260426---apkg-glob-picks-up-filename-suffix]]
 - [x] Shipped classifier-driven `mode=full` routing: section_classifier emits per-page labels (`main_content` / `review_exercises` / front+back matter), routes main_content through the existing segment-based card-gen and review_exercises through the problem-set pipeline, merging both card streams into one `.apkg`. Audio lecture/reading now source from `main_content` only [[swanki.pipeline.section_classifier]] [[swanki.pipeline.pipeline#20260426---classifier-driven-modefull-routing--audio-source-masking]]
 - [x] Added `audio=complementary` preset (per-card audio only) and re-export of section types from `swanki.models` [[swanki.models.sections]]
+
+## 2026.05.04
+
+- [x] Shipped MC / Matching / True-False / Completion enumeration so Schaum's CH01 review section produces 45 problem-set cards (15 MC + 9 Matching + 15 T/F + 6 theory) — all paired, audit pass [[plan.mc-matching-tf-completion-enumeration.2026.05.04]]
+- [x] Extended `_PROBLEM_TAG_RE` to accept chapter-prefixed problem IDs (`MC-CH1-7`, `MAT-CH1-3`, `TF-CH1-7`, `CMP-CH2-9`) so the coverage audit recognizes review-section cards [[swanki.models.problem_set]]
+- [x] Restructured back-of-book pairing into `_partition_back_of_book` + per-subtype loop; legacy `_MC_ANSWER_BLOCK` regex never matched the actual `## Chapter N\n## Multiple Choice` Mathpix output [[swanki.pipeline.problem_set]]
+
+## 2026.05.05
+
+- [x] Fixed apkg media bundling: `_find_media` now searches immediate subdirectories of base_dir so per-card complementary audio in `gen-md-complementary-audio/` actually embeds in the apkg (was silently writing "0 media files" while cards carried dangling `[sound:...]` refs) [[swanki.processing.apkg_exporter]]
+
+## 2026.05.06
+
+- [x] Per-card content polish: dropped the broken "originally underlined term" T/F framing, enforced one-choice-per-line MC, added Matching domain prefix, and added bold/italics + light-rephrase guidance across review + theory + main_content prompts [[swanki.pipeline.problem_set]]
+
+## 2026.05.14
+
+- [x] Enforced canonical `<TypeLabel> <n>:` card-front format (no redundant chapter prefix, no duplicate body header) and added `humanize_card_text_for_tts` so Fish Speech reads `T/F 12:` as "True or false 12" instead of garbled letters [[swanki.utils.formatting#20260506---humanize_card_text_for_tts-problem-set-label-expansion]]
+- [x] Wired the TTS label humanizer into `generate_card_transcript` between the citation-prefix and LaTeX-humanization passes [[swanki.audio.card#20260514---wire-problem-set-label-humanizer-into-card-transcript-prep]]

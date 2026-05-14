@@ -49,3 +49,7 @@ All 5 `text_to_speech` call sites now wrap their text arg with this helper:
 - `generate_card_audio` line 546 (multi-chunk back loop)
 
 No chunker change (cards use `chunk_text` and stay short). No combine change (cards use `combine_audio` not `combine_audio_with_section_pauses`). The today's chunk-boundary pause-tag strip from `append_chunk_pause` already applies to cards since they call that function.
+
+## 2026.05.14 - Wire problem-set label humanizer into card transcript prep
+
+`generate_card_transcript` now calls `humanize_card_text_for_tts` from `swanki.utils.formatting` after the citation prefix is attached and before the LaTeX humanization pass. Fish Speech tokenized short abbreviations like `T/F 12:` as letter sequences and read `12` as "one, two", derailing the rest of the transcript. The humanizer expands the canonical short form (`MC 13:` -> `Multiple choice 13:`, `T/F 12:` -> `True or false 12:`) and any LLM-regression long form (`TF-CH1-12:` -> `True or false 12:`, `MAT-CH1-3:` -> `Matching 3:`, `CMP-CH2-9:` -> `Completion 9:`), plus generic `Ch./Chapter/CH<n>` and `Sec./Section/SEC<n>` scaffolding. The expansion happens once per transcript call and is idempotent, so re-runs against the same card text produce stable output.

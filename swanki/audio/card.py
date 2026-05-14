@@ -16,7 +16,7 @@ import tiktoken
 
 from ..llm.agents import text_agent
 from ..models.cards import PlainCard
-from ..utils.formatting import humanize_citation_key
+from ..utils.formatting import humanize_card_text_for_tts, humanize_citation_key
 from ._common import (
     DEFAULT_VOICE_ID,
     append_chunk_pause,
@@ -199,6 +199,11 @@ def generate_card_transcript(
         logger.debug(
             f"Card {card.card_id}: Added image summary AFTER content for audio"
         )
+
+    # Pre-process: expand problem-set type labels (T/F, MC, MAT-CH../CMP-CH..)
+    # and chapter/section abbreviations into full spoken forms so Fish Speech
+    # doesn't read "T/F 12:" as garbled letters / split "12" into "1, 2".
+    content = humanize_card_text_for_tts(content)
 
     # Pre-process: humanize LaTeX before transcript generation
     # This dedicated pass converts all math to spoken form so the transcript

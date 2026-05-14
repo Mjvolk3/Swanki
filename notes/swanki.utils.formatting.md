@@ -20,6 +20,23 @@ The old implementation produced unnatural output like "Bunne, How Build Virtual2
 
 Extracted `_split_camel_case()` helper for reuse across the author and title splitting paths. Also handles digit/letter boundaries ("50MCells" -> "50 M Cells").
 
+## 2026.05.06 - humanize_card_text_for_tts (problem-set label expansion)
+
+Added a regex-based pre-LLM transcript pass that expands abbreviated tokens which Fish Speech tokenizes as letter sequences and reads as garble. Two label patterns:
+
+- **Short form** (canonical, enforced by the card-gen prompt): `MC 13:` / `T/F 12:` → `Multiple choice 13:` / `True or false 12:`. Matching and Completion are already full words so they pass through unchanged.
+- **Long form** (defense-in-depth for LLM regressions to the canonical problem_id): `MC-CH1-13:` / `TF-CH1-12:` / `MAT-CH1-3:` / `CMP-CH2-9:` → expanded same as short form.
+
+Plus general scaffolding:
+- `Ch. 1` / `Chapter 1` / `CH3` (word-bounded) → `chapter 1` / `chapter 3` (leading zeros stripped via `int()` so `CH01` reads as `chapter 1`, not `chapter oh one`).
+- `Sec. 4` / `Section 4` / `SEC2` → `section 4` / `section 2`.
+
+Critical safety property: a negative lookbehind `(?<![A-Za-z0-9_\-])` precedes every chapter/section pattern so identifier-like tokens (`MC-CH1-13`, `alcamo2010_CH01.problem.MC-CH1-13`) are NOT mangled. `\b` alone matches between `-` and `CH`, which would have corrupted tag strings.
+
+`P` / `Pt.` (part) was deliberately excluded from the table — too many false positives in chemistry/biology body text where `P` is a single letter (phosphorus, probability).
+
+Wired into `swanki/audio/card.py:generate_card_transcript` between citation-prefix attachment and the LaTeX humanization step.
+
 ## 2026.05.14 - humanize_chapter_slug for Theme 8 (chapter intro humanization)
 
 `humanize_citation_key` rendered chapter content_keys like `hammingArtDoingScience2020_03_history-of-computers-hardware` as "Hamming, Art Doing Science, 2020, 03, history of computers hardware" — the listener heard "zero three" and reported (Theme 8) that chapter intros should read "Chapter 3: history of computers hardware" instead.

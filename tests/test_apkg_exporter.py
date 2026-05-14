@@ -145,6 +145,45 @@ def test_media_bundling(exporter, tmp_dir):
             assert idx in zf.namelist()
 
 
+def test_media_bundling_resolves_subdirectory(exporter, tmp_dir):
+    """Per-card audio lives in ``gen-md-complementary-audio/`` under the
+    output dir; ``prepare_for_anki`` strips the directory prefix when
+    converting ``[audio-front](subdir/foo.mp3)`` to ``[sound:foo.mp3]``, so
+    ``_find_media`` must look in immediate subdirectories of base_dir.
+    """
+    audio_dir = tmp_dir / "gen-md-complementary-audio"
+    audio_dir.mkdir()
+    (audio_dir / "front.mp3").write_bytes(b"fake-front")
+    (audio_dir / "back.mp3").write_bytes(b"fake-back")
+
+    cards = [
+        {
+            "front": "Q\n[audio-front](gen-md-complementary-audio/front.mp3)",
+            "back": "A\n[audio-back](gen-md-complementary-audio/back.mp3)",
+            "tags": ["t"],
+        }
+    ]
+    out = tmp_dir / "subdir.apkg"
+    exporter.export_from_cards(cards, out, tmp_dir)
+
+    with zipfile.ZipFile(str(out)) as zf:
+        media_json = json.loads(zf.read("media"))
+        media_filenames = set(media_json.values())
+        assert "front.mp3" in media_filenames
+        assert "back.mp3" in media_filenames
+
+
+def test_find_media_searches_immediate_subdirectories(tmp_dir):
+    """Direct unit test for ``_find_media`` subdirectory search."""
+    sub = tmp_dir / "gen-md-complementary-audio"
+    sub.mkdir()
+    target = sub / "foo.mp3"
+    target.write_bytes(b"x")
+
+    resolved = ApkgExporter._find_media("foo.mp3", tmp_dir)
+    assert resolved == target
+
+
 # ── Stable IDs ──────────────────────────────────────────────────────────
 
 

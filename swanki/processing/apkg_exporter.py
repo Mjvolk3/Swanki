@@ -209,13 +209,27 @@ class ApkgExporter:
 
     @staticmethod
     def _find_media(filename: str, base_dir: Path) -> Path | None:
-        """Resolve a media filename to an existing file path."""
-        # Try base_dir directly
+        """Resolve a media filename to an existing file path.
+
+        Searches in order: base_dir, base_dir's immediate subdirectories
+        (per-card complementary audio lives in
+        ``gen-md-complementary-audio/``), then parent directories up to 3
+        levels. ``prepare_for_anki`` strips the directory prefix when
+        converting ``[audio-front](subdir/foo.mp3)`` to ``[sound:foo.mp3]``,
+        so the apkg packager needs to re-locate the file by basename alone.
+        """
         candidate = base_dir / filename
         if candidate.exists():
             return candidate
 
-        # Try parent directories (up to 3 levels)
+        if base_dir.is_dir():
+            for child in base_dir.iterdir():
+                if not child.is_dir():
+                    continue
+                candidate = child / filename
+                if candidate.exists():
+                    return candidate
+
         current = base_dir
         for _ in range(3):
             current = current.parent

@@ -390,3 +390,97 @@ def humanize_chapter_slug(citation_key: str) -> str | None:
         return None
     _, num_str, slug = parsed
     return f"Chapter {int(num_str)}: {slug}"
+
+
+
+# Per-card audio TTS humanization. The transcript LLM is told to read content
+# verbatim, but problem-set type-label abbreviations ("MC 13:", "T/F 12:",
+# "MAT-CH1-3:") and short scaffolding tokens like "CH1" / "Sec. 4" are
+# tokenized as letter sequences by Fish Speech and read as garble. This
+# regex-based pass expands them BEFORE the transcript LLM call.
+# Two label patterns: the canonical short form enforced by the card-gen
+# prompt ("MC 13:", "T/F 12:") and a defense-in-depth long form for LLM
+# regressions that emit the canonical problem_id ("MC-CH1-13:",
+# "TF-CH1-12:", "MAT-CH1-3:", "CMP-CH2-9:"). The long form is matched first.
+_PROBLEM_LABEL_LONG = re.compile(
+    r"(?m)(?:^|(?<=[:\s]))(MC|TF|MAT|CMP)-CH\d+-(\d+(?:\.\d+)?)\s*:"
+)
+_PROBLEM_LABEL_SHORT = re.compile(
+    r"(?m)(?:^|(?<=[:\s]))(MC|T/F)\s+(\d+(?:\.\d+)?)\s*:"
+)
+_LABEL_EXPANSION = {
+    "MC": "Multiple choice",
+    "T/F": "True or false",
+    "TF": "True or false",
+    "MAT": "Matching",
+    "CMP": "Completion",
+}
+
+# Negative lookbehind shared by all chapter / section patterns: skip tokens
+# preceded by another letter, digit, hyphen, or underscore (i.e. identifier-
+# like contexts such as ``MC-CH1-13`` or ``alcamo2010_CH01.problem...``).
+_CHAPTER_TOKEN = re.compile(
+    r"(?<![A-Za-z0-9_\-])Ch(?:apter)?\.?\s*(\d+)\b", re.IGNORECASE
+)
+_CHAPTER_BARE = re.compile(r"(?<![A-Za-z0-9_\-])CH(\d+)\b")
+_SECTION_TOKEN = re.compile(
+    r"(?<![A-Za-z0-9_\-])Sec(?:tion)?\.?\s*(\d+)\b", re.IGNORECASE
+)
+_SECTION_BARE = re.compile(r"(?<![A-Za-z0-9_\-])SEC(\d+)\b")
+
+
+def _expand_problem_label(match: re.Match[str]) -> str:
+    label = match.group(1)
+    num = match.group(2)
+    expanded = _LABEL_EXPANSION.get(label)
+    if expanded is None:
+        return match.group(0)
+    return f"{expanded} {num}:"
+
+
+def humanize_card_text_for_tts(text: str) -> str:
+    """Expand abbreviations that confuse Fish Speech into spoken forms.
+
+    Designed for per-card complementary-audio transcripts. Applied BEFORE the
+    transcript LLM call so the LLM (and downstream TTS) sees natural prose.
+
+    Expansions
+    ----------
+    - Problem-set type labels:
+      ``MC 13:`` → ``Multiple choice 13:``
+      ``T/F 12:`` → ``True or false 12:``
+      ``MC-CH1-13:`` (LLM regression) → ``Multiple choice 13:``
+      ``MAT-CH1-3:``                  → ``Matching 3:``
+      ``TF-CH1-12:``                  → ``True or false 12:``
+      ``CMP-CH2-9:``                  → ``Completion 9:``
+    - Chapter / section scaffolding:
+      ``CH1`` / ``Ch. 1`` / ``Chapter 1`` → ``chapter 1``
+      ``SEC4`` / ``Sec. 4`` / ``Section 4`` → ``section 4``
+
+    Notes:
+        - ``P``/``Pt.`` (part) is intentionally NOT expanded — too many false
+          positives in chemistry/biology body text where ``P`` is a single
+          letter (phosphorus, probability symbols, etc.).
+        - The label regex anchors to start-of-line OR after whitespace/colon
+          so it does not eat embedded mentions inside body prose.
+    """
+    if not text:
+        return text
+
+    def _ch(m: re.Match[str]) -> str:
+        return f"chapter {int(m.group(1))}"
+
+    def _sec(m: re.Match[str]) -> str:
+        return f"section {int(m.group(1))}"
+
+    # Long form first so "TF-CH1-12:" expands to "True or false 12:" before
+    # the short pattern sees a leading "T/F " from a stray prefix.
+    out = _PROBLEM_LABEL_LONG.sub(_expand_problem_label, text)
+    out = _PROBLEM_LABEL_SHORT.sub(_expand_problem_label, out)
+    # int() on the captured digits drops leading zeros so "CH01" reads as
+    # "chapter 1" not "chapter oh one".
+    out = _CHAPTER_TOKEN.sub(_ch, out)
+    out = _CHAPTER_BARE.sub(_ch, out)
+    out = _SECTION_TOKEN.sub(_sec, out)
+    out = _SECTION_BARE.sub(_sec, out)
+    return out

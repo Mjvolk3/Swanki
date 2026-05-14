@@ -53,6 +53,13 @@ prompts:
       Carry book-numbering as a label on the front ("Problem 1.7: ...") and as a tag (see required tags).
       Respect the 500-char limit on every back text.
 
+      Formatting and rephrasing guidance (markdown is rendered in Anki):
+      - Use **bold** for the key technical term(s) in the question and the answer keyword(s) in
+        the back. Use *italics* for genus/species names, foreign-language terms, and light emphasis.
+      - You may lightly rephrase the source statement to improve clarity, fix ambiguity, or
+        correct a minor source error — preserve the testable concept and the canonical answer.
+        Do not change numerical values, equations, or domain-specific terminology.
+
       For full_solution cards (when requested), populate provenance_entries with one
       ProblemProvenance whose spans annotate the back text: each span has origin: copy
       (with source_ref) or origin: generated. Spans must concatenate (in order) to the
@@ -64,3 +71,131 @@ prompts:
       You receive one problem unit. Decide n_cards (1-5), which subproblem labels to expand,
       whether to include an overview card, and whether to include a full_solution card with
       gap-filling. Default to the heuristic in the prompt unless ambiguity is high.
+    problem_card_gen_multiple_choice: |-
+      You receive ONE multiple-choice problem with its stem and 2-5 lettered choices
+      ((a)/(b)/(c)/(d), sometimes (e)). The Solution field carries the back-of-book correct
+      letter, formatted as e.g. "(c)" or "(c) van Leeuwenhoek" if the option text is known.
+      Generate exactly one problem_main card.
+
+      Front — STRICT FORMAT. The visible label MUST be exactly "MC <n>:" where <n> is the
+      item number (NOT the canonical ID like "MC-CH1-13"; the canonical ID is already on the
+      card tags for source-tracing). The chapter is implicit in the citation key, so do NOT
+      include it in the visible label.
+      - Line 1: "MC <n>: <stem>"  (use **bold** on the key technical term(s) in the stem)
+      - Lines 2..N: EACH lettered choice on its OWN line, exactly "(a) text", "(b) text", ...
+
+      Example front (note the single space after "MC", lower-case (a)/(b), one choice per line):
+      ```
+      MC 13: Robert **Koch** is remembered in microbiology because he
+      (a) proved the germ theory of disease
+      (b) successfully cultivated viruses in the laboratory
+      (c) developed a widely accepted classification scheme
+      (d) devised the term "prokaryote"
+      ```
+
+      Back:
+      - State the correct FULL choice text, not just the bare letter. If the solution gives
+        only "(c)", expand to "(c) <choice text>" by reading the matching choice from the stem.
+      - Bold the answer keyword(s).
+      - Add a one-sentence justification grounded in the chapter content.
+      - Total back text ≤500 chars.
+
+      Light rephrasing for clarity is allowed (the source OCR sometimes drops words or has
+      ambiguous phrasing); preserve the testable concept and the canonical answer.
+
+      Required tags + canonical problem tag are listed in the user prompt; preserve all of
+      them on the emitted card. Set card_subtype="problem_main" on the emitted card.
+    problem_card_gen_matching: |-
+      You receive ONE Matching item: a Column-A statement plus the full Column B option list
+      (typically letters a-e). The Solution field carries the back-of-book correct option,
+      formatted as e.g. "(c) Viruses" with the option text already resolved.
+
+      The Column-A statement on its own is often too thin to make a good card front — for
+      example "Rods, spheres, and spirals" is incomplete without the framing of "cell shapes"
+      or "morphologies". From the chapter context (acronyms, technical terms, and the Column-B
+      options themselves), infer the matching domain (e.g. "cell morphologies", "historical
+      figures of microbiology", "macromolecule classes") and use it as a question prefix.
+
+      Front — STRICT FORMAT. The visible label MUST be exactly "Matching <n>:" where <n> is
+      the item number (NOT "MAT-CH1-3"; the canonical ID is on the card tags). The chapter
+      is implicit in the citation key — do NOT include it in the visible label.
+      - Line 1: "Matching <n>: Match the **<domain>** to the **<target>**:"
+      - Line 2: "— <Column-A statement, lightly rephrased for clarity if needed>"
+      - Lines 3..N: EACH Column-B option on its OWN line, exactly "(a) Bacteria", ...
+
+      Example front:
+      ```
+      Matching 6: Match the **microbial cell-shape description** to the **organism group**:
+      — Rods, spheres, and spirals
+      (a) Bacteria
+      (b) Fungi
+      (c) Viruses
+      (d) Protozoa
+      (e) Cyanobacteria
+      ```
+
+      Back:
+      - State the correct option as "(letter) **<full option text>**".
+      - Add a one-sentence rationale connecting the Column-A statement to the matched option.
+      - Total back text ≤500 chars.
+
+      Light rephrasing of the Column-A prose for clarity is allowed; preserve the testable
+      mapping. Set card_subtype="problem_main".
+    problem_card_gen_true_false: |-
+      You receive ONE True/False statement. The Solution field will be one of:
+      "True." (statement is true as written),
+      "False." (false but the source did not provide a replacement word), or
+      "False — replace underlined word with: <word>" (the back-of-book correction word).
+
+      The source OCR drops the underline markup that originally marked the swappable word, so
+      the front of the card MUST NOT ask "what word replaces the originally underlined term?".
+      Instead, the back identifies the swap by comparing the corrected word against the
+      statement.
+
+      Front — STRICT FORMAT. The visible label MUST be exactly "T/F <n>:" where <n> is the
+      item number (NOT "TF-CH1-12"; the canonical ID is on the card tags). The chapter is
+      implicit in the citation key — do NOT include it in the visible label. Do NOT add a
+      redundant "**True or False:**" prefix in the body — the "T/F" label already conveys it.
+      - Single line: "T/F <n>: <statement>"  (use **bold** on the key technical term(s))
+
+      Example front:
+      ```
+      T/F 12: **Microorganisms** form the foundations of many food chains in the world.
+      ```
+
+      Back: render as ONE of these forms:
+        - "**True.**" plus an optional one-sentence justification.
+        - "**False.** Replace *<old word from statement>* with **<corrected word>**." Identify
+          the swap by comparing the back-of-book corrected word to the statement: the
+          corrected word is the new value; the *<old word>* is the closest semantic match in
+          the statement that the corrected word replaces (often a near-synonym or a
+          category-confused term, e.g. "fungi" replaces "bacteria"). Add a one-sentence
+          rationale.
+      Total back text ≤500 chars.
+
+      Light rephrasing of the statement for clarity is allowed; preserve the test of the
+      learner's grasp of the correct vs. incorrect term. Set card_subtype="problem_main".
+    problem_card_gen_completion: |-
+      You receive ONE Completion item: a sentence with one blank (rendered as "____"). The
+      Solution field carries the fill-in word or short phrase from the back-of-book.
+
+      Front — STRICT FORMAT. The visible label MUST be exactly "Completion <n>:" where <n>
+      is the item number (NOT "CMP-CH2-9"; the canonical ID is on the card tags). The
+      chapter is implicit in the citation key — do NOT include it in the visible label. Do
+      NOT add a redundant "**Fill in the blank:**" prefix in the body — the "Completion"
+      label already conveys it.
+      - Single line: "Completion <n>: <sentence with ____ intact>"  (use **bold** on the
+        key technical term(s) in the sentence)
+
+      Example front:
+      ```
+      Completion 7: The six-carbon sugar that cells most commonly use as an energy source is ____.
+      ```
+
+      Back:
+      - State the answer phrase in **bold**.
+      - Add a one-sentence rationale connecting the answer to the sentence's meaning.
+      - Total back text ≤500 chars.
+
+      Light rephrasing of the sentence for clarity is allowed; preserve the blank position
+      and the canonical answer. Set card_subtype="problem_main".

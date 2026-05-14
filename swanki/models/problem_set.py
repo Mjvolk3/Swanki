@@ -165,7 +165,9 @@ class ProblemPairingResponse(BaseModel):
     solutions: list[ProblemLocation]
 
 
-_PROBLEM_TAG_RE = re.compile(r"^([^.]+)\.problem\.([0-9]+\.[0-9]+|MC-\d+|[A-Z]+-\d+)$")
+_PROBLEM_TAG_RE = re.compile(
+    r"^([^.]+)\.problem\.([0-9]+\.[0-9]+|[A-Z]+(?:-CH\d+)?-\d+)$"
+)
 
 
 class ProblemTag(BaseModel):
