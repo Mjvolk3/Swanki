@@ -20,13 +20,53 @@ from ..utils.formatting import humanize_citation_key
 from ._common import (
     DEFAULT_VOICE_ID,
     append_chunk_pause,
+    apply_pronunciation_overrides,
     chunk_text,
     combine_audio,
+    expand_acronyms_for_tts,
+    strip_chapter_filename_slug,
+    strip_forbidden_fish_tags,
     text_to_speech,
     validate_audio_file,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _preprocess_for_tts(text: str, tts_kwargs: dict) -> str:
+    """Apply Fish-Speech-aware TTS preprocessing to a single text fragment.
+
+    Centralizes the deterministic scrubber chain so card.py's five
+    text_to_speech call sites all run the same passes in the same order.
+    Pure no-op for elevenlabs (the fish-only steps are gated by provider).
+
+    Order matches lecture.py / summary.py / reading.py: slug-strip ->
+    acronym letter-by-letter (fish only) -> pronunciation overrides ->
+    forbidden-tag scrub (fish only). Card transcripts skip
+    clean_markdown_for_tts and add_tts_pauses entirely (cards are short and
+    arrive already TTS-shaped); this helper picks up the remaining scrubbers.
+
+    Args:
+        text: Card transcript fragment about to be sent to text_to_speech.
+        tts_kwargs: Provider config dict; reads optional ``preprocessor``
+            sub-tree for per-paper pronunciations and acronym allowlist.
+
+    Returns:
+        Preprocessed text safe for the provider's TTS endpoint.
+    """
+    is_fish = str(tts_kwargs.get("provider", "")) == "fish_speech"
+    _prep_raw = tts_kwargs.get("preprocessor")
+    prep_cfg: dict = _prep_raw if isinstance(_prep_raw, dict) else {}
+    out = strip_chapter_filename_slug(text)
+    if is_fish and prep_cfg.get("acronym_letter_by_letter", True):
+        allowlist = set(prep_cfg.get("acronym_allowlist", []))
+        out = expand_acronyms_for_tts(out, allowlist=allowlist)
+    pronunciations = prep_cfg.get("pronunciations", {}) or {}
+    if pronunciations:
+        out = apply_pronunciation_overrides(out, pronunciations)
+    if is_fish and prep_cfg.get("strip_forbidden_tags", True):
+        out = strip_forbidden_fish_tags(out)
+    return out
 
 
 def generate_card_transcript(
@@ -290,7 +330,7 @@ def generate_citation_audio(
                 else speed
             )
             text_to_speech(
-                text=citation_text,
+                text=_preprocess_for_tts(citation_text, tts_kwargs),
                 voice_id=voice_id,
                 output_path=output_path,
                 api_key=elevenlabs_api_key,
@@ -451,7 +491,8 @@ def generate_card_audio(
 
     if not needs_combination:
         text_to_speech(
-            front_chunks[0], voice_id, front_path, elevenlabs_api_key, speed, **tts_kwargs
+            _preprocess_for_tts(front_chunks[0], tts_kwargs),
+            voice_id, front_path, elevenlabs_api_key, speed, **tts_kwargs
         )
     else:
         chunks_subdir.mkdir(parents=True, exist_ok=True)
@@ -472,7 +513,8 @@ def generate_card_audio(
             chunk_path = chunks_subdir / f"{prefix}_{card_index}_front_chunk{i}.mp3"
             paused_chunk = append_chunk_pause(chunk, provider)
             text_to_speech(
-                paused_chunk, voice_id, chunk_path, elevenlabs_api_key, speed, **tts_kwargs
+                _preprocess_for_tts(paused_chunk, tts_kwargs),
+                voice_id, chunk_path, elevenlabs_api_key, speed, **tts_kwargs
             )
             chunk_paths.append(chunk_path)
             front_manifest_chunks.append(
@@ -494,7 +536,8 @@ def generate_card_audio(
         back_chunks = chunk_text(back_transcript)
         if len(back_chunks) == 1:
             text_to_speech(
-                back_chunks[0], voice_id, back_path, elevenlabs_api_key, speed, **tts_kwargs
+                _preprocess_for_tts(back_chunks[0], tts_kwargs),
+                voice_id, back_path, elevenlabs_api_key, speed, **tts_kwargs
             )
         else:
             chunks_subdir.mkdir(parents=True, exist_ok=True)
@@ -504,7 +547,8 @@ def generate_card_audio(
                 chunk_path = chunks_subdir / f"{prefix}_{card_index}_back_chunk{i}.mp3"
                 paused_chunk = append_chunk_pause(chunk, provider)
                 text_to_speech(
-                    paused_chunk, voice_id, chunk_path, elevenlabs_api_key, speed, **tts_kwargs
+                    _preprocess_for_tts(paused_chunk, tts_kwargs),
+                    voice_id, chunk_path, elevenlabs_api_key, speed, **tts_kwargs
                 )
                 chunk_paths.append(chunk_path)
                 back_manifest_chunks.append(
