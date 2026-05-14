@@ -63,3 +63,13 @@ Evaluation on zvyagin + thornburg + bishop CH01/CH02 showed summaries varying fr
 - Dropped the `source_words = len(summary_text.split())` variable and the `word_cap = clamp(source_words * 0.35, ...)` line.
 - Prompt rule #9 updated to "This produces roughly 4-5 minutes of audio and should stay constant regardless of source length."
 - Known gap: prompt is guidance only — the summary generator has no post-hoc word-count enforcement (unlike lecture's critique/refine loop). Observed summaries landed at ~800-1100 words / 6.6-7.7 min across the regen batch, over the 700 ceiling but at least consistent. Enforcement loop deferred; user to decide when to tighten.
+
+## 2026.05.14 - Mirror lecture.py audio fixes for consistency across types
+
+The Hamming-PR fixes (chunker tightening, pre-TTS scrubbers, postprocessor knobs) only landed in `swanki/audio/lecture.py` initially. Listener correctly observed that the same fixes are generically valuable across reading / summary / card audio. Mirrored here:
+
+- **Pre-TTS scrubber pipeline** between `clean_markdown_for_tts` and `add_tts_pauses`: `strip_chapter_filename_slug` -> `expand_acronyms_for_tts` (fish only) -> `apply_pronunciation_overrides` -> `strip_forbidden_fish_tags` (fish only). Same order and gating as lecture.py. Driven by `tts_kwargs.get("preprocessor")` sub-tree from hydra.
+- **YAML-driven chunking**: `chunk_text_paragraphs(max_chars=...)` reads from `tts_kwargs.get("chunking", {}).get("max_chars", ...)`. Fish_speech*.yaml ships `max_chars=700` so summary chunks no longer exceed Fish's quality-decay threshold.
+- **YAML-driven postprocessor knobs**: `combine_audio_with_section_pauses` now receives `chunk_pause_ms`, `chunk_tail_trim_ms`, `chunk_crossfade_ms`, `gain_match_target_dbfs` from `tts_kwargs.get("postprocessor")`. Summary previously had NONE of these; now consistent with lecture for fish providers (700 / 250 / 50 / -25.0 defaults match the Apr-30 boundary-fix bundle).
+
+Defaults preserve prior behavior when sub-trees absent — no regression for elevenlabs callers.

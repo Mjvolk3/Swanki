@@ -18,15 +18,19 @@ from ._common import (
     DEFAULT_VOICE_ID,
     add_tts_pauses,
     append_chunk_pause,
+    apply_pronunciation_overrides,
     chunk_text,
     chunk_text_paragraphs,
     clean_markdown_for_tts,
     combine_audio_with_section_pauses,
+    expand_acronyms_for_tts,
     extract_acronyms,
     filter_metadata,
     generate_bookend_audio,
     humanize_latex,
     split_transcript_by_sections,
+    strip_chapter_filename_slug,
+    strip_forbidden_fish_tags,
     text_to_speech,
     tts_chunks_parallel,
     write_chunk_manifest,
@@ -172,8 +176,25 @@ def generate_reading_audio(
             f.write(f"**Citation Key:** {citation_key}\n\n")
         f.write(f"**Generated Transcript:**\n\n{full_transcript}\n")
 
+    # Pre-TTS scrubber pipeline (mirrors lecture.py flow). Same order, same
+    # rationale: clean markdown, slug-strip safety net, acronym rewrite,
+    # pronunciation overrides, forbidden-tag scrub. Fish-only steps gated by
+    # preprocessor flags.
+    is_fish_for_prep = str(tts_kwargs.get("provider", "")) == "fish_speech"
+    _prep_raw = tts_kwargs.get("preprocessor")
+    prep_cfg: dict = _prep_raw if isinstance(_prep_raw, dict) else {}
+    cleaned = clean_markdown_for_tts(full_transcript)
+    cleaned = strip_chapter_filename_slug(cleaned)
+    if is_fish_for_prep and prep_cfg.get("acronym_letter_by_letter", True):
+        allowlist = set(prep_cfg.get("acronym_allowlist", []))
+        cleaned = expand_acronyms_for_tts(cleaned, allowlist=allowlist)
+    pronunciations = prep_cfg.get("pronunciations", {}) or {}
+    if pronunciations:
+        cleaned = apply_pronunciation_overrides(cleaned, pronunciations)
+    if is_fish_for_prep and prep_cfg.get("strip_forbidden_tags", True):
+        cleaned = strip_forbidden_fish_tags(cleaned)
     tts_transcript = add_tts_pauses(
-        clean_markdown_for_tts(full_transcript),
+        cleaned,
         provider=str(tts_kwargs.get("provider", "elevenlabs")),
     )
 
@@ -227,13 +248,21 @@ def generate_reading_audio(
     )
 
     # Collect all chunks across all sections with section index
+    # YAML-driven chunking (models.tts.chunking.max_chars) overrides the
+    # legacy 2000-char hardcoded cap. Fish ships max_chars=700 so quality
+    # doesn't decay past ~700 chars per chunk (Theme 4 from the Hamming
+    # bookmark plan).
+    _chunk_raw = tts_kwargs.get("chunking")
+    chunking_cfg: dict = _chunk_raw if isinstance(_chunk_raw, dict) else {}
+    chunk_max_chars = int(chunking_cfg.get("max_chars", 2000 if is_fish else 4500))
+
     all_jobs: list[tuple[int, str, Path]] = []
     chunk_counter = 0
     for sec_idx, section in enumerate(sections_text):
         audio_chunks = (
-            chunk_text_paragraphs(section, max_chars=2000)
+            chunk_text_paragraphs(section, max_chars=chunk_max_chars)
             if is_fish
-            else chunk_text(section, max_chars=2000)
+            else chunk_text(section, max_chars=chunk_max_chars)
         )
         for chunk in audio_chunks:
             chunk_path = chunks_dir / f"{prefix}_chunk{chunk_counter}.mp3"
@@ -258,14 +287,27 @@ def generate_reading_audio(
     for sec_idx, _, chunk_path in all_jobs:
         all_section_chunks[sec_idx].append(chunk_path)
 
-    section_pause = 3000 if is_fish else 2000
+    # YAML-driven postprocessor knobs (models.tts.postprocessor.*) bring
+    # reading audio in line with lecture: gain match, inter-chunk silence,
+    # tail trim, crossfade. Fall-through defaults preserve prior behavior
+    # when no sub-tree is provided.
+    _post_raw = tts_kwargs.get("postprocessor")
+    post_cfg: dict = _post_raw if isinstance(_post_raw, dict) else {}
+    section_pause = int(post_cfg.get("section_pause_ms", 3000 if is_fish else 2000))
+    chunk_tail_trim_ms = int(post_cfg.get("chunk_tail_trim_ms", 250 if is_fish else 0))
+    chunk_pause_ms = int(post_cfg.get("chunk_pause_ms", 700 if is_fish else 0))
+    chunk_crossfade_ms = int(post_cfg.get("chunk_crossfade_ms", 50 if is_fish else 0))
+    gain_match = post_cfg.get("gain_match_target_dbfs", -25.0 if is_fish else None)
     combine_audio_with_section_pauses(
         all_section_chunks,
         output_path,
         section_pause_ms=section_pause,
-        chunk_crossfade_ms=0,
+        chunk_crossfade_ms=chunk_crossfade_ms,
         bookend_start=bookend_start,
         bookend_end=bookend_end,
+        chunk_tail_trim_ms=chunk_tail_trim_ms,
+        chunk_pause_ms=chunk_pause_ms,
+        gain_match_target_dbfs=gain_match,
     )
 
     # Write chunk manifest for surgical regeneration; chunk files are kept.

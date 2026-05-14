@@ -36,3 +36,16 @@ Per-card front/back chunks now live under `audio_dir/card_chunks/` and are kept 
 ## 2026.04.17 - Drop hardcoded model defaults; model required from caller
 
 Removed `model: str = "openai:gpt-5-mini"` defaults from `generate_card_transcript`, `generate_citation_audio`, `generate_card_audio`, and `_humanize_citation`. The pipeline was already passing the config-resolved model (`gpt-5.2` / `gpt-5.4`) to every call site, so the hardcoded defaults were unreachable in production and acted as a footgun for direct callers (e.g. one-off regen scripts) that silently downgraded to `gpt-5-mini`. All four signatures now take `model: str | None = None` and raise `ValueError` early if left unset, so the LLM config is always the single source of truth.
+
+## 2026.05.14 - Add _preprocess_for_tts helper and wire into all 5 text_to_speech sites
+
+Card audio bypasses `clean_markdown_for_tts` and `add_tts_pauses` (cards are short and arrive already TTS-shaped) so the pre-TTS scrubber pipeline didn't naturally land here. Added `_preprocess_for_tts(text, tts_kwargs)` helper at module level that runs the same scrubber chain as lecture/summary/reading: `strip_chapter_filename_slug` -> `expand_acronyms_for_tts` (fish only) -> `apply_pronunciation_overrides` -> `strip_forbidden_fish_tags` (fish only).
+
+All 5 `text_to_speech` call sites now wrap their text arg with this helper:
+- `generate_citation_audio` line 332 (citation announcement)
+- `generate_card_audio` line 493 (single-chunk front)
+- `generate_card_audio` line 514 (multi-chunk front loop)
+- `generate_card_audio` line 536 (single-chunk back)
+- `generate_card_audio` line 546 (multi-chunk back loop)
+
+No chunker change (cards use `chunk_text` and stay short). No combine change (cards use `combine_audio` not `combine_audio_with_section_pauses`). The today's chunk-boundary pause-tag strip from `append_chunk_pause` already applies to cards since they call that function.

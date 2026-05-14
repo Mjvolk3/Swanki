@@ -56,3 +56,7 @@ Orange annotations on the zvyagin reading audio surfaced a cluster of pipeline d
 - **Citation format**: New rule 5. Author-year only; drop "et al" entirely. `Greaney et al. (2021)` → `Greaney, 2021`. Multiple citations: `Greaney, 2021; Zost, 2020; Ju, 2020`.
 - **No filler at section starts**: Rule 4 explicitly forbids "uh", "um", "ah" or any vocalized non-word at the beginning of a section, and reiterates the `[pause]` marker ban.
 - **`model: str` required**: Same treatment as card/lecture/summary — no hardcoded `gpt-5-mini` fallback; caller must pass config LLM.
+
+## 2026.05.14 - Mirror lecture.py audio fixes for consistency across types
+
+Same wiring as `swanki/audio/summary.py` 2026.05.14 — pre-TTS scrubber pipeline, YAML-driven `chunking.max_chars`, and YAML-driven `postprocessor.*` knobs piped through to `combine_audio_with_section_pauses`. Reading audio now picks up the boundary-fix bundle (gain match, inter-chunk silence, tail trim, crossfade) and the deterministic acronym / pronunciation / forbidden-tag scrubbers that landed for lecture in the Hamming PR. Defaults preserve prior behavior for elevenlabs callers.
