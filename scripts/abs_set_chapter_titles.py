@@ -138,9 +138,19 @@ def find_books_needing_chapter_titles(
             continue
         current_raw = row["chapters"] or "[]"
         current = json.loads(current_raw) if current_raw else []
-        # Same length AND same titles in order -> already canonical.
+        # Already canonical when length, titles, AND boundaries all match.
+        # The boundary check matters because audioFile durations can change
+        # across re-renders (different chunker, different TTS sampling) without
+        # any title change -- if we skipped on titles alone, stale boundaries
+        # would persist and the player would show chapters mis-aligned with
+        # the audio (the symptom that prompted this check: Hamming Lecture
+        # Ch1 marker ending 130s short of the actual Ch01 mp3, with the Ch2
+        # marker landing inside Ch01's audio).
+        bound_tol = 0.5  # seconds; sub-second drift acceptable
         if len(current) == len(desired) and all(
             (c.get("title") or "") == d["title"]
+            and abs(float(c.get("start", 0)) - d["start"]) < bound_tol
+            and abs(float(c.get("end", 0)) - d["end"]) < bound_tol
             for c, d in zip(current, desired)
         ):
             continue
@@ -177,7 +187,16 @@ def main() -> int:
 
     print(f"setting chapter titles on {len(needing)} book(s):")
     for item_id, book_id, title, current, desired in needing:
-        action = "set" if not current else f"refresh ({len(current)}->{len(desired)})"
+        if not current:
+            action = "set"
+        elif len(current) != len(desired):
+            action = f"refresh ({len(current)}->{len(desired)} chapters)"
+        elif any(
+            (c.get("title") or "") != d["title"] for c, d in zip(current, desired)
+        ):
+            action = "refresh (titles changed)"
+        else:
+            action = "refresh (boundaries shifted)"
         print(f"  {title[:60]:<60}  item={item_id[:8]}  {action}")
         post_chapters(item_id, desired, token)
     print("done")
