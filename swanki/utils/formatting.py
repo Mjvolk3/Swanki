@@ -302,6 +302,67 @@ _CHAPTER_KEY_PATTERN = re.compile(
 )
 
 
+def parse_chapter_key(citation_key: str) -> tuple[str, str, str] | None:
+    """Parse ``<base>_<NN>_<slug>`` into ``(base, num_str, slug_humanized)``.
+
+    Returns ``None`` for non-chapter inputs so callers can fall back to
+    plain :func:`humanize_citation_key`. The numeric segment is returned as a
+    string (preserving leading zero) so callers can decide whether to render
+    "01" as "o one" (spoken form) or 1 (cardinal) per their context. The slug
+    has hyphens replaced with spaces.
+
+    Examples:
+        >>> parse_chapter_key("hammingArtDoingScience2020_03_history-of-computers-hardware")
+        ('hammingArtDoingScience2020', '03', 'history of computers hardware')
+        >>> parse_chapter_key("bishopDeepLearning2024") is None
+        True
+    """
+    if not citation_key:
+        return None
+    if citation_key.startswith("@"):
+        citation_key = citation_key[1:]
+    m = _CHAPTER_KEY_PATTERN.match(citation_key)
+    if not m:
+        return None
+    return m.group("base"), m.group("num"), m.group("slug").replace("-", " ")
+
+
+_CARDINAL_WORDS = (
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
+    "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
+    "sixteen", "seventeen", "eighteen", "nineteen", "twenty",
+)
+
+
+def chapter_number_spoken(num_str: str) -> str:
+    """Render a chapter-number string in spoken form.
+
+    Single-digit numbers preserved with a leading zero (``"01"``) render as
+    ``"o one"``, ``"02"`` -> ``"o two"``, ..., matching the way listeners read
+    a written chapter slug aloud (the audio bookend says exactly what the
+    citation key shows). Numbers without a leading zero render as cardinal
+    words ("one", "two", "twenty"). Numbers above 20 fall back to
+    digit-by-digit spelling (rare for chapter slugs).
+
+    Examples:
+        >>> chapter_number_spoken("01")
+        'o one'
+        >>> chapter_number_spoken("12")
+        'twelve'
+        >>> chapter_number_spoken("3")
+        'three'
+        >>> chapter_number_spoken("25")
+        'two five'
+    """
+    n = int(num_str)
+    if len(num_str) == 2 and num_str[0] == "0":
+        return f"o {_CARDINAL_WORDS[int(num_str[1])]}"
+    if 0 <= n <= 20:
+        return _CARDINAL_WORDS[n]
+    digits = "0123456789"
+    return " ".join(_CARDINAL_WORDS[digits.index(d)] for d in num_str)
+
+
 def humanize_chapter_slug(citation_key: str) -> str | None:
     """Render ``<base>_<NN>_<slug>`` keys as ``Chapter <N>: <human slug>``.
 
@@ -324,13 +385,8 @@ def humanize_chapter_slug(citation_key: str) -> str | None:
     Returns:
         Humanized chapter label, or ``None`` if the key has no chapter pattern.
     """
-    if not citation_key:
+    parsed = parse_chapter_key(citation_key)
+    if parsed is None:
         return None
-    if citation_key.startswith("@"):
-        citation_key = citation_key[1:]
-    m = _CHAPTER_KEY_PATTERN.match(citation_key)
-    if not m:
-        return None
-    num = int(m.group("num"))
-    slug = m.group("slug").replace("-", " ")
-    return f"Chapter {num}: {slug}"
+    _, num_str, slug = parsed
+    return f"Chapter {int(num_str)}: {slug}"

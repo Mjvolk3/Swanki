@@ -132,3 +132,13 @@ Fish branch of `append_chunk_pause` now strips trailing AND leading pause tags v
 ElevenLabs branch unchanged: the `<break time="1.0s" />` SSML tag IS the pause mechanism for ElevenLabs (no deterministic inter-chunk silence at concat time), so the append behavior is correct for that provider.
 
 Test fallout: `test_append_chunk_pause_fish_speech` and `test_append_chunk_pause_strips_trailing_whitespace` updated; new tests cover trailing-tag stripping (single, stacked, mixed forms), leading-tag stripping, mid-chunk preservation, and idempotency.
+
+## 2026.05.14 - generate_bookend_audio rewritten for chapter form (Theme 8 follow-up)
+
+Per direct user spec, the lecture bookend for chapter inputs now reads the citation key exactly as written, with the chapter number rendered in spoken form ("01" -> "o one"). Old form dropped the leading zero and re-ordered components ("Chapter 3: history of computers hardware. From Hamming, Art Doing Science, 2020.") -- new form preserves the slug structure ("Hamming, Art Doing Science, 2020, o three, history of computers hardware") inside a "this lecture is posted as" / "this concludes" frame plus a "Let's begin chapter N, slug" opener.
+
+- START (chapter): `"This lecture is posted as: {base humanized}, {num spoken}, {slug humanized}. Let's begin chapter {N}, {slug humanized}."`
+- END (chapter):   `"This concludes chapter {N}, {slug humanized}, which is posted as: {base humanized}, {num spoken}, {slug humanized}."`
+- Non-chapter (regular paper) bookend retains the prior `"Today's lecture is posted as: ... We are covering: ..."` and `"And with that we conclude: ..."` form unchanged.
+
+Driven by the new `parse_chapter_key` + `chapter_number_spoken` helpers in `swanki/utils/formatting.py`. No change to the bookend cache file naming or the `text_to_speech` plumbing.

@@ -7,7 +7,12 @@ Tests for citation-key humanization helpers in swanki.utils.formatting.
 Theme 8 fix surface (chapter-slug humanization for lecture bookends).
 """
 
-from swanki.utils.formatting import humanize_chapter_slug, humanize_citation_key
+from swanki.utils.formatting import (
+    chapter_number_spoken,
+    humanize_chapter_slug,
+    humanize_citation_key,
+    parse_chapter_key,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -72,3 +77,55 @@ def test_humanize_citation_key_base_only():
         humanize_citation_key("hammingArtDoingScience2020")
         == "Hamming, Art Doing Science, 2020"
     )
+
+
+# ---------------------------------------------------------------------------
+# parse_chapter_key (foundation for bookend "exact reading")
+# ---------------------------------------------------------------------------
+
+
+def test_parse_chapter_key_basic():
+    base, num, slug = parse_chapter_key(
+        "hammingArtDoingScience2020_03_history-of-computers-hardware"
+    )
+    assert base == "hammingArtDoingScience2020"
+    assert num == "03"  # leading zero preserved (callers decide rendering)
+    assert slug == "history of computers hardware"
+
+
+def test_parse_chapter_key_strips_at_prefix():
+    base, num, slug = parse_chapter_key("@paper2024_05_some-slug")
+    assert base == "paper2024"
+    assert num == "05"
+    assert slug == "some slug"
+
+
+def test_parse_chapter_key_returns_none_for_non_chapter():
+    assert parse_chapter_key("bishopDeepLearning2024") is None
+    assert parse_chapter_key("") is None
+    assert parse_chapter_key("paper_only-suffix") is None
+
+
+# ---------------------------------------------------------------------------
+# chapter_number_spoken (drives the "o one" / "twelve" rendering in bookends)
+# ---------------------------------------------------------------------------
+
+
+def test_chapter_number_spoken_leading_zero_single_digit():
+    assert chapter_number_spoken("01") == "o one"
+    assert chapter_number_spoken("02") == "o two"
+    assert chapter_number_spoken("05") == "o five"
+    assert chapter_number_spoken("09") == "o nine"
+
+
+def test_chapter_number_spoken_no_leading_zero():
+    assert chapter_number_spoken("1") == "one"
+    assert chapter_number_spoken("3") == "three"
+    assert chapter_number_spoken("12") == "twelve"
+    assert chapter_number_spoken("20") == "twenty"
+
+
+def test_chapter_number_spoken_above_twenty_digit_by_digit():
+    # Above the cardinal table; spelled digit-by-digit.
+    assert chapter_number_spoken("25") == "two five"
+    assert chapter_number_spoken("100") == "one zero zero"
