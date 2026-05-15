@@ -1207,29 +1207,43 @@ def generate_bookend_audio(
     Returns:
         Path to the generated bookend MP3.
     """
-    from ..utils.formatting import humanize_chapter_slug, humanize_citation_key
+    from ..utils.formatting import (
+        chapter_number_spoken,
+        humanize_citation_key,
+        parse_chapter_key,
+    )
 
-    # For book chapters keyed as <base>_<NN>_<slug>, prefer the humanized
-    # chapter label over the raw underscore-suffixed citation key. Without
-    # this branch the listener hears "zero three, history of computers
-    # hardware" (Theme 8) instead of "Chapter 3: history of computers
-    # hardware".
-    chapter_label = humanize_chapter_slug(citation_key)
+    parsed_chapter = parse_chapter_key(citation_key)
     humanized_full = humanize_citation_key(citation_key)
     cache_path = output_dir / f"{citation_key}_{audio_type}_{position}.mp3"
 
     if audio_type == "lecture":
-        if position == "start":
-            if chapter_label:
-                base_part = humanize_citation_key(citation_key.split("_", 1)[0])
-                title_part = f" {paper_title}." if paper_title else ""
-                text = f"{chapter_label}. From {base_part}.{title_part}"
+        if parsed_chapter is not None:
+            # Book-chapter form (<base>_<NN>_<slug>): the listener wants the
+            # exact slug read aloud (citation key + chapter number as written
+            # + humanized title), bracketed by "this lecture is posted as" /
+            # "this concludes" framing plus a "Let's begin chapter N, slug"
+            # opener for orientation.
+            base, num_str, slug = parsed_chapter
+            base_humanized = humanize_citation_key(base)
+            num_spoken = chapter_number_spoken(num_str)  # e.g. "01" -> "o one"
+            n_word = chapter_number_spoken(str(int(num_str)))  # e.g. "01" -> "one"
+            exact_reading = f"{base_humanized}, {num_spoken}, {slug}"
+            if position == "start":
+                text = (
+                    f"This lecture is posted as: {exact_reading}. "
+                    f"Let's begin chapter {n_word}, {slug}."
+                )
             else:
+                text = (
+                    f"This concludes chapter {n_word}, {slug}, "
+                    f"which is posted as: {exact_reading}."
+                )
+        else:
+            # Non-chapter (regular paper) bookend retains the existing form.
+            if position == "start":
                 title_part = f" We are covering: {paper_title}." if paper_title else ""
                 text = f"Today's lecture is posted as: {humanized_full}.{title_part}"
-        else:
-            if chapter_label:
-                text = f"And with that we conclude {chapter_label}."
             else:
                 text = f"And with that we conclude: {humanized_full}."
     else:
