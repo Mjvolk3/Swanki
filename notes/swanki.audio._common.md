@@ -150,3 +150,17 @@ Bug surfaced after the surgical bookend regen earlier today: listener heard "ext
 Fix: the manifest now records the boundary-fix knobs in a `postprocessor` key at write time (added optional kwarg on `write_chunk_manifest`); `restitch_from_chunks` reads them back and passes them through to `combine_audio_with_section_pauses`. Caller-side overrides on `restitch_from_chunks` (`section_pause_ms`, `bookend_pause_ms` args) still win over the manifest, for ad-hoc tweaks. Older manifests without the field default to `{}` so restitch falls back to legacy zero-gap behavior (matches the prior bug behavior — explicit, not regressed).
 
 Lecture / summary / reading callers updated to pass the dict. Tests cover the regression (chunk_pause_ms=700 in manifest -> 700ms inter-chunk silence in restitched output) and caller-override precedence.
+
+## 2026.05.15 - Content-aware inter-chunk silence (paragraph vs sentence)
+
+User stated design principle: deterministic concat-time silence between chunks (not Fish pause tags) is the safe default — pure mathematical zero, no risk of mic-pickup artifacts inside the gap. But the silence DURATION shouldn't be uniform; it should be sized for the kind of source-text break the gap spans. Bigger gap when the chunker landed at a paragraph boundary (`\n\n`); smaller gap when the chunker had to subdivide a paragraph mid-sentence to stay under `max_chars`.
+
+Three changes:
+
+1. **`chunk_text_paragraphs` returns `list[tuple[str, str]]`** (breaking change to callers). Each tuple is `(chunk_text, boundary_type)` where `boundary_type` describes the PRECEDING gap relative to the previous chunk in the same section: `"paragraph"` (this chunk starts a fresh paragraph) or `"sentence"` (this chunk continues a paragraph that was sub-divided to fit the cap). The first chunk in a section defaults to `"paragraph"` -- the section-level gap is handled separately by `combine_audio_with_section_pauses`'s `section_pause_ms`.
+
+2. **`combine_audio_with_section_pauses` gains two parallel kwargs** (additive, no signature break for legacy callers): `chunk_boundaries: Sequence[list[str]] | None` (per-chunk boundary types parallel to `sections`) and `chunk_pause_ms_by_boundary: dict[str, int] | None` (boundary-keyed silence map). When both are provided, the per-boundary map supersedes the uniform `chunk_pause_ms`. Missing keys fall back to `chunk_pause_ms`. ElevenLabs and other legacy callers pass neither -> uniform behavior preserved.
+
+3. **Manifest persistence:** each chunk dict gains a `boundary` key; `postprocessor.chunk_pause_ms_by_boundary` records the map. `restitch_from_chunks` reads them back so a future surgical regen reproduces the original render's content-aware silences (without this, restitch would default to uniform `chunk_pause_ms` and lose the paragraph-vs-sentence distinction).
+
+Lecture / summary / reading callers updated. Fish YAML defaults: `{paragraph: 1100, sentence: 500}` -- listener can tweak per-paper via the existing per-config override mechanism. The uniform `chunk_pause_ms: 700` stays as the fallback.

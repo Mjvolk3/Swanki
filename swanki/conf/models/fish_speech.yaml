@@ -38,8 +38,19 @@ models:
     postprocessor:
       # Pure mean-dBFS shift per chunk to land at this target.
       gain_match_target_dbfs: -25.0
-      # Deterministic silence between chunks within a section.
+      # Deterministic silence between chunks within a section. Used as the
+      # uniform fallback when chunk_pause_ms_by_boundary is absent or a
+      # specific boundary key isn't in the map.
       chunk_pause_ms: 700
+      # Per-source-text-boundary silence durations -- supersedes the uniform
+      # chunk_pause_ms when present. The chunker tags each chunk with the
+      # kind of source-text break preceding it ("paragraph" when the chunk
+      # starts at a fresh paragraph, "sentence" when the chunk continues a
+      # paragraph that was sub-divided to fit the max_chars cap). Bigger gap
+      # at paragraph breaks, smaller gap at mid-paragraph sentence breaks.
+      chunk_pause_ms_by_boundary:
+        paragraph: 1100
+        sentence: 500
       # Silence-aware tail-trim scan window (NOT cut amount). Trim respects
       # the empirically-tuned 350 ms post-speech buffer in _common.py.
       chunk_tail_trim_ms: 250

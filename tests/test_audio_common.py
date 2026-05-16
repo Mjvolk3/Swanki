@@ -609,6 +609,36 @@ def test_restitch_from_chunks_caller_override_wins_over_manifest(tmp_path):
     assert 1800 < len(audio) < 2200
 
 
+def test_restitch_from_chunks_uses_per_boundary_silence(tmp_path):
+    # Manifest records per-chunk boundary types and a chunk_pause_ms_by_boundary
+    # map; restitch must apply the per-boundary silence durations.
+    chunks_dir = tmp_path / "chunks"
+    chunks_dir.mkdir()
+    for name in ("c0.mp3", "c1.mp3", "c2.mp3"):
+        AudioSegment.silent(duration=1000).export(str(chunks_dir / name), format="mp3")
+    manifest_path = write_chunk_manifest(
+        chunks_dir,
+        "lecture",
+        "out.mp3",
+        [
+            {"index": 0, "section": 0, "text": "a", "file": "c0.mp3", "boundary": "paragraph"},
+            {"index": 1, "section": 0, "text": "b", "file": "c1.mp3", "boundary": "paragraph"},
+            {"index": 2, "section": 0, "text": "c", "file": "c2.mp3", "boundary": "sentence"},
+        ],
+        postprocessor={
+            "section_pause_ms": 0,
+            "chunk_pause_ms_by_boundary": {"paragraph": 1100, "sentence": 500},
+        },
+    )
+    out = tmp_path / "restitched.mp3"
+    restitch_from_chunks(manifest_path, out)
+    audio = AudioSegment.from_mp3(str(out))
+    # 1000 + 1100 (paragraph gap) + 1000 + 500 (sentence gap) + 1000 = 4600ms
+    assert 4500 <= len(audio) <= 4700, (
+        f"per-boundary silences not honored on restitch: {len(audio)}ms"
+    )
+
+
 # ---------------------------------------------------------------------------
 # _normalize_fish_speech_punct
 # ---------------------------------------------------------------------------
@@ -792,7 +822,7 @@ def test_chunk_text_paragraphs_respects_700_char_cap():
         for i in range(5)
     )
     chunks = chunk_text_paragraphs(paragraphs, max_chars=700)
-    assert all(len(c) <= 700 for c in chunks), [len(c) for c in chunks]
+    assert all(len(text) <= 700 for text, _b in chunks), [len(t) for t, _ in chunks]
 
 
 def test_chunk_text_paragraphs_oversize_paragraph_falls_back_to_sentences():
@@ -800,15 +830,38 @@ def test_chunk_text_paragraphs_oversize_paragraph_falls_back_to_sentences():
     chunks = chunk_text_paragraphs(big, max_chars=200)
     # Single oversize paragraph triggers sentence-fallback; chunks must stay
     # under the cap.
-    assert all(len(c) <= 200 for c in chunks)
+    assert all(len(text) <= 200 for text, _b in chunks)
     assert len(chunks) > 1
+    # All chunks past the first land at sentence boundaries (the oversize
+    # paragraph was subdivided), so their preceding-gap boundary type is
+    # "sentence". The first chunk's boundary defaults to "paragraph".
+    boundaries = [b for _, b in chunks]
+    assert boundaries[0] == "paragraph"
+    assert all(b == "sentence" for b in boundaries[1:])
 
 
 def test_chunk_text_paragraphs_packs_under_budget():
     text = "Para one is short.\n\nPara two is also short."
     chunks = chunk_text_paragraphs(text, max_chars=200)
-    # Both paragraphs fit in one chunk.
-    assert chunks == ["Para one is short.\n\nPara two is also short."]
+    # Both paragraphs fit in one chunk; that chunk's preceding-gap boundary
+    # is "paragraph" (its first item starts a fresh paragraph).
+    assert chunks == [("Para one is short.\n\nPara two is also short.", "paragraph")]
+
+
+def test_chunk_text_paragraphs_two_paragraphs_split_to_two_chunks():
+    # When two paragraphs are each near the budget, they land in separate
+    # chunks and the second chunk's boundary is "paragraph".
+    para_a = "Sentence A. " + "filler word. " * 10
+    para_b = "Sentence B. " + "filler word. " * 10
+    chunks = chunk_text_paragraphs(f"{para_a}\n\n{para_b}", max_chars=180)
+    boundaries = [b for _, b in chunks]
+    assert len(chunks) >= 2
+    assert boundaries[0] == "paragraph"
+    # Whichever subsequent chunk starts at the second paragraph's first item
+    # should carry "paragraph"; sub-paragraph splits inside one paragraph
+    # carry "sentence". At minimum one of the later chunks should be
+    # "paragraph" (the start of paragraph B).
+    assert "paragraph" in boundaries[1:]
 
 
 # ---------------------------------------------------------------------------
@@ -828,6 +881,66 @@ def test_combine_audio_with_section_pauses_chunk_pause_inserts_silence(tmp_path)
     )
     combined = AudioSegment.from_mp3(str(out))
     assert 2400 <= len(combined) <= 2600
+
+
+def test_combine_audio_with_section_pauses_per_boundary_silence(tmp_path):
+    # Three chunks: gap before chunk[1] is "paragraph" (1100ms), gap before
+    # chunk[2] is "sentence" (500ms). Total = 1000 + 1100 + 1000 + 500 + 1000
+    # = 4600ms. With uniform chunk_pause_ms it would be 1000+x+1000+x+1000.
+    a = tmp_path / "a.mp3"; b = tmp_path / "b.mp3"; c = tmp_path / "c.mp3"
+    for p in (a, b, c):
+        AudioSegment.silent(duration=1000).export(str(p), format="mp3")
+    out = tmp_path / "out.mp3"
+    combine_audio_with_section_pauses(
+        [[a, b, c]],
+        out,
+        section_pause_ms=0,
+        # chunk_pause_ms acts as fallback only; per-boundary map should win.
+        chunk_pause_ms=999999,
+        chunk_boundaries=[["paragraph", "paragraph", "sentence"]],
+        chunk_pause_ms_by_boundary={"paragraph": 1100, "sentence": 500},
+    )
+    combined = AudioSegment.from_mp3(str(out))
+    # 1000 + 1100 + 1000 + 500 + 1000 = 4600ms (allow ~100ms tolerance)
+    assert 4500 <= len(combined) <= 4700, (
+        f"per-boundary silences not honored: got {len(combined)}ms, expected ~4600ms"
+    )
+
+
+def test_combine_audio_with_section_pauses_falls_back_to_chunk_pause_ms_without_map(tmp_path):
+    # When chunk_pause_ms_by_boundary is absent, the legacy uniform
+    # chunk_pause_ms applies to every gap (no regression for existing callers).
+    a = tmp_path / "a.mp3"; b = tmp_path / "b.mp3"
+    for p in (a, b):
+        AudioSegment.silent(duration=1000).export(str(p), format="mp3")
+    out = tmp_path / "out.mp3"
+    combine_audio_with_section_pauses(
+        [[a, b]], out, section_pause_ms=0, chunk_pause_ms=700,
+        # boundaries provided but no map -> uniform behavior preserved
+        chunk_boundaries=[["paragraph", "sentence"]],
+    )
+    combined = AudioSegment.from_mp3(str(out))
+    # 1000 + 700 + 1000 = 2700ms
+    assert 2600 <= len(combined) <= 2800
+
+
+def test_combine_audio_with_section_pauses_missing_boundary_key_falls_back(tmp_path):
+    # Per-boundary map missing a key -> that gap falls back to chunk_pause_ms.
+    a = tmp_path / "a.mp3"; b = tmp_path / "b.mp3"
+    for p in (a, b):
+        AudioSegment.silent(duration=1000).export(str(p), format="mp3")
+    out = tmp_path / "out.mp3"
+    combine_audio_with_section_pauses(
+        [[a, b]],
+        out,
+        section_pause_ms=0,
+        chunk_pause_ms=700,
+        chunk_boundaries=[["paragraph", "unknown_type"]],  # not in map
+        chunk_pause_ms_by_boundary={"paragraph": 1100},  # missing "unknown_type"
+    )
+    combined = AudioSegment.from_mp3(str(out))
+    # Gap falls back to chunk_pause_ms=700: 1000 + 700 + 1000 = 2700ms
+    assert 2600 <= len(combined) <= 2800
 
 
 def test_combine_audio_with_section_pauses_zero_chunk_pause_no_extra_silence(tmp_path):

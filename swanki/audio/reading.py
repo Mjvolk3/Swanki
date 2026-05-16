@@ -256,36 +256,41 @@ def generate_reading_audio(
     chunking_cfg: dict = _chunk_raw if isinstance(_chunk_raw, dict) else {}
     chunk_max_chars = int(chunking_cfg.get("max_chars", 2000 if is_fish else 4500))
 
-    all_jobs: list[tuple[int, str, Path]] = []
+    # Each job carries a per-chunk boundary type ("paragraph" | "sentence")
+    # so combine_audio_with_section_pauses can size the inter-chunk silence
+    # for the kind of source-text break it spans. chunk_text() (non-fish path)
+    # doesn't expose boundaries; default those to "paragraph".
+    all_jobs: list[tuple[int, str, Path, str]] = []
     chunk_counter = 0
     for sec_idx, section in enumerate(sections_text):
-        audio_chunks = (
-            chunk_text_paragraphs(section, max_chars=chunk_max_chars)
-            if is_fish
-            else chunk_text(section, max_chars=chunk_max_chars)
-        )
-        for chunk in audio_chunks:
+        if is_fish:
+            audio_chunks = chunk_text_paragraphs(section, max_chars=chunk_max_chars)
+        else:
+            audio_chunks = [(c, "paragraph") for c in chunk_text(section, max_chars=chunk_max_chars)]
+        for chunk_text_, boundary in audio_chunks:
             chunk_path = chunks_dir / f"{prefix}_chunk{chunk_counter}.mp3"
-            all_jobs.append((sec_idx, chunk, chunk_path))
+            all_jobs.append((sec_idx, chunk_text_, chunk_path, boundary))
             chunk_counter += 1
 
     # Append trailing pause to each chunk for clean concatenation
     all_jobs = [
-        (sec_idx, append_chunk_pause(text, provider), chunk_path)
-        for sec_idx, text, chunk_path in all_jobs
+        (sec_idx, append_chunk_pause(text, provider), chunk_path, boundary)
+        for sec_idx, text, chunk_path, boundary in all_jobs
     ]
 
     if is_fish and len(all_jobs) > 1:
-        tts_pairs = [(text, path) for _, text, path in all_jobs]
+        tts_pairs = [(text, path) for _, text, path, _ in all_jobs]
         tts_chunks_parallel(tts_pairs, voice_id, elevenlabs_api_key, speed, **tts_kwargs)
     else:
-        for _, chunk, chunk_path in all_jobs:
+        for _, chunk, chunk_path, _b in all_jobs:
             text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed, **tts_kwargs)
             time.sleep(1)
 
     all_section_chunks: list[list[Path]] = [[] for _ in sections_text]
-    for sec_idx, _, chunk_path in all_jobs:
+    all_section_boundaries: list[list[str]] = [[] for _ in sections_text]
+    for sec_idx, _, chunk_path, boundary in all_jobs:
         all_section_chunks[sec_idx].append(chunk_path)
+        all_section_boundaries[sec_idx].append(boundary)
 
     # YAML-driven postprocessor knobs (models.tts.postprocessor.*) bring
     # reading audio in line with lecture: gain match, inter-chunk silence,
@@ -298,6 +303,12 @@ def generate_reading_audio(
     chunk_pause_ms = int(post_cfg.get("chunk_pause_ms", 700 if is_fish else 0))
     chunk_crossfade_ms = int(post_cfg.get("chunk_crossfade_ms", 50 if is_fish else 0))
     gain_match = post_cfg.get("gain_match_target_dbfs", -25.0 if is_fish else None)
+    chunk_pause_map_default = (
+        {"paragraph": 1100, "sentence": 500} if is_fish else None
+    )
+    chunk_pause_ms_by_boundary = post_cfg.get(
+        "chunk_pause_ms_by_boundary", chunk_pause_map_default
+    )
     combine_audio_with_section_pauses(
         all_section_chunks,
         output_path,
@@ -308,12 +319,20 @@ def generate_reading_audio(
         chunk_tail_trim_ms=chunk_tail_trim_ms,
         chunk_pause_ms=chunk_pause_ms,
         gain_match_target_dbfs=gain_match,
+        chunk_boundaries=all_section_boundaries if chunk_pause_ms_by_boundary else None,
+        chunk_pause_ms_by_boundary=chunk_pause_ms_by_boundary,
     )
 
     # Write chunk manifest for surgical regeneration; chunk files are kept.
     chunk_entries = [
-        {"index": i, "section": sec_idx, "text": text, "file": chunk_path.name}
-        for i, (sec_idx, text, chunk_path) in enumerate(all_jobs)
+        {
+            "index": i,
+            "section": sec_idx,
+            "text": text,
+            "file": chunk_path.name,
+            "boundary": boundary,
+        }
+        for i, (sec_idx, text, chunk_path, boundary) in enumerate(all_jobs)
     ]
     write_chunk_manifest(
         chunks_dir,
@@ -328,6 +347,7 @@ def generate_reading_audio(
             "chunk_tail_trim_ms": chunk_tail_trim_ms,
             "chunk_crossfade_ms": chunk_crossfade_ms,
             "gain_match_target_dbfs": gain_match,
+            "chunk_pause_ms_by_boundary": chunk_pause_ms_by_boundary,
         },
     )
 
