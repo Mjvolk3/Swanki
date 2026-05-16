@@ -200,31 +200,45 @@ def chunk_text(text: str, max_chars: int = 3000) -> list[str]:
     return chunks
 
 
-def chunk_text_paragraphs(text: str, max_chars: int = 4500) -> list[str]:
+def chunk_text_paragraphs(
+    text: str, max_chars: int = 4500
+) -> list[tuple[str, str]]:
     """Split text at paragraph boundaries, falling back to sentences.
 
-    Designed for lecture TTS where prosody continuity within paragraphs
-    is critical. Splits preferentially at paragraph breaks. Any single
-    paragraph that exceeds ``max_chars`` is further split at sentence
-    boundaries so no chunk is ever larger than ``max_chars``.
+    Designed for lecture TTS where prosody continuity within paragraphs is
+    critical. Splits preferentially at paragraph breaks. Any single paragraph
+    that exceeds ``max_chars`` is further split at sentence boundaries so no
+    chunk is ever larger than ``max_chars``.
 
     Args:
         text: Text to split into chunks.
         max_chars: Maximum characters per chunk.
 
     Returns:
-        List of text chunks.
+        List of ``(chunk_text, boundary_type)`` tuples. ``boundary_type``
+        describes the source-text relationship between THIS chunk and the
+        PREVIOUS chunk -- either ``"paragraph"`` (this chunk starts at a
+        paragraph break in the source) or ``"sentence"`` (this chunk starts
+        at a sentence break inside an over-budget paragraph that was
+        subdivided). The first chunk's boundary is always ``"paragraph"`` --
+        it has no predecessor within the section, and the outer combine
+        helper handles the section-level gap separately. Callers pass these
+        boundary types to :func:`combine_audio_with_section_pauses` so each
+        inter-chunk silence can be sized for the kind of break it spans.
     """
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
 
-    # Pre-split any paragraph that is itself too large at sentence boundaries.
-    split_paragraphs: list[str] = []
+    # First-level split: each item is either a whole paragraph or a sentence-
+    # bounded sub-paragraph (when the source paragraph exceeds max_chars).
+    # Each item carries its boundary type relative to the PREVIOUS item.
+    items: list[tuple[str, str]] = []
     for p in paragraphs:
         if len(p) <= max_chars:
-            split_paragraphs.append(p)
+            items.append((p, "paragraph"))
             continue
         # Split at sentence boundaries (period/!/? followed by space)
         sentences = re.split(r"(?<=[.!?])\s+", p)
+        first_sub = True
         current_sent = ""
         for s in sentences:
             if not current_sent:
@@ -232,25 +246,36 @@ def chunk_text_paragraphs(text: str, max_chars: int = 4500) -> list[str]:
             elif len(current_sent) + len(s) + 1 <= max_chars:
                 current_sent = current_sent + " " + s
             else:
-                split_paragraphs.append(current_sent)
+                items.append(
+                    (current_sent, "paragraph" if first_sub else "sentence")
+                )
+                first_sub = False
                 current_sent = s
         if current_sent:
-            split_paragraphs.append(current_sent)
+            items.append(
+                (current_sent, "paragraph" if first_sub else "sentence")
+            )
 
-    chunks: list[str] = []
-    current = ""
-
-    for p in split_paragraphs:
-        if not current:
-            current = p
-        elif len(current) + len(p) + 2 <= max_chars:
-            current = current + "\n\n" + p
+    # Second-level split: greedy-pack items into chunks. The boundary
+    # preceding each chunk is the boundary of its FIRST item -- once items
+    # are joined inside a chunk with "\n\n", any internal paragraph breaks
+    # are absorbed (no inter-chunk silence applies inside a chunk).
+    chunks: list[tuple[str, str]] = []
+    current_text = ""
+    current_boundary = "paragraph"
+    for item_text, item_boundary in items:
+        if not current_text:
+            current_text = item_text
+            current_boundary = item_boundary
+        elif len(current_text) + len(item_text) + 2 <= max_chars:
+            current_text = current_text + "\n\n" + item_text
         else:
-            chunks.append(current)
-            current = p
+            chunks.append((current_text, current_boundary))
+            current_text = item_text
+            current_boundary = item_boundary
 
-    if current:
-        chunks.append(current)
+    if current_text:
+        chunks.append((current_text, current_boundary))
 
     return chunks
 
@@ -974,6 +999,8 @@ def combine_audio_with_section_pauses(
     chunk_tail_trim_ms: int = 0,
     chunk_pause_ms: int = 0,
     gain_match_target_dbfs: float | None = None,
+    chunk_boundaries: Sequence[list[str]] | None = None,
+    chunk_pause_ms_by_boundary: dict[str, int] | None = None,
 ) -> None:
     """Combine audio chunks grouped by section with real silence between sections.
 
@@ -994,13 +1021,26 @@ def combine_audio_with_section_pauses(
         chunk_tail_trim_ms: Strip this many ms from the end of each chunk before
             concatenation. Used to clip Fish Speech tag-rendering artifacts
             (audible inhale/sigh that the [pause] tag renders as).
-        chunk_pause_ms: Deterministic silence inserted between chunks within a
-            section. Replaces relying on TTS-rendered ``[long pause]`` tags.
+        chunk_pause_ms: Uniform fallback silence between chunks within a section.
+            Used when ``chunk_boundaries`` + ``chunk_pause_ms_by_boundary`` are
+            absent (legacy single-knob callers and elevenlabs).
         gain_match_target_dbfs: If set, each chunk + bookend is shifted by a
             single gain scalar so its mean dBFS lands at the target. Pure gain,
             no compression — preserves intra-chunk dynamics (Hamming's
             expressive emphasis stays loud relative to surrounding speech).
             Eliminates audible loudness jumps between consecutive chunks.
+        chunk_boundaries: Per-chunk boundary types, parallel to ``sections``.
+            Each inner list is ``[<boundary for chunks[0]>, <boundary for
+            chunks[1]>, ...]``; values are ``"paragraph"`` or ``"sentence"``
+            describing the source-text relationship between THIS chunk and the
+            PREVIOUS chunk in the same section. The boundary preceding
+            chunks[0] is irrelevant (no predecessor in section) and ignored.
+            Sourced from :func:`chunk_text_paragraphs`.
+        chunk_pause_ms_by_boundary: Boundary-type-keyed silence durations,
+            e.g. ``{"paragraph": 1100, "sentence": 500}``. When provided
+            together with ``chunk_boundaries``, supersedes ``chunk_pause_ms``
+            -- each inter-chunk gap uses the duration matching the chunk's
+            boundary type. Missing keys fall back to ``chunk_pause_ms``.
     """
     if not sections:
         logger.error("No sections provided to combine_audio_with_section_pauses")
@@ -1061,15 +1101,31 @@ def combine_audio_with_section_pauses(
         combined = _gain_match(AudioSegment.from_mp3(str(bookend_start)))
         combined += AudioSegment.silent(duration=bookend_pause_ms)
 
+    # Capture as locals so mypy narrows away the Optional and the closure
+    # below doesn't keep repeating the truthiness check.
+    _bounds: Sequence[list[str]] | None = chunk_boundaries
+    _pause_map: dict[str, int] | None = chunk_pause_ms_by_boundary
+    use_per_boundary = bool(_bounds) and bool(_pause_map)
+
+    def _gap_ms_for(sec_idx: int, chunk_idx: int) -> int:
+        """Pick the right inter-chunk silence for the gap PRECEDING this chunk."""
+        if use_per_boundary and _bounds is not None and _pause_map is not None:
+            sec_bounds = _bounds[sec_idx] if sec_idx < len(_bounds) else []
+            if chunk_idx < len(sec_bounds):
+                btype = sec_bounds[chunk_idx]
+                return int(_pause_map.get(btype, chunk_pause_ms))
+        return chunk_pause_ms
+
     for sec_idx, section_chunks in enumerate(sections):
         if not section_chunks:
             continue
 
         # Build section audio from chunks: silence first, then crossfade-append.
         section_audio = _load(section_chunks[0])
-        for chunk_path in section_chunks[1:]:
-            if chunk_pause_ms > 0:
-                section_audio += AudioSegment.silent(duration=chunk_pause_ms)
+        for chunk_idx_in_section, chunk_path in enumerate(section_chunks[1:], start=1):
+            gap_ms = _gap_ms_for(sec_idx, chunk_idx_in_section)
+            if gap_ms > 0:
+                section_audio += AudioSegment.silent(duration=gap_ms)
             section_audio = section_audio.append(
                 _load(chunk_path), crossfade=chunk_crossfade_ms
             )
@@ -1165,15 +1221,22 @@ def restitch_from_chunks(
     post = manifest.get("postprocessor") or {}
 
     sections: dict[int, list[Path]] = {}
+    boundaries: dict[int, list[str]] = {}
     for chunk in manifest["chunks"]:
         sec = chunk["section"]
         if sec not in sections:
             sections[sec] = []
+            boundaries[sec] = []
         chunk_path = chunks_dir / chunk["file"]
         assert chunk_path.exists(), f"Chunk file missing: {chunk_path}"
         sections[sec].append(chunk_path)
+        # Default to "paragraph" for older manifests that don't carry boundary;
+        # the boundary-keyed map's "paragraph" entry then determines silence.
+        boundaries[sec].append(chunk.get("boundary", "paragraph"))
 
-    section_lists = [sections[k] for k in sorted(sections.keys())]
+    sorted_keys = sorted(sections.keys())
+    section_lists = [sections[k] for k in sorted_keys]
+    boundary_lists = [boundaries[k] for k in sorted_keys]
 
     bookend_start = None
     bookend_end = None
@@ -1193,6 +1256,7 @@ def restitch_from_chunks(
         if bookend_pause_ms is not None
         else int(post.get("bookend_pause_ms", 500))
     )
+    boundary_map = post.get("chunk_pause_ms_by_boundary") or None
     combine_audio_with_section_pauses(
         section_lists,
         output_path,
@@ -1202,6 +1266,8 @@ def restitch_from_chunks(
         bookend_end=bookend_end,
         bookend_pause_ms=eff_bookend_pause,
         chunk_tail_trim_ms=int(post.get("chunk_tail_trim_ms", 0)),
+        chunk_boundaries=boundary_lists if boundary_map else None,
+        chunk_pause_ms_by_boundary=boundary_map,
         chunk_pause_ms=int(post.get("chunk_pause_ms", 0)),
         gain_match_target_dbfs=post.get("gain_match_target_dbfs"),
     )

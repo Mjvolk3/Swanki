@@ -26,6 +26,9 @@ models:
     postprocessor:
       gain_match_target_dbfs: -25.0
       chunk_pause_ms: 700
+      chunk_pause_ms_by_boundary:
+        paragraph: 1100
+        sentence: 500
       chunk_tail_trim_ms: 250
       chunk_crossfade_ms: 50
       section_pause_ms: 5000
