@@ -297,6 +297,13 @@ def generate_summary_audio(
         chunk_entries,
         bookend_start=bookend_start.name if bookend_start else None,
         bookend_end=bookend_end.name if bookend_end else None,
+        postprocessor={
+            "section_pause_ms": section_pause,
+            "chunk_pause_ms": chunk_pause_ms,
+            "chunk_tail_trim_ms": chunk_tail_trim_ms,
+            "chunk_crossfade_ms": chunk_crossfade_ms,
+            "gain_match_target_dbfs": gain_match,
+        },
     )
 
     return output_path.name

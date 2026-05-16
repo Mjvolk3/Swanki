@@ -142,3 +142,11 @@ Per direct user spec, the lecture bookend for chapter inputs now reads the citat
 - Non-chapter (regular paper) bookend retains the prior `"Today's lecture is posted as: ... We are covering: ..."` and `"And with that we conclude: ..."` form unchanged.
 
 Driven by the new `parse_chapter_key` + `chapter_number_spoken` helpers in `swanki/utils/formatting.py`. No change to the bookend cache file naming or the `text_to_speech` plumbing.
+
+## 2026.05.15 - Postprocessor knobs persisted in chunk_manifest, restitch reads them back
+
+Bug surfaced after the surgical bookend regen earlier today: listener heard "extremely short, unnatural" gaps between chunks on Hamming Ch1. Root cause: `restitch_from_chunks` hardcoded `chunk_crossfade_ms=0` and never forwarded `chunk_pause_ms` / `chunk_tail_trim_ms` / `gain_match_target_dbfs`. When the original `lecture.py` render passed those (700/250/-25.0/50/5000) and the surgical script later called `restitch_from_chunks` to rebuild from new bookends + existing chunks, the boundary-fix bundle was silently dropped, producing back-to-back chunks with zero gap.
+
+Fix: the manifest now records the boundary-fix knobs in a `postprocessor` key at write time (added optional kwarg on `write_chunk_manifest`); `restitch_from_chunks` reads them back and passes them through to `combine_audio_with_section_pauses`. Caller-side overrides on `restitch_from_chunks` (`section_pause_ms`, `bookend_pause_ms` args) still win over the manifest, for ad-hoc tweaks. Older manifests without the field default to `{}` so restitch falls back to legacy zero-gap behavior (matches the prior bug behavior — explicit, not regressed).
+
+Lecture / summary / reading callers updated to pass the dict. Tests cover the regression (chunk_pause_ms=700 in manifest -> 700ms inter-chunk silence in restitched output) and caller-override precedence.

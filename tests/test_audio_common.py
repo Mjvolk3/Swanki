@@ -526,6 +526,89 @@ def test_restitch_from_chunks_missing_file_fails(tmp_path):
         raise AssertionError("Expected AssertionError for missing chunk file")
 
 
+def test_write_chunk_manifest_records_postprocessor(tmp_path):
+    # Regression guard: write_chunk_manifest must persist the boundary-fix
+    # knobs so a later restitch_from_chunks reproduces the original render.
+    post = {
+        "section_pause_ms": 5000,
+        "chunk_pause_ms": 700,
+        "chunk_tail_trim_ms": 250,
+        "chunk_crossfade_ms": 50,
+        "gain_match_target_dbfs": -25.0,
+    }
+    path = write_chunk_manifest(
+        tmp_path, "lecture", "out.mp3", [], postprocessor=post,
+    )
+    data = json.loads(path.read_text())
+    assert data["postprocessor"] == post
+
+
+def test_write_chunk_manifest_postprocessor_defaults_to_empty_dict(tmp_path):
+    # Older callers that don't pass postprocessor still succeed; the manifest
+    # records {} (NOT missing) so restitch's `manifest.get("postprocessor")`
+    # always returns a dict.
+    path = write_chunk_manifest(tmp_path, "summary", "out.mp3", [])
+    data = json.loads(path.read_text())
+    assert data["postprocessor"] == {}
+
+
+def test_restitch_from_chunks_uses_manifest_chunk_pause_ms(tmp_path):
+    # Regression guard for the bug fixed in this PR: when the manifest
+    # records chunk_pause_ms=700, restitch must insert 700ms silence between
+    # chunks (previously it dropped chunk_pause_ms entirely, producing
+    # back-to-back chunks with zero gap).
+    chunks_dir = tmp_path / "chunks"
+    chunks_dir.mkdir()
+    c0 = chunks_dir / "chunk0.mp3"
+    c1 = chunks_dir / "chunk1.mp3"
+    AudioSegment.silent(duration=1000).export(str(c0), format="mp3")
+    AudioSegment.silent(duration=1000).export(str(c1), format="mp3")
+    manifest_path = write_chunk_manifest(
+        chunks_dir,
+        "lecture",
+        "out.mp3",
+        [
+            {"index": 0, "section": 0, "text": "a", "file": "chunk0.mp3"},
+            {"index": 1, "section": 0, "text": "b", "file": "chunk0.mp3"},
+        ],
+        postprocessor={
+            "section_pause_ms": 0,
+            "chunk_pause_ms": 700,
+        },
+    )
+    out = tmp_path / "restitched.mp3"
+    restitch_from_chunks(manifest_path, out)
+    audio = AudioSegment.from_mp3(str(out))
+    # 1000ms + 700ms gap + 1000ms = ~2700ms; without the fix this would be ~2000ms.
+    assert 2500 < len(audio) < 2900, (
+        f"chunk_pause_ms=700 not honored: got {len(audio)}ms, expected ~2700ms"
+    )
+
+
+def test_restitch_from_chunks_caller_override_wins_over_manifest(tmp_path):
+    # Caller-passed section_pause_ms overrides the manifest value (so a
+    # debugging session can tweak without rewriting the manifest).
+    chunks_dir = tmp_path / "chunks"
+    chunks_dir.mkdir()
+    AudioSegment.silent(duration=500).export(str(chunks_dir / "c0.mp3"), format="mp3")
+    AudioSegment.silent(duration=500).export(str(chunks_dir / "c1.mp3"), format="mp3")
+    manifest_path = write_chunk_manifest(
+        chunks_dir,
+        "lecture",
+        "out.mp3",
+        [
+            {"index": 0, "section": 0, "text": "a", "file": "c0.mp3"},
+            {"index": 1, "section": 1, "text": "b", "file": "c1.mp3"},
+        ],
+        postprocessor={"section_pause_ms": 5000},
+    )
+    out = tmp_path / "restitched.mp3"
+    restitch_from_chunks(manifest_path, out, section_pause_ms=1000)
+    audio = AudioSegment.from_mp3(str(out))
+    # 500ms + 1000ms (caller override) + 500ms = ~2000ms; manifest's 5000 ignored.
+    assert 1800 < len(audio) < 2200
+
+
 # ---------------------------------------------------------------------------
 # _normalize_fish_speech_punct
 # ---------------------------------------------------------------------------
