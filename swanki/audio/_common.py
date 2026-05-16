@@ -1276,6 +1276,81 @@ def restitch_from_chunks(
     )
 
 
+def build_bookend_text(
+    citation_key: str,
+    audio_type: Literal["transcript", "summary", "lecture"],
+    position: Literal["start", "end"],
+    paper_title: str | None = None,
+) -> str:
+    """Build the spoken text for an audio bookend.
+
+    Extracted from :func:`generate_bookend_audio` so the text-building rules
+    are unit-testable without a TTS dependency. Three branches:
+
+    1. **Chapter form (<base>_<NN>_<slug>) for lecture, summary, or reading**:
+       symmetric "This {type} is posted as: <exact reading>. <opener>." at the
+       start, "This concludes <subject>, which is posted as: <exact reading>."
+       at the end. <exact reading> is the citation key spoken literally
+       (base humanized + chapter number with leading-zero "o" prefix +
+       humanized slug). The lecture opener says "Let's begin chapter N, slug"
+       while summary / reading say "Here is the {type} of chapter N, slug".
+
+    2. **Non-chapter lecture**: legacy "Today's lecture is posted as: ..." form
+       with optional paper_title clause.
+
+    3. **Non-chapter summary / transcript**: legacy "START: ..." / "END: ..." label.
+
+    Args:
+        citation_key: Raw citation key (chapter or paper form).
+        audio_type: ``"lecture"``, ``"summary"``, or ``"transcript"`` (the
+            internal name for reading audio).
+        position: ``"start"`` or ``"end"``.
+        paper_title: Paper title for non-chapter lecture bookends.
+
+    Returns:
+        The text to feed to the TTS provider.
+    """
+    from ..utils.formatting import (
+        chapter_number_spoken,
+        humanize_citation_key,
+        parse_chapter_key,
+    )
+
+    parsed_chapter = parse_chapter_key(citation_key)
+    humanized_full = humanize_citation_key(citation_key)
+
+    if parsed_chapter is not None and audio_type in ("lecture", "summary", "transcript"):
+        base, num_str, slug = parsed_chapter
+        base_humanized = humanize_citation_key(base)
+        num_spoken = chapter_number_spoken(num_str)  # e.g. "01" -> "o one"
+        n_word = chapter_number_spoken(str(int(num_str)))  # e.g. "01" -> "one"
+        exact_reading = f"{base_humanized}, {num_spoken}, {slug}"
+        # "reading" audio is announced as "transcript" externally in the
+        # Literal[] (legacy naming), but the user-facing word is "reading".
+        spoken_type = "reading" if audio_type == "transcript" else audio_type
+        if audio_type == "lecture":
+            opener = f"Let's begin chapter {n_word}, {slug}"
+            closer_subject = f"chapter {n_word}, {slug}"
+        else:
+            # Summary + reading use a symmetric "Here is the X of chapter Y" form.
+            opener = f"Here is the {spoken_type} of chapter {n_word}, {slug}"
+            closer_subject = f"the {spoken_type} of chapter {n_word}, {slug}"
+        if position == "start":
+            return f"This {spoken_type} is posted as: {exact_reading}. {opener}."
+        return f"This concludes {closer_subject}, which is posted as: {exact_reading}."
+
+    if audio_type == "lecture":
+        # Non-chapter (regular paper) lecture bookend retains the existing form.
+        if position == "start":
+            title_part = f" We are covering: {paper_title}." if paper_title else ""
+            return f"Today's lecture is posted as: {humanized_full}.{title_part}"
+        return f"And with that we conclude: {humanized_full}."
+
+    # Non-chapter summary / transcript: simple START: / END: label.
+    label = position.upper()
+    return f"{label}: {humanized_full}."
+
+
 def generate_bookend_audio(
     citation_key: str,
     audio_type: Literal["transcript", "summary", "lecture"],
@@ -1303,48 +1378,8 @@ def generate_bookend_audio(
     Returns:
         Path to the generated bookend MP3.
     """
-    from ..utils.formatting import (
-        chapter_number_spoken,
-        humanize_citation_key,
-        parse_chapter_key,
-    )
-
-    parsed_chapter = parse_chapter_key(citation_key)
-    humanized_full = humanize_citation_key(citation_key)
     cache_path = output_dir / f"{citation_key}_{audio_type}_{position}.mp3"
-
-    if audio_type == "lecture":
-        if parsed_chapter is not None:
-            # Book-chapter form (<base>_<NN>_<slug>): the listener wants the
-            # exact slug read aloud (citation key + chapter number as written
-            # + humanized title), bracketed by "this lecture is posted as" /
-            # "this concludes" framing plus a "Let's begin chapter N, slug"
-            # opener for orientation.
-            base, num_str, slug = parsed_chapter
-            base_humanized = humanize_citation_key(base)
-            num_spoken = chapter_number_spoken(num_str)  # e.g. "01" -> "o one"
-            n_word = chapter_number_spoken(str(int(num_str)))  # e.g. "01" -> "one"
-            exact_reading = f"{base_humanized}, {num_spoken}, {slug}"
-            if position == "start":
-                text = (
-                    f"This lecture is posted as: {exact_reading}. "
-                    f"Let's begin chapter {n_word}, {slug}."
-                )
-            else:
-                text = (
-                    f"This concludes chapter {n_word}, {slug}, "
-                    f"which is posted as: {exact_reading}."
-                )
-        else:
-            # Non-chapter (regular paper) bookend retains the existing form.
-            if position == "start":
-                title_part = f" We are covering: {paper_title}." if paper_title else ""
-                text = f"Today's lecture is posted as: {humanized_full}.{title_part}"
-            else:
-                text = f"And with that we conclude: {humanized_full}."
-    else:
-        label = position.upper()
-        text = f"{label}: {humanized_full}."
+    text = build_bookend_text(citation_key, audio_type, position, paper_title)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     text_to_speech(text, voice_id, cache_path, elevenlabs_api_key, speed, **tts_kwargs)
