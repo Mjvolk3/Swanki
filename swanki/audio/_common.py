@@ -1100,6 +1100,7 @@ def write_chunk_manifest(
     chunks: list[dict],
     bookend_start: str | None = None,
     bookend_end: str | None = None,
+    postprocessor: dict | None = None,
 ) -> Path:
     """Write a chunk manifest JSON for surgical regeneration.
 
@@ -1110,6 +1111,14 @@ def write_chunk_manifest(
         chunks: List of dicts with keys ``index``, ``section``, ``text``, ``file``.
         bookend_start: Filename of start bookend, if any.
         bookend_end: Filename of end bookend, if any.
+        postprocessor: Optional dict of the boundary-fix knobs that the
+            original render passed to :func:`combine_audio_with_section_pauses`
+            (``section_pause_ms``, ``chunk_pause_ms``, ``chunk_tail_trim_ms``,
+            ``chunk_crossfade_ms``, ``gain_match_target_dbfs``,
+            ``bookend_pause_ms``). Recorded in the manifest so a later
+            ``restitch_from_chunks`` reproduces the original render exactly --
+            without this, restitch defaults to zero inter-chunk silence and
+            chunks crash into each other.
 
     Returns:
         Path to the written manifest file.
@@ -1119,6 +1128,7 @@ def write_chunk_manifest(
         "output_file": output_file,
         "bookend_start": bookend_start,
         "bookend_end": bookend_end,
+        "postprocessor": postprocessor or {},
         "chunks": chunks,
     }
     manifest_path = chunks_dir / "chunk_manifest.json"
@@ -1130,23 +1140,29 @@ def write_chunk_manifest(
 def restitch_from_chunks(
     manifest_path: Path,
     output_path: Path,
-    section_pause_ms: int = 2000,
-    bookend_pause_ms: int = 500,
+    section_pause_ms: int | None = None,
+    bookend_pause_ms: int | None = None,
 ) -> None:
     """Reassemble final audio from chunk files using a manifest.
 
-    Reads the chunk manifest JSON, loads each chunk file, and combines
-    them with section pauses. Used for surgical regeneration: re-TTS one
-    chunk, then restitch.
+    Reads the chunk manifest JSON, loads each chunk file, and combines them
+    with the same boundary-fix knobs the original render used (recorded in
+    ``manifest["postprocessor"]`` by :func:`write_chunk_manifest`). Used for
+    surgical regeneration: re-TTS one chunk or regenerate bookends, then
+    restitch without re-running the body LLM/TTS work.
 
     Args:
         manifest_path: Path to ``chunk_manifest.json``.
         output_path: Path for the reassembled output MP3.
-        section_pause_ms: Silence between sections.
-        bookend_pause_ms: Silence after start / before end bookend.
+        section_pause_ms: Override for ``section_pause_ms`` from manifest.
+            When None, uses manifest value (or 2000 if manifest predates the
+            postprocessor field).
+        bookend_pause_ms: Override for ``bookend_pause_ms`` from manifest.
+            When None, uses manifest value (or 500 fallback).
     """
     manifest = json.loads(manifest_path.read_text())
     chunks_dir = manifest_path.parent
+    post = manifest.get("postprocessor") or {}
 
     sections: dict[int, list[Path]] = {}
     for chunk in manifest["chunks"]:
@@ -1166,14 +1182,28 @@ def restitch_from_chunks(
     if manifest.get("bookend_end"):
         bookend_end = chunks_dir / manifest["bookend_end"]
 
+    # Caller overrides win, then manifest, then sensible legacy defaults.
+    eff_section_pause = (
+        section_pause_ms
+        if section_pause_ms is not None
+        else int(post.get("section_pause_ms", 2000))
+    )
+    eff_bookend_pause = (
+        bookend_pause_ms
+        if bookend_pause_ms is not None
+        else int(post.get("bookend_pause_ms", 500))
+    )
     combine_audio_with_section_pauses(
         section_lists,
         output_path,
-        section_pause_ms=section_pause_ms,
-        chunk_crossfade_ms=0,
+        section_pause_ms=eff_section_pause,
+        chunk_crossfade_ms=int(post.get("chunk_crossfade_ms", 0)),
         bookend_start=bookend_start,
         bookend_end=bookend_end,
-        bookend_pause_ms=bookend_pause_ms,
+        bookend_pause_ms=eff_bookend_pause,
+        chunk_tail_trim_ms=int(post.get("chunk_tail_trim_ms", 0)),
+        chunk_pause_ms=int(post.get("chunk_pause_ms", 0)),
+        gain_match_target_dbfs=post.get("gain_match_target_dbfs"),
     )
     logger.info(
         f"Restitched audio from {sum(len(s) for s in section_lists)} chunks -> {output_path}"
