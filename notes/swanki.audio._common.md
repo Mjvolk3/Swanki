@@ -164,3 +164,13 @@ Three changes:
 3. **Manifest persistence:** each chunk dict gains a `boundary` key; `postprocessor.chunk_pause_ms_by_boundary` records the map. `restitch_from_chunks` reads them back so a future surgical regen reproduces the original render's content-aware silences (without this, restitch would default to uniform `chunk_pause_ms` and lose the paragraph-vs-sentence distinction).
 
 Lecture / summary / reading callers updated. Fish YAML defaults: `{paragraph: 1100, sentence: 500}` -- listener can tweak per-paper via the existing per-config override mechanism. The uniform `chunk_pause_ms: 700` stays as the fallback.
+
+## 2026.05.16 - build_bookend_text extracted + chapter form mirrored to summary + reading
+
+User flagged that the chapter-aware bookend rewrite from 2026.05.14 only applied to lecture audio -- summary and reading on chapter inputs fell through to the legacy `START: {humanize_citation_key}.` form which still mis-reads the chapter number ("zero three" instead of "o three"). Hamming's existing summary + reading mp3s on ABS are also pinned to commit ff0567a (Apr 27, before any of the recent fixes), so a re-render is needed regardless.
+
+Two changes:
+
+1. **`build_bookend_text(citation_key, audio_type, position, paper_title=None) -> str`** extracted as a pure function from `generate_bookend_audio`. Pure-function shape makes the text rules unit-testable without a TTS dependency (9 new tests cover all chapter / non-chapter × lecture / summary / reading × start / end combinations).
+
+2. **Chapter branch now fires for `audio_type in ("lecture", "summary", "transcript")`** -- previously only "lecture". Summary and reading get a symmetric "Here is the {audio_type} of chapter N, slug" opener / "the {audio_type} of chapter N, slug" closer subject, framed by the same "This {audio_type} is posted as: ..." / "This concludes ..., which is posted as: ..." wrapper. The internal `audio_type="transcript"` (legacy name for what reading.py passes) renders as the user-facing word "reading" in the spoken text. Non-chapter inputs preserve the legacy forms (lecture: "Today's lecture is posted as: ..."; summary/transcript: "START:/END: ...").

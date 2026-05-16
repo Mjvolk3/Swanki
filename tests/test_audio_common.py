@@ -16,6 +16,7 @@ from swanki.audio._common import (
     _normalize_fish_speech_punct,
     append_chunk_pause,
     apply_pronunciation_overrides,
+    build_bookend_text,
     chunk_text,
     chunk_text_paragraphs,
     clean_markdown_for_tts,
@@ -607,6 +608,91 @@ def test_restitch_from_chunks_caller_override_wins_over_manifest(tmp_path):
     audio = AudioSegment.from_mp3(str(out))
     # 500ms + 1000ms (caller override) + 500ms = ~2000ms; manifest's 5000 ignored.
     assert 1800 < len(audio) < 2200
+
+
+# ---------------------------------------------------------------------------
+# build_bookend_text — chapter bookend text generation for lecture/summary/reading
+# ---------------------------------------------------------------------------
+
+
+_CH_KEY = "hammingArtDoingScience2020_03_history-of-computers-hardware"
+_CH_EXACT = "Hamming, Art Doing Science, 2020, o three, history of computers hardware"
+
+
+def test_build_bookend_text_lecture_chapter_start():
+    out = build_bookend_text(_CH_KEY, "lecture", "start")
+    assert out == (
+        f"This lecture is posted as: {_CH_EXACT}. "
+        f"Let's begin chapter three, history of computers hardware."
+    )
+
+
+def test_build_bookend_text_lecture_chapter_end():
+    out = build_bookend_text(_CH_KEY, "lecture", "end")
+    assert out == (
+        f"This concludes chapter three, history of computers hardware, "
+        f"which is posted as: {_CH_EXACT}."
+    )
+
+
+def test_build_bookend_text_summary_chapter_start():
+    out = build_bookend_text(_CH_KEY, "summary", "start")
+    assert out == (
+        f"This summary is posted as: {_CH_EXACT}. "
+        f"Here is the summary of chapter three, history of computers hardware."
+    )
+
+
+def test_build_bookend_text_summary_chapter_end():
+    out = build_bookend_text(_CH_KEY, "summary", "end")
+    assert out == (
+        f"This concludes the summary of chapter three, history of computers hardware, "
+        f"which is posted as: {_CH_EXACT}."
+    )
+
+
+def test_build_bookend_text_reading_chapter_start():
+    # audio_type=transcript is the internal name for reading audio; user-facing
+    # word is "reading" so the spoken text says "reading".
+    out = build_bookend_text(_CH_KEY, "transcript", "start")
+    assert out == (
+        f"This reading is posted as: {_CH_EXACT}. "
+        f"Here is the reading of chapter three, history of computers hardware."
+    )
+
+
+def test_build_bookend_text_reading_chapter_end():
+    out = build_bookend_text(_CH_KEY, "transcript", "end")
+    assert out == (
+        f"This concludes the reading of chapter three, history of computers hardware, "
+        f"which is posted as: {_CH_EXACT}."
+    )
+
+
+def test_build_bookend_text_non_chapter_lecture_keeps_legacy_form():
+    assert build_bookend_text("bishopDeepLearning2024", "lecture", "start") == \
+        "Today's lecture is posted as: Bishop, Deep Learning, 2024."
+    assert build_bookend_text("bishopDeepLearning2024", "lecture", "end") == \
+        "And with that we conclude: Bishop, Deep Learning, 2024."
+
+
+def test_build_bookend_text_non_chapter_lecture_with_title():
+    out = build_bookend_text(
+        "bishopDeepLearning2024", "lecture", "start", paper_title="Some Paper Title"
+    )
+    assert out == (
+        "Today's lecture is posted as: Bishop, Deep Learning, 2024. "
+        "We are covering: Some Paper Title."
+    )
+
+
+def test_build_bookend_text_non_chapter_summary_keeps_label_form():
+    # No natural "Here is the summary of ..." opener without a chapter number,
+    # so non-chapter summary / transcript stays on the simple START:/END: label.
+    assert build_bookend_text("bishopDeepLearning2024", "summary", "start") == \
+        "START: Bishop, Deep Learning, 2024."
+    assert build_bookend_text("bishopDeepLearning2024", "transcript", "end") == \
+        "END: Bishop, Deep Learning, 2024."
 
 
 def test_restitch_from_chunks_uses_per_boundary_silence(tmp_path):
