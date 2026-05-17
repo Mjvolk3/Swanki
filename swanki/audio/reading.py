@@ -38,6 +38,34 @@ from ._common import (
 
 logger = logging.getLogger(__name__)
 
+# RC2 completeness guard: minimum acceptable ratio of Pass-2 transcript
+# tokens to post-humanize Pass-1 source tokens. Below this, Pass-2 likely
+# dropped source prose (the failure that lost a Hamming Ch1 sentence). The
+# Pass-2 prompt only ever expands text (acronym letter-spelling, citation
+# rendering), so a shortfall is a real omission, not a rewrite artifact.
+_READING_COVERAGE_MIN_RATIO = 0.95
+
+
+def reading_coverage_ratio(source: str, transcript: str) -> float:
+    """Token-count ratio of the Pass-2 transcript to the Pass-1 source.
+
+    `source` must be the post-humanize Pass-1 text, not raw LaTeX, so that
+    symbol/equation rewrites are not miscounted as deletions. A value below
+    `_READING_COVERAGE_MIN_RATIO` means Pass-2 likely dropped source prose.
+
+    Args:
+        source: Post-humanize Pass-1 text fed into Pass-2.
+        transcript: Concatenated Pass-2 output.
+
+    Returns:
+        Ratio of transcript tokens to source tokens; 1.0 if source is empty.
+    """
+    enc = tiktoken.get_encoding("cl100k_base")
+    src_tokens = len(enc.encode(source))
+    if not src_tokens:
+        return 1.0
+    return len(enc.encode(transcript)) / src_tokens
+
 
 def generate_reading_audio(
     full_content: str,
@@ -125,6 +153,16 @@ def generate_reading_audio(
         + acronym_instruction
     )
 
+    # RC3: optional per-paper prosody addendum, appended verbatim. Carried in
+    # the preprocessor sub-tree so no pipeline plumbing is needed and papers
+    # without the key are unaffected. Reading-only — does not touch the
+    # lecture critic/refiner first-person book-voice whitelist.
+    _prep_for_prompt = tts_kwargs.get("preprocessor")
+    if isinstance(_prep_for_prompt, dict):
+        addendum = str(_prep_for_prompt.get("system_prompt_addendum", "")).strip()
+        if addendum:
+            system_prompt = f"{system_prompt}\n\n{addendum}"
+
     # Filter metadata (affiliations, emails, dates, references) before processing
     user_content = filter_metadata(full_content)
 
@@ -165,6 +203,22 @@ def generate_reading_audio(
         transcript_chunks.append(chunk_transcript)
 
     full_transcript = "\n\n".join(transcript_chunks)
+
+    # RC2 completeness guard: Pass-2 must not silently drop source prose.
+    # Compares against user_content (post-humanize Pass-1), NOT raw LaTeX, so
+    # equation/symbol rewrites do not count as deletions. Fail loud, no
+    # auto-retry — the user reviews and decides (CLAUDE.md fail-fast).
+    coverage = reading_coverage_ratio(user_content, full_transcript)
+    if coverage < _READING_COVERAGE_MIN_RATIO:
+        logger.warning(
+            "READING COMPLETENESS GUARD tripped for %s: Pass-2 transcript is "
+            "%.1f%% of post-humanize source (threshold %.0f%%). Pass-2 likely "
+            "dropped source prose -- review %s before publishing.",
+            citation_key or output_path.stem,
+            coverage * 100,
+            _READING_COVERAGE_MIN_RATIO * 100,
+            output_path.stem,
+        )
 
     # Save transcripts
     transcripts_dir = output_path.parent / "full_read"

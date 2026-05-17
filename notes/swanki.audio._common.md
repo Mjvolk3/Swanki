@@ -174,3 +174,35 @@ Two changes:
 1. **`build_bookend_text(citation_key, audio_type, position, paper_title=None) -> str`** extracted as a pure function from `generate_bookend_audio`. Pure-function shape makes the text rules unit-testable without a TTS dependency (9 new tests cover all chapter / non-chapter × lecture / summary / reading × start / end combinations).
 
 2. **Chapter branch now fires for `audio_type in ("lecture", "summary", "transcript")`** -- previously only "lecture". Summary and reading get a symmetric "Here is the {audio_type} of chapter N, slug" opener / "the {audio_type} of chapter N, slug" closer subject, framed by the same "This {audio_type} is posted as: ..." / "This concludes ..., which is posted as: ..." wrapper. The internal `audio_type="transcript"` (legacy name for what reading.py passes) renders as the user-facing word "reading" in the spoken text. Non-chapter inputs preserve the legacy forms (lecture: "Today's lecture is posted as: ..."; summary/transcript: "START:/END: ...").
+
+## 2026.05.17 - RC1 section-break sentinel protection + RC4 table linearization
+
+Two feed-forward fixes from the Hamming Ch1 audio plan
+([[plan.hamming-chapter-1-audio-two-track-fixes.2026.05.17]]); both make
+every future reading/lecture/summary render clean without manual
+intervention.
+
+**RC1 -- the spoken "section break" bug.** `expand_acronyms_for_tts` runs
+before `split_transcript_by_sections` (an intentional, documented scrubber
+order: pronunciation overrides must follow acronym expansion). But
+`_STANDALONE_ACRONYM_RE = (?<![A-Za-z])([A-Z]{2,6})(?![A-Za-z])` matched
+`BREAK` inside `---SECTION_BREAK---`: the `_` before it satisfies the
+lookbehind, the `-` after it the lookahead, and `BREAK` is a 5-letter run
+(`SECTION` is 7, so it was spared). The marker became
+`---SECTION_B-R-E-A-K---`, which the literal splitter no longer matched, so
+it survived into chunk text and Fish spoke "section b-r-e-a-k". Fix: mask
+`SECTION_BREAK_MARKER` to an all-lowercase NUL-delimited placeholder
+(`_SECTION_BREAK_TTS_MASK`, cannot match the regex, cannot collide with
+transcript text) for the duration of the acronym pass, then restore. One
+fix site inside `expand_acronyms_for_tts`; reading/lecture/summary all
+benefit, and lecture's literal-marker `_strip_duplicate_openers` logic
+becomes robust too. Chosen over reordering the pipeline (regression risk
+across three audio types) or a marker-tolerant splitter (leaves corruption
+in the text for any other consumer).
+
+**RC4 -- truncated tables.** Added an explicit table block to
+`_LATEX_SYSTEM_PROMPT` (Pass-1 `humanize_latex`, so linearization happens
+before any summarization sees it): read every table row across all columns
+as one clause, drop no row or cell, never collapse a row to its label. The
+closing "only transform math/units/symbols" constraint was widened so it
+no longer contradicts the new table rule.

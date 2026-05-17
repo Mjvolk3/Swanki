@@ -60,3 +60,31 @@ Orange annotations on the zvyagin reading audio surfaced a cluster of pipeline d
 ## 2026.05.14 - Mirror lecture.py audio fixes for consistency across types
 
 Same wiring as `swanki/audio/summary.py` 2026.05.14 — pre-TTS scrubber pipeline, YAML-driven `chunking.max_chars`, and YAML-driven `postprocessor.*` knobs piped through to `combine_audio_with_section_pauses`. Reading audio now picks up the boundary-fix bundle (gain match, inter-chunk silence, tail trim, crossfade) and the deterministic acronym / pronunciation / forbidden-tag scrubbers that landed for lecture in the Hamming PR. Defaults preserve prior behavior for elevenlabs callers.
+
+## 2026.05.17 - RC2 completeness guard + RC3 prosody addendum
+
+From the Hamming Ch1 audio plan
+([[plan.hamming-chapter-1-audio-two-track-fixes.2026.05.17]]).
+
+**RC2 -- silent Pass-2 drops.** Pass-2 (audio-optimization LLM) dropped a
+source sentence in Hamming Ch1 with no detection. Added
+`reading_coverage_ratio(source, transcript)` -- a pure, tiktoken-based
+token-count ratio extracted as a module function for unit-testability (cf.
+`build_bookend_text`) -- and a guard after Pass-2 that compares the
+transcript against the *post-humanize* Pass-1 text (not raw LaTeX, so
+equation rewrites are not miscounted) and emits a loud `logging.warning`
+when coverage `< _READING_COVERAGE_MIN_RATIO` (0.95). No auto-retry: Pass-2
+only ever expands text, so a shortfall is a real omission; fail loud and
+let the user decide (CLAUDE.md fast-fail).
+
+**RC3 -- flat aphorism delivery.** Optional per-paper
+`preprocessor.system_prompt_addendum` (carried through the existing
+`tts_kwargs["preprocessor"]` pass-through, so no pipeline plumbing change
+and papers without the key are unaffected) is appended verbatim to the
+Pass-2 system prompt. Reading-only by design: it does not touch the lecture
+critic/refiner first-person book-voice whitelist. The Hamming addendum
+(`swanki/conf/models/fish_speech_hamming.yaml`) instructs aphorism/
+punchline isolation as one-sentence paragraphs -- Fish emotion tags are
+force-stripped and the prompt forbids literal `[pause]`, so paragraph
+placement (which `add_tts_pauses` brackets with real silence) is the only
+delivery lever that survives.

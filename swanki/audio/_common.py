@@ -359,6 +359,15 @@ def strip_forbidden_fish_tags(text: str) -> str:
 # mangled into letter spellings.
 _STANDALONE_ACRONYM_RE = re.compile(r"(?<![A-Za-z])([A-Z]{2,6})(?![A-Za-z])")
 
+# Opaque mask for the section-break sentinel during acronym expansion.
+# `SECTION_BREAK_MARKER` is "---SECTION_BREAK---"; the "_" before BREAK
+# satisfies the regex lookbehind and "BREAK" is a 5-letter run, so without
+# protection the marker is mangled to "---SECTION_B-R-E-A-K---", which the
+# literal `split_transcript_by_sections` then fails to strip and Fish speaks
+# aloud. This placeholder is all-lowercase and NUL-delimited so it cannot
+# match `_STANDALONE_ACRONYM_RE` and cannot collide with transcript text.
+_SECTION_BREAK_TTS_MASK = "\x00\x00swanki-section-break\x00\x00"
+
 
 def expand_acronyms_for_tts(
     text: str, allowlist: set[str] | None = None
@@ -384,7 +393,13 @@ def expand_acronyms_for_tts(
             return tok
         return "-".join(tok)
 
-    return _STANDALONE_ACRONYM_RE.sub(_sub, text)
+    # Protect the section-break sentinel: mask before expansion, restore
+    # after, so "BREAK" inside the marker is never letter-spelled. The
+    # scrubber-pipeline order (acronym expand before split_transcript_by_
+    # sections) is intentional and documented; this keeps it intact.
+    masked = text.replace(SECTION_BREAK_MARKER, _SECTION_BREAK_TTS_MASK)
+    expanded = _STANDALONE_ACRONYM_RE.sub(_sub, masked)
+    return expanded.replace(_SECTION_BREAK_TTS_MASK, SECTION_BREAK_MARKER)
 
 
 def apply_pronunciation_overrides(
@@ -1493,6 +1508,12 @@ Approximations and ranges:
 - "~1.5 million" / "∼1.5 million" -> "approximately 1.5 million"
 - "1–10" / "1-10" (as a numeric range) -> "one to ten"
 
+Tables and tabular content (LaTeX \\begin{tabular} / \\begin{table}, or markdown / columnar tables) — linearize for listening:
+- Read the table ROW BY ROW in source order. For each row speak every cell across all columns, left to right, as one natural clause, then move to the next row. NEVER read it column-by-column.
+- Include EVERY row and EVERY cell. Do not summarize, sample, truncate, or drop any row — the listener cannot see the table, so any omission is silent, unrecoverable data loss.
+- Do not collapse a row to only its first column / label and drop the remaining cells. If a row pairs a label with a value or description, speak BOTH.
+- If the table has a caption or title, read it first, then say "the table lists:" and read the rows.
+
 STRAY-DOLLAR RULE: If you see a standalone "$" not clearly delimiting a math expression, DELETE it. Never say "dollar" unless the prose explicitly refers to currency.
 
 Special Cases:
@@ -1500,7 +1521,7 @@ Special Cases:
 - $a$ and $\\alpha$ -> a and alpha
 - $\\mathbf{a}$ and $\\alpha$ -> a and alpha
 
-DO NOT change any other text. Preserve prose exactly; only transform the math/units/symbols."""
+DO NOT change any other text. Preserve prose exactly; only transform the math/units/symbols and linearize tables exactly as instructed above."""
 
 
 def humanize_latex(content: str, model: str) -> str:

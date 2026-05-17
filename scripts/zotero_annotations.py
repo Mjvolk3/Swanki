@@ -70,7 +70,7 @@ def get_annotations(
     annotations: list[ZoteroAnnotation] = []
 
     for att in attachments:
-        children = zot.children(att["key"])
+        children = zot.everything(zot.children(att["key"]))
         for child in children:
             data = child.get("data", {})
             if data.get("itemType") != "annotation":

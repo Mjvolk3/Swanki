@@ -23,6 +23,21 @@ models:
         SAR: "sar"
         # Theme 7 — heard mispronunciation in Ch 2 audio.
         Decisively: "decisively,"
+      # RC3 prosody (reading Pass-2 only): Hamming's aphorisms and dry
+      # punchlines land flat when run into surrounding prose. Fish emotion
+      # tags are force-stripped and the prompt forbids literal [pause], so
+      # the only delivery lever is paragraph isolation -- a one-sentence
+      # paragraph makes add_tts_pauses bracket the line with real silence.
+      system_prompt_addendum: >-
+        APHORISM AND PUNCHLINE DELIVERY: When the author delivers a short,
+        self-contained aphorism, witticism, reversal, or dry punchline (for
+        example "The past was once the future and the future will become the
+        past."), place that sentence on its OWN line as a one-sentence
+        paragraph, with a blank line before and after it, so it lands with a
+        beat of silence on each side. Do not add emotion tags, stage
+        directions, or the word "pause" or "[pause]"; rely on paragraph
+        placement alone. Use this sparingly -- only for genuine standalone
+        aphorisms, never for ordinary explanatory sentences.
       strip_forbidden_tags: true
       acronym_letter_by_letter: true
       acronym_allowlist:
