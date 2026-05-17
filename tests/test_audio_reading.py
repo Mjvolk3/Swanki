@@ -12,7 +12,49 @@ from unittest.mock import MagicMock, patch
 from pydub import AudioSegment
 
 from swanki.audio._common import humanize_latex
-from swanki.audio.reading import generate_reading_audio
+from swanki.audio.reading import (
+    _READING_COVERAGE_MIN_RATIO,
+    generate_reading_audio,
+    reading_coverage_ratio,
+)
+
+# ---------------------------------------------------------------------------
+# RC2: reading completeness guard (deterministic, no LLM)
+# ---------------------------------------------------------------------------
+
+
+def test_reading_coverage_full_passthrough_is_one():
+    src = "Hamming argues that great work needs vision and courage."
+    assert reading_coverage_ratio(src, src) == 1.0
+
+
+def test_reading_coverage_expansion_stays_above_threshold():
+    # Pass-2 only ever expands (acronym letter-spelling, citation rendering),
+    # so a faithful transcript is >= source and must NOT trip the guard.
+    src = "The SAR system and the CPU were new in 1950."
+    transcript = (
+        "The S-A-R system and the C-P-U were new in 1950. "
+        "Hamming, 1986, notes this."
+    )
+    assert reading_coverage_ratio(src, transcript) >= _READING_COVERAGE_MIN_RATIO
+
+
+def test_reading_coverage_dropped_paragraph_trips_guard():
+    # A genuine ~30% drop (one of three sentences omitted) falls below 0.95.
+    src = (
+        "They arise so you will not be left behind, as so many good "
+        "engineers are in the long run. In the position I found myself in "
+        "at the Laboratories, I had a choice. The past was once the future."
+    )
+    dropped = (
+        "In the position I found myself in at the Laboratories, I had a "
+        "choice. The past was once the future."
+    )
+    assert reading_coverage_ratio(src, dropped) < _READING_COVERAGE_MIN_RATIO
+
+
+def test_reading_coverage_empty_source_is_one():
+    assert reading_coverage_ratio("", "anything") == 1.0
 
 
 def test_generate_reading_audio_mocked(tmp_audio_dir, mock_elevenlabs_api_key):

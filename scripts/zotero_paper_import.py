@@ -192,7 +192,10 @@ def _is_main_article(att: dict) -> bool:
 
 def get_pdf_attachments(zot: zotero.Zotero, item_key: str) -> list[dict]:
     """Return PDF attachment items for a parent item, main article first."""
-    children = zot.children(item_key)
+    # Auto-paginate: heavily-reprocessed items accrue >100 children (Swanki
+    # output bundles + notes), which would push the source PDF past the
+    # default 100-item page and silently hide it.
+    children = zot.everything(zot.children(item_key))
     pdfs = [c for c in children if c["data"].get("contentType") == "application/pdf"]
     # Sort so main article comes first, SI/supplementary after
     pdfs.sort(key=lambda a: (0 if _is_main_article(a) else 1))

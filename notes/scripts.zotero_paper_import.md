@@ -49,3 +49,15 @@ Zotero can return PDF attachments in arbitrary order, causing the SI PDF to be s
 ## 2026.04.16 - Generated run script defaults to `audio=all anki=default`
 
 `write_sh_script()` now emits `audio=all anki=default` instead of `audio=full anki=auto_send`. Aligns generated per-paper run scripts with the gilahyper defaults so newly imported papers produce per-card complementary audio and skip Anki auto-send by default.
+
+## 2026.05.17 - Paginate get_pdf_attachments children
+
+`get_pdf_attachments` called `zot.children(item_key)` unpaginated. Heavily
+reprocessed items accrue >100 child attachments (Swanki output bundles +
+sync-log notes) -- the Hamming book item had 147 -- which pushed the
+source PDF past pyzotero's default 100-item page, so it was silently
+invisible and `/zotero-annotations` returned nothing. Wrapped in
+`zot.everything(...)` (the established pattern already used for
+`zot.items()` in this module). Companion fix in
+[[scripts.zotero_annotations]]
+([[plan.hamming-chapter-1-audio-two-track-fixes.2026.05.17]]).

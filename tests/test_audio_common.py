@@ -13,6 +13,7 @@ from pydub import AudioSegment
 
 from swanki.audio._common import (
     FISH_SPEECH_FORBIDDEN_TAGS,
+    SECTION_BREAK_MARKER,
     _normalize_fish_speech_punct,
     append_chunk_pause,
     apply_pronunciation_overrides,
@@ -814,6 +815,61 @@ def test_expand_acronyms_for_tts_no_change_for_lowercase():
 
 def test_expand_acronyms_for_tts_skips_single_letter():
     assert expand_acronyms_for_tts("the X factor and A team") == "the X factor and A team"
+
+
+# ---------------------------------------------------------------------------
+# RC1: section-break sentinel must survive acronym expansion verbatim
+# ---------------------------------------------------------------------------
+
+
+def test_expand_acronyms_preserves_section_break_marker():
+    # Without protection, "BREAK" (preceded by "_", followed by "-") matches
+    # the [A-Z]{2,6} rule and is mangled to "B-R-E-A-K", which the literal
+    # splitter then fails to strip and Fish speaks aloud.
+    text = f"intro\n\n{SECTION_BREAK_MARKER}\nnext"
+    out = expand_acronyms_for_tts(text)
+    assert SECTION_BREAK_MARKER in out
+    assert "B-R-E-A-K" not in out
+    assert "\x00" not in out
+
+
+def test_expand_acronyms_preserves_marker_but_still_expands_neighbors():
+    # The mask must protect ONLY the marker; real acronyms around it still
+    # get letter-spelled.
+    text = f"the SAR system\n{SECTION_BREAK_MARKER}\nthen NASA flew"
+    out = expand_acronyms_for_tts(text)
+    assert SECTION_BREAK_MARKER in out
+    assert "S-A-R" in out
+    assert "N-A-S-A" in out
+
+
+def test_section_break_round_trips_through_expand_then_split():
+    # End-to-end of the bug: expand then split. The marker must survive
+    # expansion so split_transcript_by_sections can strip it; no section
+    # may contain the marker or a mangled remnant.
+    text = f"one TWO\n\n{SECTION_BREAK_MARKER}\n\nthree FOUR"
+    expanded = expand_acronyms_for_tts(text)
+    sections = split_transcript_by_sections(expanded)
+    assert len(sections) == 2
+    assert all(SECTION_BREAK_MARKER not in s for s in sections)
+    assert all("B-R-E-A-K" not in s for s in sections)
+
+
+def test_expand_acronyms_marker_protection_with_allowlist_and_override():
+    # Real Hamming combined path (Scout C gotcha 2): SAR is in the allowlist
+    # AND has a pronunciation override. Acronym pass skips SAR (allowlist),
+    # the marker stays protected, then the override rewrites bare "SAR" to
+    # "sar". The two mechanisms are complementary; the sentinel mask must
+    # not disturb either.
+    text = f"the SAR system\n{SECTION_BREAK_MARKER}\nover"
+    out = expand_acronyms_for_tts(text, allowlist={"SAR"})
+    assert "S-A-R" not in out  # allowlisted -> not letter-spelled
+    assert "SAR" in out
+    assert SECTION_BREAK_MARKER in out
+    final = apply_pronunciation_overrides(out, {"SAR": "sar"})
+    assert "the sar system" in final
+    assert SECTION_BREAK_MARKER in final
+    assert "B-R-E-A-K" not in final
 
 
 # ---------------------------------------------------------------------------
