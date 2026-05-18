@@ -36,3 +36,13 @@ output_path=None, speed=1.1, tts_kwargs=None, section_pause_ms=None)`:
 `fish_speech_healthy(server_url)` is a cheap HTTP pre-flight; Fish has no
 retry and a single failed chunk aborts a batch, so callers probe before any
 re-TTS. Exported from `swanki.audio` for ergonomic import.
+
+## 2026.05.18 - Inherits chunk_timeline.json sidecar for free
+
+No code change here: `regenerate_and_restitch` restitches through
+`restitch_from_chunks`, which (as of 2026.05.18) writes a measured
+`chunk_timeline.json` sidecar. So every surgical re-TTS now also refreshes
+the exact chunk->time map, which the `/audio-fix-from-annotations` skill uses
+to report trustworthy MM:SS. Covered by a new
+`test_audio_surgical.test_restitch_writes_timeline_sidecar` (real restitch,
+only `text_to_speech` mocked).

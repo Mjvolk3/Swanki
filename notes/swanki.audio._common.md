@@ -206,3 +206,35 @@ before any summarization sees it): read every table row across all columns
 as one clause, drop no row or cell, never collapse a row to its label. The
 closing "only transform math/units/symbols" constraint was widened so it
 no longer contradicts the new table rule.
+
+## 2026.05.18 - Exact chunk-time mapping: shared _accumulate_timeline + sidecar
+
+Re-deriving chunk timing independently drifted ~5s/~11s on Hamming lectures
+(the ~11s was the un-counted trailing `bookend_end`+pause; ~5s was
+`detect_silence` tail-trim + crossfade rounding). A chunk's mp3 footprint is
+content-dependent (the silence-aware `_load` trim) and crossfade overlaps
+shorten the timeline, so it is unknowable without loading the files --
+prediction is impossible. Fix: one assembly traversal that also yields the
+timing.
+
+- `_accumulate_timeline` extracted from `combine_audio_with_section_pauses`:
+  performs the identical per-segment ops (gain-match, `_load` trim,
+  boundary-keyed gaps, section pauses, bookends, crossfade) and returns
+  `(combined, ChunkTimeline)` with offsets read off the running `combined`
+  object -- exact by construction. `combine` is now a thin wrapper (single
+  export site) returning the `ChunkTimeline`; byte-identical to before
+  (verified by a determinism test + an independent-oracle test that recomputes
+  offsets from the loaded segment lengths and matches exactly).
+- `restitch_from_chunks` captures that measured timeline, stamps the
+  manifest-true `index`/`audio_type`, and writes a frozen-pydantic
+  `chunk_timeline.json` sidecar next to the manifest. `_manifest_combine_inputs`
+  factored out so restitch and the query fallback share one manifest->combine
+  translation.
+- Public query API (exported from `swanki/audio/__init__.py`):
+  `chunk_time_window(source, audio_type, idx, *, absolute_offset_ms=0)`,
+  `time_to_chunk(...)` (inverse; nearest chunk for a gap position),
+  `chunk_time_window_abs(..., preceding_chapter_durations_ms=...)` for
+  ABS-stitched audiobooks. All read the sidecar (recompute via the SAME
+  accumulator if missing -- never an independent re-derivation) and assert
+  `audio_type` (chunk indices are audio-type-local). Frozen constants
+  (`tail_buffer_ms=350`, gain target, paragraph=1100/sentence=500) untouched.

@@ -97,3 +97,45 @@ def test_unknown_chunk_index_fails_loud(tts, restitch, tmp_path):
     mp = _manifest(tmp_path)
     with pytest.raises(AssertionError, match="index 99"):
         regenerate_and_restitch(mp, {99: "x"})
+
+
+@patch("swanki.audio.surgical.text_to_speech")
+def test_restitch_writes_timeline_sidecar(tts, tmp_path):
+    """Real restitch (only text_to_speech mocked) must (re)write
+    chunk_timeline.json next to the manifest.
+    """
+    from pydub import AudioSegment
+
+    from swanki.audio._common import TIMELINE_FILENAME, ChunkTimeline
+
+    ck = tmp_path / "reading_chunks"
+    ck.mkdir(parents=True)
+    chunks = []
+    for i in range(3):
+        f = f"paper_chunk{i}.mp3"
+        AudioSegment.silent(duration=500 + 200 * i).export(
+            str(ck / f), format="mp3", bitrate="192k"
+        )
+        chunks.append(
+            {"index": i, "section": 0, "text": f"t{i}", "file": f,
+             "boundary": "paragraph"}
+        )
+    (ck / "chunk_manifest.json").write_text(json.dumps({
+        "audio_type": "reading",
+        "output_file": "paper-reading-audio.mp3",
+        "bookend_start": None,
+        "bookend_end": None,
+        "postprocessor": {"section_pause_ms": 5000, "chunk_pause_ms": 700,
+                          "chunk_tail_trim_ms": 0, "chunk_crossfade_ms": 0},
+        "chunks": chunks,
+    }))
+    sidecar = ck / TIMELINE_FILENAME
+    assert not sidecar.exists()
+    regenerate_and_restitch(
+        ck / "chunk_manifest.json", {1: None}, audio_type="reading"
+    )
+    assert sidecar.exists()
+    tl = ChunkTimeline.model_validate_json(sidecar.read_text())
+    assert tl.audio_type == "reading"
+    assert [c.index for c in tl.chunks] == [0, 1, 2]
+    assert tl.total_duration_ms > 0
