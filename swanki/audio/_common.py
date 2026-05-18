@@ -11,10 +11,11 @@ import logging
 import re
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Literal
+from typing import Literal, NamedTuple
 
 import httpx
 from elevenlabs import ElevenLabs, VoiceSettings
+from pydantic import BaseModel, Field
 from pydub import AudioSegment
 
 logger = logging.getLogger(__name__)
@@ -1003,6 +1004,208 @@ def split_transcript_by_sections(
     return [s.strip() for s in transcript.split(marker) if s.strip()]
 
 
+TIMELINE_FILENAME = "chunk_timeline.json"
+
+
+class Span(BaseModel):
+    """A measured time footprint in the final mixed audio (milliseconds)."""
+
+    offset_ms: int = Field(description="Start offset in the final mix")
+    duration_ms: int = Field(description="Footprint length in the final mix")
+    end_ms: int = Field(description="offset_ms + duration_ms")
+
+
+class ChunkSpan(BaseModel):
+    """Measured footprint of one chunk in the final mix."""
+
+    index: int = Field(description="Manifest chunk index (audio-type-local)")
+    section: int = Field(description="Section number")
+    file: str = Field(description="Chunk mp3 filename")
+    offset_ms: int = Field(description="Start offset in the final mix")
+    duration_ms: int = Field(description="Footprint length (crossfade-adjusted)")
+    end_ms: int = Field(description="offset_ms + duration_ms")
+
+
+class SectionSpan(BaseModel):
+    """Measured footprint of one section in the final mix."""
+
+    index: int = Field(description="Section number")
+    start_ms: int = Field(description="Section start offset in the final mix")
+    end_ms: int = Field(description="Section end offset in the final mix")
+    gap_before_ms: int = Field(description="Silence inserted before this section")
+
+
+class ChunkTimeline(BaseModel):
+    """Exact, measured chunk->time map for one restitched audio file.
+
+    Produced as a byproduct of the single assembly traversal in
+    :func:`_accumulate_timeline` (offsets read off the running combined
+    segment), so the offsets describe the very bytes that were exported --
+    never a re-derived prediction.
+    """
+
+    audio_type: str = ""
+    total_duration_ms: int = 0
+    bookend_start: Span | None = None
+    bookend_end: Span | None = None
+    sections: list[SectionSpan] = Field(default_factory=list)
+    chunks: list[ChunkSpan] = Field(default_factory=list)
+
+
+def _accumulate_timeline(
+    sections: Sequence[list[Path]],
+    *,
+    section_pause_ms: int,
+    chunk_crossfade_ms: int,
+    bookend_start: Path | None,
+    bookend_end: Path | None,
+    bookend_pause_ms: int,
+    chunk_tail_trim_ms: int,
+    chunk_pause_ms: int,
+    gain_match_target_dbfs: float | None,
+    chunk_boundaries: Sequence[list[str]] | None,
+    chunk_pause_ms_by_boundary: dict[str, int] | None,
+) -> tuple[AudioSegment | None, ChunkTimeline]:
+    """The single assembly traversal: build the combined segment AND record
+    every chunk/section/bookend offset off the running segment lengths.
+
+    This is the ONLY place chunk timing is computed. Re-deriving it anywhere
+    else drifts (proven ~5s/~11s on Hamming lectures: a chunk's mp3 length is
+    content-dependent via the silence-aware ``_load`` trim and crossfade
+    overlap, so it is unknowable without loading the file). Offsets are read
+    off the running ``combined`` object, so they are exact by construction.
+
+    Returns:
+        ``(combined, timeline)``; ``combined`` is None when there is no audio.
+    """
+    timeline = ChunkTimeline()
+    if not sections:
+        return None, timeline
+
+    def _gain_match(seg: AudioSegment) -> AudioSegment:
+        if gain_match_target_dbfs is None:
+            return seg
+        if seg.dBFS == float("-inf"):
+            return seg
+        delta = gain_match_target_dbfs - seg.dBFS
+        return seg + delta
+
+    def _load(path: Path) -> AudioSegment:
+        seg = AudioSegment.from_mp3(str(path))
+        if chunk_tail_trim_ms > 0 and len(seg) > chunk_tail_trim_ms + 200:
+            from pydub.silence import detect_silence
+
+            scan_window_ms = chunk_tail_trim_ms + 200
+            scan = seg[-scan_window_ms:]
+            silence_thresh = max(seg.dBFS - 16, -50.0)
+            silences = detect_silence(
+                scan, min_silence_len=80, silence_thresh=silence_thresh
+            )
+            trailing = [s for s in silences if s[1] >= scan_window_ms - 30]
+            if trailing:
+                silence_start_in_scan = trailing[-1][0]
+                tail_buffer_ms = 350
+                abs_cut = min(
+                    len(seg)
+                    - scan_window_ms
+                    + silence_start_in_scan
+                    + tail_buffer_ms,
+                    len(seg),
+                )
+                seg = seg[:abs_cut]
+        return _gain_match(seg)
+
+    _bounds: Sequence[list[str]] | None = chunk_boundaries
+    _pause_map: dict[str, int] | None = chunk_pause_ms_by_boundary
+    use_per_boundary = bool(_bounds) and bool(_pause_map)
+
+    def _gap_ms_for(sec_idx: int, chunk_idx: int) -> int:
+        if use_per_boundary and _bounds is not None and _pause_map is not None:
+            sec_bounds = _bounds[sec_idx] if sec_idx < len(_bounds) else []
+            if chunk_idx < len(sec_bounds):
+                btype = sec_bounds[chunk_idx]
+                return int(_pause_map.get(btype, chunk_pause_ms))
+        return chunk_pause_ms
+
+    combined: AudioSegment | None = None
+
+    if bookend_start and bookend_start.exists():
+        bsa = _gain_match(AudioSegment.from_mp3(str(bookend_start)))
+        combined = bsa
+        timeline.bookend_start = Span(
+            offset_ms=0, duration_ms=len(bsa), end_ms=len(bsa)
+        )
+        combined += AudioSegment.silent(duration=bookend_pause_ms)
+
+    gidx = 0
+    for sec_idx, section_chunks in enumerate(sections):
+        if not section_chunks:
+            continue
+
+        # Per-chunk offsets are tracked within the section segment, then
+        # translated by the section's base offset in `combined`.
+        local: list[tuple[int, int, str]] = []  # (offset_in_sec, dur, file)
+        section_audio = _load(section_chunks[0])
+        local.append((0, len(section_audio), section_chunks[0].name))
+        for chunk_idx_in_section, chunk_path in enumerate(
+            section_chunks[1:], start=1
+        ):
+            gap_ms = _gap_ms_for(sec_idx, chunk_idx_in_section)
+            if gap_ms > 0:
+                section_audio += AudioSegment.silent(duration=gap_ms)
+            off = len(section_audio)
+            section_audio = section_audio.append(
+                _load(chunk_path), crossfade=chunk_crossfade_ms
+            )
+            local.append((off, len(section_audio) - off, chunk_path.name))
+
+        if combined is None:
+            base = 0
+            gap_before = 0
+            combined = section_audio
+        else:
+            gap_before = section_pause_ms
+            combined += AudioSegment.silent(duration=section_pause_ms)
+            base = len(combined)
+            combined += section_audio
+
+        timeline.sections.append(
+            SectionSpan(
+                index=sec_idx,
+                start_ms=base,
+                end_ms=base + len(section_audio),
+                gap_before_ms=gap_before,
+            )
+        )
+        for off, dur, fname in local:
+            timeline.chunks.append(
+                ChunkSpan(
+                    index=gidx,
+                    section=sec_idx,
+                    file=fname,
+                    offset_ms=base + off,
+                    duration_ms=dur,
+                    end_ms=base + off + dur,
+                )
+            )
+            gidx += 1
+
+    if combined is None:
+        return None, timeline
+
+    if bookend_end and bookend_end.exists():
+        combined += AudioSegment.silent(duration=bookend_pause_ms)
+        be_off = len(combined)
+        bea = _gain_match(AudioSegment.from_mp3(str(bookend_end)))
+        combined += bea
+        timeline.bookend_end = Span(
+            offset_ms=be_off, duration_ms=len(bea), end_ms=be_off + len(bea)
+        )
+
+    timeline.total_duration_ms = len(combined)
+    return combined, timeline
+
+
 def combine_audio_with_section_pauses(
     sections: Sequence[list[Path]],
     output: Path,
@@ -1016,7 +1219,7 @@ def combine_audio_with_section_pauses(
     gain_match_target_dbfs: float | None = None,
     chunk_boundaries: Sequence[list[str]] | None = None,
     chunk_pause_ms_by_boundary: dict[str, int] | None = None,
-) -> None:
+) -> ChunkTimeline:
     """Combine audio chunks grouped by section with real silence between sections.
 
     Defaults to direct concatenation between chunks (``chunk_crossfade_ms=0``)
@@ -1057,111 +1260,33 @@ def combine_audio_with_section_pauses(
             -- each inter-chunk gap uses the duration matching the chunk's
             boundary type. Missing keys fall back to ``chunk_pause_ms``.
     """
-    if not sections:
-        logger.error("No sections provided to combine_audio_with_section_pauses")
-        return
-
-    def _gain_match(seg: AudioSegment) -> AudioSegment:
-        if gain_match_target_dbfs is None:
-            return seg
-        # pydub returns -inf for silent segments; only normalize voiced audio
-        if seg.dBFS == float("-inf"):
-            return seg
-        delta = gain_match_target_dbfs - seg.dBFS
-        return seg + delta
-
-    def _load(path: Path) -> AudioSegment:
-        seg = AudioSegment.from_mp3(str(path))
-        if chunk_tail_trim_ms > 0 and len(seg) > chunk_tail_trim_ms + 200:
-            # Silence-aware trim: cut inside the trailing silence (NOT at its
-            # leading edge). Cutting right at the speech-silence transition
-            # makes the chunk-end sound clipped — the listener perceives the
-            # last syllable as truncated. We keep ~150 ms of post-speech
-            # silence as breathing room before the inter-chunk pause kicks in.
-            from pydub.silence import detect_silence
-
-            scan_window_ms = chunk_tail_trim_ms + 200
-            scan = seg[-scan_window_ms:]
-            silence_thresh = max(seg.dBFS - 16, -50.0)
-            silences = detect_silence(
-                scan, min_silence_len=80, silence_thresh=silence_thresh
-            )
-            # Trailing silence: a range whose end touches the end of the scan
-            # window (within a small tolerance).
-            trailing = [s for s in silences if s[1] >= scan_window_ms - 30]
-            if trailing:
-                silence_start_in_scan = trailing[-1][0]
-                # 350 ms of post-speech silence buffer. Listener feedback on v8
-                # (150 ms): still perceived as clipped at chunk boundaries even
-                # though no speech was actually being cut. The buffer needs to
-                # leave enough silence after the last syllable that the chunk
-                # never feels truncated. With this width, only chunks with
-                # genuinely long trailing silence get any trim at all.
-                tail_buffer_ms = 350
-                abs_cut = min(
-                    len(seg)
-                    - scan_window_ms
-                    + silence_start_in_scan
-                    + tail_buffer_ms,
-                    len(seg),
-                )
-                seg = seg[:abs_cut]
-            # else: chunk ends mid-speech — leave intact, no blind trim.
-        return _gain_match(seg)
-
-    combined: AudioSegment | None = None
-
-    # Start bookend (also gain-matched so it doesn't punch over the chunk level)
-    if bookend_start and bookend_start.exists():
-        combined = _gain_match(AudioSegment.from_mp3(str(bookend_start)))
-        combined += AudioSegment.silent(duration=bookend_pause_ms)
-
-    # Capture as locals so mypy narrows away the Optional and the closure
-    # below doesn't keep repeating the truthiness check.
-    _bounds: Sequence[list[str]] | None = chunk_boundaries
-    _pause_map: dict[str, int] | None = chunk_pause_ms_by_boundary
-    use_per_boundary = bool(_bounds) and bool(_pause_map)
-
-    def _gap_ms_for(sec_idx: int, chunk_idx: int) -> int:
-        """Pick the right inter-chunk silence for the gap PRECEDING this chunk."""
-        if use_per_boundary and _bounds is not None and _pause_map is not None:
-            sec_bounds = _bounds[sec_idx] if sec_idx < len(_bounds) else []
-            if chunk_idx < len(sec_bounds):
-                btype = sec_bounds[chunk_idx]
-                return int(_pause_map.get(btype, chunk_pause_ms))
-        return chunk_pause_ms
-
-    for sec_idx, section_chunks in enumerate(sections):
-        if not section_chunks:
-            continue
-
-        # Build section audio from chunks: silence first, then crossfade-append.
-        section_audio = _load(section_chunks[0])
-        for chunk_idx_in_section, chunk_path in enumerate(section_chunks[1:], start=1):
-            gap_ms = _gap_ms_for(sec_idx, chunk_idx_in_section)
-            if gap_ms > 0:
-                section_audio += AudioSegment.silent(duration=gap_ms)
-            section_audio = section_audio.append(
-                _load(chunk_path), crossfade=chunk_crossfade_ms
-            )
-
-        # Append section with silence gap (except before first section)
-        if combined is None:
-            combined = section_audio
-        else:
-            combined += AudioSegment.silent(duration=section_pause_ms)
-            combined += section_audio
-
+    combined, timeline = _accumulate_timeline(
+        sections,
+        section_pause_ms=section_pause_ms,
+        chunk_crossfade_ms=chunk_crossfade_ms,
+        bookend_start=bookend_start,
+        bookend_end=bookend_end,
+        bookend_pause_ms=bookend_pause_ms,
+        chunk_tail_trim_ms=chunk_tail_trim_ms,
+        chunk_pause_ms=chunk_pause_ms,
+        gain_match_target_dbfs=gain_match_target_dbfs,
+        chunk_boundaries=chunk_boundaries,
+        chunk_pause_ms_by_boundary=chunk_pause_ms_by_boundary,
+    )
     if combined is None:
-        logger.error("No audio content to combine")
-        return
+        if not sections:
+            logger.error(
+                "No sections provided to combine_audio_with_section_pauses"
+            )
+        else:
+            logger.error("No audio content to combine")
+        return timeline
 
-    # End bookend
-    if bookend_end and bookend_end.exists():
-        combined += AudioSegment.silent(duration=bookend_pause_ms)
-        combined += _gain_match(AudioSegment.from_mp3(str(bookend_end)))
-
+    # Single export site for the whole module. The timeline returned here was
+    # measured off this exact `combined` object in `_accumulate_timeline`, so
+    # it describes the bytes about to be written.
     combined.export(str(output), format="mp3", bitrate="192k")
+    return timeline
 
 
 def write_chunk_manifest(
@@ -1208,6 +1333,64 @@ def write_chunk_manifest(
     return manifest_path
 
 
+class _CombineInputs(NamedTuple):
+    """Parsed manifest pieces shared by restitch and the timeline queries."""
+
+    manifest: dict
+    section_lists: list[list[Path]]
+    boundary_lists: list[list[str]]
+    bookend_start: Path | None
+    bookend_end: Path | None
+    post: dict
+    audio_type: str
+    file_to_index: dict[str, int]
+
+
+def _manifest_combine_inputs(manifest_path: Path) -> _CombineInputs:
+    """Parse a chunk manifest into the inputs `_accumulate_timeline` consumes.
+
+    Single source of manifest->combine translation, reused by
+    :func:`restitch_from_chunks` and the timeline-sidecar fallback so the
+    "one code path" guarantee holds even for legacy renders.
+    """
+    manifest = json.loads(manifest_path.read_text())
+    chunks_dir = manifest_path.parent
+    sections: dict[int, list[Path]] = {}
+    boundaries: dict[int, list[str]] = {}
+    for chunk in manifest["chunks"]:
+        sec = chunk["section"]
+        if sec not in sections:
+            sections[sec] = []
+            boundaries[sec] = []
+        chunk_path = chunks_dir / chunk["file"]
+        assert chunk_path.exists(), f"Chunk file missing: {chunk_path}"
+        sections[sec].append(chunk_path)
+        boundaries[sec].append(chunk.get("boundary", "paragraph"))
+    keys = sorted(sections.keys())
+    bs = (
+        chunks_dir / manifest["bookend_start"]
+        if manifest.get("bookend_start")
+        else None
+    )
+    be = (
+        chunks_dir / manifest["bookend_end"]
+        if manifest.get("bookend_end")
+        else None
+    )
+    return _CombineInputs(
+        manifest=manifest,
+        section_lists=[sections[k] for k in keys],
+        boundary_lists=[boundaries[k] for k in keys],
+        bookend_start=bs,
+        bookend_end=be,
+        post=manifest.get("postprocessor") or {},
+        audio_type=manifest.get("audio_type", ""),
+        file_to_index={
+            c["file"]: int(c["index"]) for c in manifest["chunks"]
+        },
+    )
+
+
 def restitch_from_chunks(
     manifest_path: Path,
     output_path: Path,
@@ -1231,34 +1414,8 @@ def restitch_from_chunks(
         bookend_pause_ms: Override for ``bookend_pause_ms`` from manifest.
             When None, uses manifest value (or 500 fallback).
     """
-    manifest = json.loads(manifest_path.read_text())
-    chunks_dir = manifest_path.parent
-    post = manifest.get("postprocessor") or {}
-
-    sections: dict[int, list[Path]] = {}
-    boundaries: dict[int, list[str]] = {}
-    for chunk in manifest["chunks"]:
-        sec = chunk["section"]
-        if sec not in sections:
-            sections[sec] = []
-            boundaries[sec] = []
-        chunk_path = chunks_dir / chunk["file"]
-        assert chunk_path.exists(), f"Chunk file missing: {chunk_path}"
-        sections[sec].append(chunk_path)
-        # Default to "paragraph" for older manifests that don't carry boundary;
-        # the boundary-keyed map's "paragraph" entry then determines silence.
-        boundaries[sec].append(chunk.get("boundary", "paragraph"))
-
-    sorted_keys = sorted(sections.keys())
-    section_lists = [sections[k] for k in sorted_keys]
-    boundary_lists = [boundaries[k] for k in sorted_keys]
-
-    bookend_start = None
-    bookend_end = None
-    if manifest.get("bookend_start"):
-        bookend_start = chunks_dir / manifest["bookend_start"]
-    if manifest.get("bookend_end"):
-        bookend_end = chunks_dir / manifest["bookend_end"]
+    inp = _manifest_combine_inputs(manifest_path)
+    post = inp.post
 
     # Caller overrides win, then manifest, then sensible legacy defaults.
     eff_section_pause = (
@@ -1272,22 +1429,156 @@ def restitch_from_chunks(
         else int(post.get("bookend_pause_ms", 500))
     )
     boundary_map = post.get("chunk_pause_ms_by_boundary") or None
-    combine_audio_with_section_pauses(
-        section_lists,
+    timeline = combine_audio_with_section_pauses(
+        inp.section_lists,
         output_path,
         section_pause_ms=eff_section_pause,
         chunk_crossfade_ms=int(post.get("chunk_crossfade_ms", 0)),
-        bookend_start=bookend_start,
-        bookend_end=bookend_end,
+        bookend_start=inp.bookend_start,
+        bookend_end=inp.bookend_end,
         bookend_pause_ms=eff_bookend_pause,
         chunk_tail_trim_ms=int(post.get("chunk_tail_trim_ms", 0)),
-        chunk_boundaries=boundary_lists if boundary_map else None,
+        chunk_boundaries=inp.boundary_lists if boundary_map else None,
         chunk_pause_ms_by_boundary=boundary_map,
         chunk_pause_ms=int(post.get("chunk_pause_ms", 0)),
         gain_match_target_dbfs=post.get("gain_match_target_dbfs"),
     )
+
+    # The timeline was measured off the exact bytes just exported. Stamp the
+    # manifest-true index/audio_type and persist it as the sidecar so queries
+    # never re-derive timing independently.
+    timeline.audio_type = inp.audio_type
+    for sp in timeline.chunks:
+        sp.index = inp.file_to_index.get(sp.file, sp.index)
+    sidecar = manifest_path.parent / TIMELINE_FILENAME
+    sidecar.write_text(timeline.model_dump_json(indent=2))
+    logger.info(f"Wrote chunk timeline: {sidecar}")
     logger.info(
-        f"Restitched audio from {sum(len(s) for s in section_lists)} chunks -> {output_path}"
+        f"Restitched audio from {sum(len(s) for s in inp.section_lists)} chunks -> {output_path}"
+    )
+
+
+def _resolve_sidecar(source: Path) -> tuple[Path, Path]:
+    """Resolve `source` (chunks dir | manifest path | output dir) to
+    ``(manifest_path, sidecar_path)``.
+    """
+    source = Path(source)
+    if source.is_file() and source.name == "chunk_manifest.json":
+        manifest_path = source
+    elif source.is_dir() and (source / "chunk_manifest.json").exists():
+        manifest_path = source / "chunk_manifest.json"
+    else:
+        cands = sorted(source.glob("*_chunks/chunk_manifest.json"))
+        assert cands, f"No chunk_manifest.json found under {source}"
+        manifest_path = cands[0]
+    return manifest_path, manifest_path.parent / TIMELINE_FILENAME
+
+
+def _ensure_timeline(manifest_path: Path, sidecar_path: Path) -> ChunkTimeline:
+    """Return the sidecar timeline; if absent, recompute via the SAME shared
+    accumulator (never an independent re-derivation) and persist it.
+    """
+    if sidecar_path.exists():
+        return ChunkTimeline.model_validate_json(sidecar_path.read_text())
+    inp = _manifest_combine_inputs(manifest_path)
+    post = inp.post
+    boundary_map = post.get("chunk_pause_ms_by_boundary") or None
+    _combined, timeline = _accumulate_timeline(
+        inp.section_lists,
+        section_pause_ms=int(post.get("section_pause_ms", 2000)),
+        chunk_crossfade_ms=int(post.get("chunk_crossfade_ms", 0)),
+        bookend_start=inp.bookend_start,
+        bookend_end=inp.bookend_end,
+        bookend_pause_ms=int(post.get("bookend_pause_ms", 500)),
+        chunk_tail_trim_ms=int(post.get("chunk_tail_trim_ms", 0)),
+        chunk_pause_ms=int(post.get("chunk_pause_ms", 0)),
+        gain_match_target_dbfs=post.get("gain_match_target_dbfs"),
+        chunk_boundaries=inp.boundary_lists if boundary_map else None,
+        chunk_pause_ms_by_boundary=boundary_map,
+    )
+    timeline.audio_type = inp.audio_type
+    for sp in timeline.chunks:
+        sp.index = inp.file_to_index.get(sp.file, sp.index)
+    sidecar_path.write_text(timeline.model_dump_json(indent=2))
+    return timeline
+
+
+def chunk_time_window(
+    source: Path,
+    audio_type: str,
+    chunk_index: int,
+    *,
+    absolute_offset_ms: int = 0,
+) -> tuple[int, int]:
+    """Exact ``(start_ms, end_ms)`` of one chunk in the restitched audio.
+
+    `source` is the chunks dir, a ``chunk_manifest.json`` path, or an output
+    dir. Reads the measured ``chunk_timeline.json`` sidecar (recomputing it via
+    the shared accumulator if missing). ``absolute_offset_ms`` shifts the
+    window (e.g. when this audio is one chapter inside a stitched ABS book).
+    """
+    manifest_path, sidecar = _resolve_sidecar(Path(source))
+    tl = _ensure_timeline(manifest_path, sidecar)
+    assert tl.audio_type == audio_type, (
+        f"timeline audio_type {tl.audio_type!r} != requested {audio_type!r} "
+        "(chunk indices are audio-type-local)"
+    )
+    for c in tl.chunks:
+        if c.index == chunk_index:
+            return (
+                c.offset_ms + absolute_offset_ms,
+                c.end_ms + absolute_offset_ms,
+            )
+    raise AssertionError(
+        f"chunk_index {chunk_index} not in timeline {sidecar}"
+    )
+
+
+def time_to_chunk(
+    source: Path,
+    audio_type: str,
+    position_ms: int,
+    *,
+    absolute_offset_ms: int = 0,
+) -> int:
+    """Inverse of :func:`chunk_time_window`: which chunk plays at
+    ``position_ms``. A position landing in an inter-chunk gap returns the
+    nearest chunk index.
+    """
+    manifest_path, sidecar = _resolve_sidecar(Path(source))
+    tl = _ensure_timeline(manifest_path, sidecar)
+    assert tl.audio_type == audio_type, (
+        f"timeline audio_type {tl.audio_type!r} != requested {audio_type!r} "
+        "(chunk indices are audio-type-local)"
+    )
+    pos = position_ms - absolute_offset_ms
+    best: tuple[int, int] | None = None
+    for c in tl.chunks:
+        if c.offset_ms <= pos < c.end_ms:
+            return c.index
+        dist = min(abs(pos - c.offset_ms), abs(pos - c.end_ms))
+        if best is None or dist < best[0]:
+            best = (dist, c.index)
+    assert best is not None, f"empty timeline {sidecar}"
+    return best[1]
+
+
+def chunk_time_window_abs(
+    source: Path,
+    audio_type: str,
+    chunk_index: int,
+    *,
+    preceding_chapter_durations_ms: int,
+) -> tuple[int, int]:
+    """Audiobook-absolute window for one chunk: the in-file window shifted by
+    the summed durations of the chapter files that precede this one in a
+    stitched ABS book.
+    """
+    return chunk_time_window(
+        source,
+        audio_type,
+        chunk_index,
+        absolute_offset_ms=preceding_chapter_durations_ms,
     )
 
 
