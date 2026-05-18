@@ -39,3 +39,13 @@ Caught during the first end-to-end Schaum's Ch1 run: the apkg source pattern in 
 
 Switched the apkg pattern to `{citation_key}*.apkg` and updated the loop to glob the output dir, iterating over all matches. The dest_name template now uses `{stem}` so the suffix is preserved in the Zotero attachment name. Backward-compatible: literal patterns still return 0 or 1 matches; the legacy `<key>.apkg` form still works.
 
+## 2026.05.18 - Replace prior versions; stop stacking artifacts
+
+ABS is now the iteration surface for audio review, so Zotero should hold only the latest swanki artifact per chapter, not the full history. Prior behavior stacked attachments — `VPZK6ESQ` (the Schaum's Microbiology parent item) had 13 attachments from 11+ regen cycles before this change.
+
+Added `_prune_prior_attachments`: after a successful `zot.attachment_simple(...)` upload, list children of the parent item and `zot.delete_item` any attachment whose filename matches `^<chapter_base>.*\.(?:zip|apkg)$`, excluding the just-uploaded filename. The chapter base is derived by `_chapter_base(content_key)` which truncates at `_CH<digits>` — so `MyBook_CH01`, `MyBook_CH01_intro`, and a future `MyBook_CH01_revised` all share base `MyBook_CH01` and replace each other.
+
+Runs AFTER upload, never before — guarantees we never leave an item with zero artifacts if the upload itself fails (e.g. the same `httpx.ReadTimeout` that has hit several past runs). Defensive: filters `itemType == "attachment"`, refuses to delete the just-uploaded filename, ignores notes and non-matching filenames (like the source book PDF).
+
+One-off cleanup: ran the prune helper directly against `VPZK6ESQ` (keeping today's `2CBKWQH8`) — deleted 12 stale items (8 historical ZIPs + 3 legacy `_CH01-problem-set.apkg` + 1 even older 7a08fcb ZIP). Tests live in `tests/test_zotero_prune.py` covering chapter-base extraction, same-chapter replacement, other-chapter preservation, legacy apkg form, just-uploaded protection, and non-attachment skip.
+

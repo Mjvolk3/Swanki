@@ -8,11 +8,13 @@ Upload Swanki outputs (apkg, audio) to Zotero as timestamped attachments.
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import httpx
 from pyzotero import zotero
@@ -115,6 +117,56 @@ def _find_zotero_item(zot: zotero.Zotero, citation_key: str) -> str | None:
             break
         start += 100
     return None
+
+
+def _chapter_base(content_key: str) -> str:
+    """Truncate ``content_key`` at the chapter marker ``_CH<digits>``.
+
+    Returns the prefix INCLUDING ``_CH##`` so it can be used as the stable
+    "slot" for prior-attachment pruning. ``MyBook_CH01_intro`` and the
+    legacy ``MyBook_CH01`` and a future ``MyBook_CH01_revised`` all share
+    chapter base ``MyBook_CH01``. For content_keys without ``_CH##`` (e.g.
+    papers), returns the full content_key unchanged.
+    """
+    m = re.match(r"^(.+_CH\d+)", content_key)
+    return m.group(1) if m is not None else content_key
+
+
+def _prune_prior_attachments(
+    zot: Any,
+    item_key: str,
+    content_key: str,
+    just_uploaded_filename: str,
+) -> int:
+    """Delete prior swanki ZIP/apkg attachments sharing the chapter base.
+
+    Called AFTER a successful upload so the parent item is left with only
+    the most recent artifact per chapter. Keeps Zotero lean since iteration
+    on audio happens in ABS, not by stacking historical versions.
+
+    Filters: itemType=attachment, filename starts with the chapter base
+    (per ``_chapter_base``) and ends in ``.zip`` or ``.apkg``. The just-
+    uploaded filename is defensively excluded.
+
+    Returns:
+        Count of attachments deleted.
+    """
+    base = _chapter_base(content_key)
+    pattern = re.compile(rf"^{re.escape(base)}.*\.(?:zip|apkg)$")
+    deleted = 0
+    children = zot.children(item_key, limit=200)
+    for child in children:
+        if child["data"].get("itemType") != "attachment":
+            continue
+        fn = child["data"].get("filename", "")
+        if not pattern.match(fn):
+            continue
+        if fn == just_uploaded_filename:
+            continue
+        logger.info(f"Pruning prior attachment: {fn} ({child['key']})")
+        zot.delete_item(child)
+        deleted += 1
+    return deleted
 
 
 def _find_or_create_sync_note(
@@ -241,6 +293,13 @@ def sync_to_zotero(
             return
         finally:
             httpx.post = _original_post  # type: ignore[assignment]
+
+    # Prune prior versions on the same chapter so Zotero stores only the
+    # most recent artifact. Runs AFTER a successful upload so we never
+    # leave the item with zero artifacts if the upload itself failed.
+    pruned = _prune_prior_attachments(zot, item_key, file_key, zip_name)
+    if pruned:
+        logger.info(f"Pruned {pruned} prior Zotero attachment(s)")
 
     # Update sync log note
     note_item, note_html = _find_or_create_sync_note(zot, item_key)
