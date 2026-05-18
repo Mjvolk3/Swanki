@@ -49,3 +49,22 @@ Two adjacent fixes landed with this work:
 `run_solution_manual_override` now writes `problem_subtype_counts` alongside `subtype_counts` to `cards-debug.yaml` so the integration smoke test can assert `{theory_problem: 6, multiple_choice: 15, matching: 9, true_false: 15}` for the Schaum's CH01 review-section subset.
 
 End-state target: alcamoSchaumsOutlineMicrobiology2010 Ch1 review-section subset (pages 8-12) enumerates 45 problems (15 MC + 9 Matching + 15 T/F + 6 theory `1.25-1.30`) with every problem paired. The full chapter (pages 1-12) enumerates 69 problems (30 theory + 15 MC + 9 Matching + 15 T/F).
+
+## 2026.05.17 - Tighten bolding rules in card-gen prompts
+
+The prior rule "use **bold** on key technical term(s)" was too loose — the LLM bolded any technical word it saw, so cards like T/F 6 came out with both `**Fungi**` and `**prokaryotes**` bolded. Only `prokaryotes` is testable here (it's the swap word the back-of-book corrects to `eukaryotes`); `Fungi` is incidental list context that bolding falsely flagged as important.
+
+Tightened the five card-gen prompts (theory + MC + Matching + T/F + Completion in `solution_manual.yaml`, plus the concept-card prompt in `default.yaml`) with subtype-specific guidance:
+
+- **T/F**: bold ONLY the swap word for False statements; the single testable concept for True; 1-2 words max. Worked example baked into the prompt.
+- **MC**: bold the central noun phrase the stem is testing, NOT scientist names or named entities.
+- **Matching**: bold ONLY the two domain nouns in the prefix (`Match the **<domain>** to the **<target>**:`).
+- **Completion**: bold only the context words immediately adjacent to `____`.
+- **Theory** + **concept cards**: bold sparingly, only what the card is actually testing.
+
+Universal rider: "Bolding everything trains the learner to ignore the emphasis." No new tests — these are LLM-judgment rules; verification is inspecting `cards-debug.yaml` after regen.
+
+Two additional Matching-prompt revisions in the same round:
+
+- **Drop the colon + em-dash construction**. Prior format put the Column-A statement under the question on its own line prefixed by `—` (e.g. "Match the **microorganism group** to the **capability**:\n— Performs photosynthesis"). The two-step framing is awkward to read. New rule: rewrite the Column-A statement as a direct question that integrates the Column-B domain (e.g. "Which **microorganism group** performs photosynthesis?"). Three worked examples included in the prompt to anchor the LLM.
+- **Period after the answer phrase on the back**, before the rationale sentence. Prior cards came out as "(e) **Cyanobacteria** Cyanobacteria are photosynthetic..." — no terminator between the answer and the explanation, which both reads and TTS-renders as a run-on. Same period rule added to MC and Completion backs for consistency; T/F already used periods in its example forms.

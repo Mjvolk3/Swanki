@@ -92,6 +92,55 @@ class TestChapterSectionAbbreviations:
             "Refer to section 2 for syntax."
 
 
+class TestChoiceLabels:
+    """``(a)`` / ``(b)`` / ... at the start of a line are converted to ``A. ``
+    / ``B. `` because Fish Speech tokenizes parentheses as phonetic glyphs
+    (sounds like "pee a oh") and sometimes duplicates or skips choices.
+    """
+
+    def test_mc_choices_stripped(self) -> None:
+        text = (
+            "Multiple choice 2: Among the foods produced for human "
+            "consumption by microorganisms is\n"
+            "(a) milk\n"
+            "(b) ham\n"
+            "(c) yogurt\n"
+            "(d) cucumbers"
+        )
+        expected = (
+            "Multiple choice 2: Among the foods produced for human "
+            "consumption by microorganisms is\n"
+            "A. milk\n"
+            "B. ham\n"
+            "C. yogurt\n"
+            "D. cucumbers"
+        )
+        assert humanize_card_text_for_tts(text) == expected
+
+    def test_matching_options_stripped(self) -> None:
+        text = (
+            "Matching 6: Match the cell-shape description to the organism "
+            "group:\n"
+            "(a) Bacteria\n"
+            "(b) Fungi\n"
+            "(c) Viruses"
+        )
+        expected = (
+            "Matching 6: Match the cell-shape description to the organism "
+            "group:\n"
+            "A. Bacteria\n"
+            "B. Fungi\n"
+            "C. Viruses"
+        )
+        assert humanize_card_text_for_tts(text) == expected
+
+    def test_inline_choice_reference_preserved(self) -> None:
+        # The line-anchor ``^`` (multiline mode) keeps mid-line references
+        # like "see (a) above" intact — they read fine inline.
+        text = "The pattern in option (a) and option (b) demonstrates the rule."
+        assert humanize_card_text_for_tts(text) == text
+
+
 class TestNoFalsePositives:
     """Tokens that look label-like but should NOT be expanded."""
 

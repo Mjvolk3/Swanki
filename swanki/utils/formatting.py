@@ -427,6 +427,13 @@ _SECTION_TOKEN = re.compile(
     r"(?<![A-Za-z0-9_\-])Sec(?:tion)?\.?\s*(\d+)\b", re.IGNORECASE
 )
 _SECTION_BARE = re.compile(r"(?<![A-Za-z0-9_\-])SEC(\d+)\b")
+# Lettered choice labels at the start of a line — e.g. MC stems and Matching
+# Column-B options. Fish Speech reads "(a)" as the phonetic glyph sequence
+# (something like "pee a oh"), derailing the choice. Strip the parens and
+# uppercase the letter so it reads as "A." with a natural pause from the
+# period. Line-anchored so inline back-references like "see (a) above" in
+# body prose are not transformed.
+_CHOICE_LABEL = re.compile(r"(?m)^\(([a-z])\)\s+")
 
 
 def _expand_problem_label(match: re.Match[str]) -> str:
@@ -456,6 +463,9 @@ def humanize_card_text_for_tts(text: str) -> str:
     - Chapter / section scaffolding:
       ``CH1`` / ``Ch. 1`` / ``Chapter 1`` → ``chapter 1``
       ``SEC4`` / ``Sec. 4`` / ``Section 4`` → ``section 4``
+    - Lettered choice labels at start of line (MC stems, Matching options):
+      ``(a) milk``  → ``A. milk``
+      ``(c) Viruses`` → ``C. Viruses``
 
     Notes:
         - ``P``/``Pt.`` (part) is intentionally NOT expanded — too many false
@@ -463,6 +473,8 @@ def humanize_card_text_for_tts(text: str) -> str:
           letter (phosphorus, probability symbols, etc.).
         - The label regex anchors to start-of-line OR after whitespace/colon
           so it does not eat embedded mentions inside body prose.
+        - Choice labels are line-anchored so inline references like
+          ``compare option (a) above`` in prose are preserved.
     """
     if not text:
         return text
@@ -473,10 +485,14 @@ def humanize_card_text_for_tts(text: str) -> str:
     def _sec(m: re.Match[str]) -> str:
         return f"section {int(m.group(1))}"
 
+    def _choice(m: re.Match[str]) -> str:
+        return f"{m.group(1).upper()}. "
+
     # Long form first so "TF-CH1-12:" expands to "True or false 12:" before
     # the short pattern sees a leading "T/F " from a stray prefix.
     out = _PROBLEM_LABEL_LONG.sub(_expand_problem_label, text)
     out = _PROBLEM_LABEL_SHORT.sub(_expand_problem_label, out)
+    out = _CHOICE_LABEL.sub(_choice, out)
     # int() on the captured digits drops leading zeros so "CH01" reads as
     # "chapter 1" not "chapter oh one".
     out = _CHAPTER_TOKEN.sub(_ch, out)

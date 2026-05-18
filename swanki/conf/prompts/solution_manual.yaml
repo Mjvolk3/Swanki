@@ -54,8 +54,11 @@ prompts:
       Respect the 500-char limit on every back text.
 
       Formatting and rephrasing guidance (markdown is rendered in Anki):
-      - Use **bold** for the key technical term(s) in the question and the answer keyword(s) in
-        the back. Use *italics* for genus/species names, foreign-language terms, and light emphasis.
+      - Use **bold** SPARINGLY — only on the term(s) whose understanding the question is
+        actually testing, plus the answer keyword(s) on the back. Bolding every technical
+        term defeats the purpose: the learner stops noticing emphasis. List items, named
+        entities incidental to the question, and contextual scaffolding should NOT be bold.
+      - Use *italics* for genus/species names, foreign-language terms, and light emphasis.
       - You may lightly rephrase the source statement to improve clarity, fix ambiguity, or
         correct a minor source error — preserve the testable concept and the canonical answer.
         Do not change numerical values, equations, or domain-specific terminology.
@@ -81,7 +84,9 @@ prompts:
       item number (NOT the canonical ID like "MC-CH1-13"; the canonical ID is already on the
       card tags for source-tracing). The chapter is implicit in the citation key, so do NOT
       include it in the visible label.
-      - Line 1: "MC <n>: <stem>"  (use **bold** on the key technical term(s) in the stem)
+      - Line 1: "MC <n>: <stem>"  (use **bold** SPARINGLY — only on the term(s) the stem is
+        actually testing the learner on, typically the central noun phrase the question is
+        about. Do NOT bold every named entity, every scientist's name, or every domain term.)
       - Lines 2..N: EACH lettered choice on its OWN line, exactly "(a) text", "(b) text", ...
 
       Example front (note the single space after "MC", lower-case (a)/(b), one choice per line):
@@ -93,12 +98,19 @@ prompts:
       (d) devised the term "prokaryote"
       ```
 
-      Back:
-      - State the correct FULL choice text, not just the bare letter. If the solution gives
-        only "(c)", expand to "(c) <choice text>" by reading the matching choice from the stem.
-      - Bold the answer keyword(s).
-      - Add a one-sentence justification grounded in the chapter content.
+      Back — STRICT FORMAT (note the period after the answer phrase, before the rationale):
+      - "(letter) **<answer keyword(s)>** <remaining choice text if any>. <one-sentence
+        justification grounded in the chapter content>."
+      - If the solution gives only "(c)", expand to "(c) <full choice text>" by reading the
+        matching choice from the stem. Always include the full choice text, not just the
+        bare letter.
       - Total back text ≤500 chars.
+
+      Example back:
+      ```
+      (a) **Robert Hooke**. Hooke used early microscopes in the 1660s to observe cells
+      and microscopic structures, predating Pasteur and Lister.
+      ```
 
       Light rephrasing for clarity is allowed (the source OCR sometimes drops words or has
       ambiguous phrasing); preserve the testable concept and the canonical answer.
@@ -119,14 +131,30 @@ prompts:
       Front — STRICT FORMAT. The visible label MUST be exactly "Matching <n>:" where <n> is
       the item number (NOT "MAT-CH1-3"; the canonical ID is on the card tags). The chapter
       is implicit in the citation key — do NOT include it in the visible label.
-      - Line 1: "Matching <n>: Match the **<domain>** to the **<target>**:"
-      - Line 2: "— <Column-A statement, lightly rephrased for clarity if needed>"
-      - Lines 3..N: EACH Column-B option on its OWN line, exactly "(a) Bacteria", ...
 
-      Example front:
+      Rewrite the Column-A statement as a DIRECT QUESTION that integrates the matching
+      domain (the Column-B category type). Do NOT use a colon + em-dash construction like
+      "Match the **X** to the **Y**:\n— <Column-A statement>". That two-step framing is
+      awkward to read and adds nothing — the question form is always clearer.
+
+      Format:
+      - Line 1: "Matching <n>: <direct question that asks which Column-B option matches the
+        Column-A statement>" — bold the domain noun (singular form of the Column-B category)
+        and nothing else on this line.
+      - Lines 2..N: EACH Column-B option on its OWN line, exactly "(a) Bacteria",
+        "(b) Fungi", ...
+
+      Example transformations:
+      - Column-A "Performs photosynthesis", Column-B = microorganism groups
+        -> "Matching 3: Which **microorganism group** performs photosynthesis?"
+      - Column-A "Rods, spheres, and spirals", Column-B = organism types
+        -> "Matching 6: Which **organism group** has rod, sphere, and spiral cell shapes?"
+      - Column-A "Used in genetic engineering", Column-B = microorganism groups
+        -> "Matching 10: Which **microorganism group** is used in genetic engineering?"
+
+      Example full front:
       ```
-      Matching 6: Match the **microbial cell-shape description** to the **organism group**:
-      — Rods, spheres, and spirals
+      Matching 3: Which **microorganism group** performs photosynthesis?
       (a) Bacteria
       (b) Fungi
       (c) Viruses
@@ -134,10 +162,16 @@ prompts:
       (e) Cyanobacteria
       ```
 
-      Back:
-      - State the correct option as "(letter) **<full option text>**".
-      - Add a one-sentence rationale connecting the Column-A statement to the matched option.
+      Back — STRICT FORMAT (note the period after the answer phrase, before the rationale):
+      - "(letter) **<full option text>**. <one-sentence rationale connecting the option to
+        the Column-A property>."
       - Total back text ≤500 chars.
+
+      Example back:
+      ```
+      (e) **Cyanobacteria**. Cyanobacteria are photosynthetic bacteria (formerly called
+      blue-green algae) that carry out oxygenic photosynthesis.
+      ```
 
       Light rephrasing of the Column-A prose for clarity is allowed; preserve the testable
       mapping. Set card_subtype="problem_main".
@@ -156,9 +190,21 @@ prompts:
       item number (NOT "TF-CH1-12"; the canonical ID is on the card tags). The chapter is
       implicit in the citation key — do NOT include it in the visible label. Do NOT add a
       redundant "**True or False:**" prefix in the body — the "T/F" label already conveys it.
-      - Single line: "T/F <n>: <statement>"  (use **bold** on the key technical term(s))
+      - Single line: "T/F <n>: <statement>" with **bold** applied CAREFULLY:
+        * If the statement is FALSE and the back-of-book provides a corrected word, bold
+          ONLY the word that would be swapped (e.g. given "Fungi, protozoa, and unicellular
+          algae are classified together as **prokaryotes**" with the correction "eukaryotes",
+          bold "prokaryotes" — NOT "Fungi" or the other list items).
+        * If the statement is TRUE, bold the single concept the statement is testing
+          knowledge of (typically the subject noun phrase).
+        * Bolding more than 1-2 words almost always means too much — restraint is the rule.
 
-      Example front:
+      Example front (False statement, swap word bolded):
+      ```
+      T/F 6: Fungi, protozoa, and unicellular algae are classified together as **prokaryotes**.
+      ```
+
+      Example front (True statement, main testable concept bolded):
       ```
       T/F 12: **Microorganisms** form the foundations of many food chains in the world.
       ```
@@ -184,18 +230,25 @@ prompts:
       chapter is implicit in the citation key — do NOT include it in the visible label. Do
       NOT add a redundant "**Fill in the blank:**" prefix in the body — the "Completion"
       label already conveys it.
-      - Single line: "Completion <n>: <sentence with ____ intact>"  (use **bold** on the
-        key technical term(s) in the sentence)
+      - Single line: "Completion <n>: <sentence with ____ intact>" with **bold** applied
+        SPARINGLY — only on the context word(s) immediately adjacent to ____ that signal
+        what kind of answer is expected. Do NOT bold every technical term in the sentence.
 
       Example front:
       ```
       Completion 7: The six-carbon sugar that cells most commonly use as an energy source is ____.
       ```
 
-      Back:
-      - State the answer phrase in **bold**.
-      - Add a one-sentence rationale connecting the answer to the sentence's meaning.
+      Back — STRICT FORMAT (note the period after the answer phrase, before the rationale):
+      - "**<answer phrase>**. <one-sentence rationale connecting the answer to the
+        sentence's meaning>."
       - Total back text ≤500 chars.
+
+      Example back:
+      ```
+      **glucose**. Glucose is the six-carbon sugar central to cellular respiration and the
+      primary energy source for most cell types.
+      ```
 
       Light rephrasing of the sentence for clarity is allowed; preserve the blank position
       and the canonical answer. Set card_subtype="problem_main".

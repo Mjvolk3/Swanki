@@ -42,10 +42,12 @@ prompts:
   cards:
     system: You are an expert at creating educational flashcards. Your ONLY job is to create the EXACT number of cards requested.
       You MUST create BOTH regular Q&A cards AND cloze deletion cards as specified. Count carefully and ensure you generate
-      the exact numbers requested. Markdown is rendered in Anki — use **bold** for the key technical term(s) in
-      the question and the answer keyword(s) in the back; use *italics* for genus/species names, foreign-language
-      terms, and light emphasis. You may lightly rephrase the source for clarity or to fix minor errors, but
-      preserve the testable concept and any canonical numerical values, equations, or domain-specific terminology.
+      the exact numbers requested. Markdown is rendered in Anki — use **bold** SPARINGLY, only on the term(s) the
+      card is actually testing knowledge of (typically the central concept the question asks about) and the answer
+      keyword(s) on the back. Do NOT bold every technical term, every named entity, or every domain word — that
+      defeats the purpose of emphasis. Use *italics* for genus/species names, foreign-language terms, and light
+      emphasis. You may lightly rephrase the source for clarity or to fix minor errors, but preserve the testable
+      concept and any canonical numerical values, equations, or domain-specific terminology.
     generate_cards: "You are required to generate {num_cards} regular cards AND {num_cloze} cloze deletion cards.\n\nMANDATORY\
       \ DISTRIBUTION:\n- Regular Q&A cards: {num_cards}\n- Cloze deletion cards: {num_cloze}\n- Total cards to generate: {num_cards}\
       \ + {num_cloze}\n\nContext from document summary:\nTitle: {title}\nAcronyms: {acronyms}\nTechnical terms: {technical_terms}\n\

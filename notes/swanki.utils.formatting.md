@@ -51,3 +51,9 @@ Two new helpers extracted from `humanize_chapter_slug` to support the rewritten 
 
 - `parse_chapter_key(citation_key) -> (base, num_str, slug_humanized) | None` — single source of truth for the `<base>_<NN>_<slug>` parse. Preserves the leading zero in `num_str` (returns `"03"` not `3`) so callers decide rendering: bookends render `"o three"`, the existing `Chapter 3:` form renders cardinal-int. `humanize_chapter_slug` is now implemented in terms of this.
 - `chapter_number_spoken(num_str) -> str` — renders chapter numbers per spoken convention. Single-digit with leading zero -> `"o N"` (matches how listeners read the slug aloud); plain int up to 20 -> cardinal word; above 20 -> digit-by-digit spelling.
+
+## 2026.05.17 - Strip choice-label parens for Fish Speech
+
+Extended `humanize_card_text_for_tts` with one more line-anchored pattern: `(?m)^\(([a-z])\)\s+` -> `<UPPERCASE>. `. Fish Speech tokenized `(a)` / `(b)` / `(c)` / `(d)` as phonetic glyphs (sounds like "pee a oh", or in some cards just "e"), and in worse failure modes the TTS skipped or duplicated choices entirely (e.g. MC 2 said "a milk" twice and skipped "b"). Stripping the parens and uppercasing the letter gives Fish Speech `A. milk` / `B. ham` etc., which reads as natural lettered list items with a period-induced pause.
+
+The line-anchor (`(?m)^`) is deliberate: inline back-references in body prose like "compare option (a) above" should stay readable as-is. New tests in `tests/test_card_text_humanizer.py::TestChoiceLabels` cover MC stems, Matching options, and the inline-preserve case.
