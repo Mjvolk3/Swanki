@@ -91,4 +91,8 @@ created: 1776884900886
 ## 2026.05.14
 
 - [x] Enforced canonical `<TypeLabel> <n>:` card-front format (no redundant chapter prefix, no duplicate body header) and added `humanize_card_text_for_tts` so Fish Speech reads `T/F 12:` as "True or false 12" instead of garbled letters [[swanki.utils.formatting#20260506---humanize_card_text_for_tts-problem-set-label-expansion]]
+
+## 2026.05.19
+
+- [ ] Bookend shorthand dict + "Chapter N" rendering: add canonical `SHORTHAND_EXPANSIONS` (CH/SI/S/SEC/PART/APP) in `formatting.py`, extend `_CHAPTER_KEY_PATTERN` so `parse_chapter_key` accepts `_<NN>_<slug>` and `_CH<NN>_<slug>` with identical output (closes the `feedback_book_chapter_slug.md` convention gap without renaming), flip `build_bookend_text` chapter branch to render `f"Chapter {int(num_str)}"` so Fish reads "chapter seven" (not "o seven"), add `_llm_guess_shorthand` stub, then regen Hamming ch1-10 bookends post-merge so the new "Chapter N" wording lands on ABS [[plan.bookend-shorthand-and-chapter-rendering.2026.05.19]]
 - [x] Wired the TTS label humanizer into `generate_card_transcript` between the citation-prefix and LaTeX-humanization passes [[swanki.audio.card#20260514---wire-problem-set-label-humanizer-into-card-transcript-prep]]
