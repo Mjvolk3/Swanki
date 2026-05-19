@@ -392,6 +392,56 @@ def humanize_chapter_slug(citation_key: str) -> str | None:
     return f"Chapter {int(num_str)}: {slug}"
 
 
+_ROMAN_TO_WORD = {
+    "i": "one", "ii": "two", "iii": "three", "iv": "four", "v": "five",
+    "vi": "six", "vii": "seven", "viii": "eight", "ix": "nine", "x": "ten",
+    "xi": "eleven", "xii": "twelve", "xiii": "thirteen", "xiv": "fourteen",
+    "xv": "fifteen", "xvi": "sixteen", "xvii": "seventeen", "xviii": "eighteen",
+    "xix": "nineteen", "xx": "twenty",
+}
+
+
+def humanize_chapter_slug_spoken(slug: str) -> str:
+    """Convert trailing roman-numeral suffix in a chapter slug to a word.
+
+    `parse_chapter_key` already returns the slug with hyphens replaced by
+    spaces, so this operates on a space-separated phrase. If the final
+    space-separated token is a roman numeral (the common "Artificial
+    Intelligence — II", "Coding Theory — I", "Digital Filters — IV"
+    pattern), spell it as an English word so Fish Speech does not garble
+    "ii" / "iii" as "g i s" or "i i". Only the trailing token is converted
+    -- mid-slug "v" / "i" letters that are not numerals stay untouched. The
+    function is also tolerant of raw hyphenated input (splits on either).
+
+    Examples:
+        >>> humanize_chapter_slug_spoken("artificial intelligence ii")
+        'artificial intelligence two'
+        >>> humanize_chapter_slug_spoken("artificial-intelligence-ii")
+        'artificial intelligence two'
+        >>> humanize_chapter_slug_spoken("history of computers hardware")
+        'history of computers hardware'
+        >>> humanize_chapter_slug_spoken("digital filters iv")
+        'digital filters four'
+        >>> humanize_chapter_slug_spoken("n dimensional space")
+        'n dimensional space'
+
+    Args:
+        slug: Chapter slug (either already-space-separated from
+            `parse_chapter_key`, or raw hyphenated form).
+
+    Returns:
+        Space-separated spoken form with trailing roman numerals as words.
+    """
+    if not slug:
+        return ""
+    tokens = slug.replace("-", " ").split()
+    if not tokens:
+        return ""
+    last = tokens[-1].lower()
+    if last in _ROMAN_TO_WORD:
+        tokens[-1] = _ROMAN_TO_WORD[last]
+    return " ".join(tokens)
+
 
 # Per-card audio TTS humanization. The transcript LLM is told to read content
 # verbatim, but problem-set type-label abbreviations ("MC 13:", "T/F 12:",

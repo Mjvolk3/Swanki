@@ -1618,6 +1618,7 @@ def build_bookend_text(
     """
     from ..utils.formatting import (
         chapter_number_spoken,
+        humanize_chapter_slug_spoken,
         humanize_citation_key,
         parse_chapter_key,
     )
@@ -1626,24 +1627,24 @@ def build_bookend_text(
     humanized_full = humanize_citation_key(citation_key)
 
     if parsed_chapter is not None and audio_type in ("lecture", "summary", "transcript"):
+        # Simple chapter bookend (2026.05.19). The earlier "Let's begin chapter
+        # N, <slug>" / "This concludes chapter N, <slug>, which is posted as ..."
+        # form said the slug twice and Fish garbled roman-numeral suffixes
+        # ("artificial-intelligence-ii" -> "i i" / "g i s"). New form drops the
+        # duplicate slug + the "chapter N" clause and routes the slug through
+        # humanize_chapter_slug_spoken so trailing roman numerals speak as
+        # words ("artificial intelligence two").
         base, num_str, slug = parsed_chapter
         base_humanized = humanize_citation_key(base)
         num_spoken = chapter_number_spoken(num_str)  # e.g. "01" -> "o one"
-        n_word = chapter_number_spoken(str(int(num_str)))  # e.g. "01" -> "one"
-        exact_reading = f"{base_humanized}, {num_spoken}, {slug}"
+        humanized_slug = humanize_chapter_slug_spoken(slug)
+        context_key = f"{base_humanized}, {num_spoken}, {humanized_slug}"
         # "reading" audio is announced as "transcript" externally in the
         # Literal[] (legacy naming), but the user-facing word is "reading".
         spoken_type = "reading" if audio_type == "transcript" else audio_type
-        if audio_type == "lecture":
-            opener = f"Let's begin chapter {n_word}, {slug}"
-            closer_subject = f"chapter {n_word}, {slug}"
-        else:
-            # Summary + reading use a symmetric "Here is the X of chapter Y" form.
-            opener = f"Here is the {spoken_type} of chapter {n_word}, {slug}"
-            closer_subject = f"the {spoken_type} of chapter {n_word}, {slug}"
         if position == "start":
-            return f"This {spoken_type} is posted as: {exact_reading}. {opener}."
-        return f"This concludes {closer_subject}, which is posted as: {exact_reading}."
+            return f"This {spoken_type} is posted as {context_key}. Let's Begin."
+        return f"This concludes the {spoken_type}. It is posted as {context_key}."
 
     if audio_type == "lecture":
         # Non-chapter (regular paper) lecture bookend retains the existing form.

@@ -10,10 +10,10 @@ Theme 8 fix surface (chapter-slug humanization for lecture bookends).
 from swanki.utils.formatting import (
     chapter_number_spoken,
     humanize_chapter_slug,
+    humanize_chapter_slug_spoken,
     humanize_citation_key,
     parse_chapter_key,
 )
-
 
 # ---------------------------------------------------------------------------
 # humanize_chapter_slug (Theme 8)
@@ -129,3 +129,55 @@ def test_chapter_number_spoken_above_twenty_digit_by_digit():
     # Above the cardinal table; spelled digit-by-digit.
     assert chapter_number_spoken("25") == "two five"
     assert chapter_number_spoken("100") == "one zero zero"
+
+
+# ---------------------------------------------------------------------------
+# humanize_chapter_slug_spoken (2026.05.19 — bookend roman-numeral fix)
+# ---------------------------------------------------------------------------
+
+
+def test_humanize_chapter_slug_spoken_trailing_roman_one():
+    assert (
+        humanize_chapter_slug_spoken("artificial intelligence i")
+        == "artificial intelligence one"
+    )
+
+
+def test_humanize_chapter_slug_spoken_trailing_roman_two():
+    assert (
+        humanize_chapter_slug_spoken("artificial intelligence ii")
+        == "artificial intelligence two"
+    )
+
+
+def test_humanize_chapter_slug_spoken_trailing_roman_three():
+    assert (
+        humanize_chapter_slug_spoken("artificial intelligence iii")
+        == "artificial intelligence three"
+    )
+
+
+def test_humanize_chapter_slug_spoken_no_trailing_roman_unchanged():
+    assert (
+        humanize_chapter_slug_spoken("history of computers hardware")
+        == "history of computers hardware"
+    )
+
+
+def test_humanize_chapter_slug_spoken_tolerates_hyphenated_input():
+    assert (
+        humanize_chapter_slug_spoken("digital-filters-iv")
+        == "digital filters four"
+    )
+
+
+def test_humanize_chapter_slug_spoken_does_not_touch_mid_slug_letters():
+    # "n" in "n dimensional space" is not the trailing token; left alone.
+    assert (
+        humanize_chapter_slug_spoken("n dimensional space")
+        == "n dimensional space"
+    )
+
+
+def test_humanize_chapter_slug_spoken_empty():
+    assert humanize_chapter_slug_spoken("") == ""

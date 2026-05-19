@@ -622,52 +622,57 @@ _CH_EXACT = "Hamming, Art Doing Science, 2020, o three, history of computers har
 
 def test_build_bookend_text_lecture_chapter_start():
     out = build_bookend_text(_CH_KEY, "lecture", "start")
-    assert out == (
-        f"This lecture is posted as: {_CH_EXACT}. "
-        f"Let's begin chapter three, history of computers hardware."
-    )
+    assert out == f"This lecture is posted as {_CH_EXACT}. Let's Begin."
 
 
 def test_build_bookend_text_lecture_chapter_end():
     out = build_bookend_text(_CH_KEY, "lecture", "end")
-    assert out == (
-        f"This concludes chapter three, history of computers hardware, "
-        f"which is posted as: {_CH_EXACT}."
-    )
+    assert out == f"This concludes the lecture. It is posted as {_CH_EXACT}."
 
 
 def test_build_bookend_text_summary_chapter_start():
     out = build_bookend_text(_CH_KEY, "summary", "start")
-    assert out == (
-        f"This summary is posted as: {_CH_EXACT}. "
-        f"Here is the summary of chapter three, history of computers hardware."
-    )
+    assert out == f"This summary is posted as {_CH_EXACT}. Let's Begin."
 
 
 def test_build_bookend_text_summary_chapter_end():
     out = build_bookend_text(_CH_KEY, "summary", "end")
-    assert out == (
-        f"This concludes the summary of chapter three, history of computers hardware, "
-        f"which is posted as: {_CH_EXACT}."
-    )
+    assert out == f"This concludes the summary. It is posted as {_CH_EXACT}."
 
 
 def test_build_bookend_text_reading_chapter_start():
     # audio_type=transcript is the internal name for reading audio; user-facing
     # word is "reading" so the spoken text says "reading".
     out = build_bookend_text(_CH_KEY, "transcript", "start")
-    assert out == (
-        f"This reading is posted as: {_CH_EXACT}. "
-        f"Here is the reading of chapter three, history of computers hardware."
-    )
+    assert out == f"This reading is posted as {_CH_EXACT}. Let's Begin."
 
 
 def test_build_bookend_text_reading_chapter_end():
     out = build_bookend_text(_CH_KEY, "transcript", "end")
-    assert out == (
-        f"This concludes the reading of chapter three, history of computers hardware, "
-        f"which is posted as: {_CH_EXACT}."
+    assert out == f"This concludes the reading. It is posted as {_CH_EXACT}."
+
+
+def test_build_bookend_text_chapter_slug_roman_numeral_spelled_as_word():
+    # ch07 AI-II: trailing "-ii" must be spoken as "two", not "i i" / "g i s".
+    ck = "hammingArtDoingScience2020_07_artificial-intelligence-ii"
+    exact = "Hamming, Art Doing Science, 2020, o seven, artificial intelligence two"
+    assert build_bookend_text(ck, "lecture", "start") == (
+        f"This lecture is posted as {exact}. Let's Begin."
     )
+    assert build_bookend_text(ck, "lecture", "end") == (
+        f"This concludes the lecture. It is posted as {exact}."
+    )
+
+
+def test_build_bookend_text_chapter_slug_three_letter_roman():
+    # ch08 AI-III: "-iii" -> "three".
+    ck = "hammingArtDoingScience2020_08_artificial-intelligence-iii"
+    out = build_bookend_text(ck, "summary", "start")
+    assert (
+        "Hamming, Art Doing Science, 2020, o eight, artificial intelligence three"
+        in out
+    )
+    assert "Let's Begin." in out
 
 
 def test_build_bookend_text_non_chapter_lecture_keeps_legacy_form():
