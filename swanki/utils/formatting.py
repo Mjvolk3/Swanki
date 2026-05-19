@@ -298,7 +298,11 @@ def humanize_citation_key(citation_key: str) -> str:
 
 
 _CHAPTER_KEY_PATTERN = re.compile(
-    r"^(?P<base>[A-Za-z][A-Za-z0-9]+)_(?P<num>\d{1,3})_(?P<slug>[a-z][a-z0-9-]+)$"
+    # Accept both `<base>_<NN>_<slug>` and `<base>_CH<NN>_<slug>` so chapter
+    # content_keys can carry the documented `CH` prefix (feedback_book_chapter_slug
+    # memory) without the legacy `_<NN>_` form regressing. Non-capturing `(?:CH)?`
+    # keeps the `num` group identical for both forms.
+    r"^(?P<base>[A-Za-z][A-Za-z0-9]+)_(?:CH)?(?P<num>\d{1,3})_(?P<slug>[a-z][a-z0-9-]+)$"
 )
 
 
@@ -465,6 +469,45 @@ _LABEL_EXPANSION = {
     "MAT": "Matching",
     "CMP": "Completion",
 }
+
+
+# Canonical reference for short tokens that appear in citation/content keys
+# and chapter slugs (e.g. `CH07` -> "Chapter", `SI` -> "Supplementary
+# Information"). Wired into the bookend chapter-form rendering only -- the
+# in-prose `_CHAPTER_BARE` / `_SECTION_BARE` substitutions and the
+# `humanize_citation_key` path keep their existing behavior so per-card
+# scaffolding tokens like "MC-CH1-13:" survive until the prose expander.
+# Future LLM-fallback lookups (see `_llm_guess_shorthand`) fall back to this
+# dict before guessing.
+SHORTHAND_EXPANSIONS: dict[str, str] = {
+    "CH": "Chapter",
+    "SI": "Supplementary Information",
+    "S": "Section",
+    "SEC": "Section",
+    "PART": "Part",
+    "APP": "Appendix",
+}
+
+
+def _llm_guess_shorthand(token: str) -> str | None:
+    """Guess the spoken expansion of a short token via a small LLM.
+
+    Inert stub for the user's 2026-05-19 request: prepopulate
+    `SHORTHAND_EXPANSIONS` for the known cases, then fall back to a small
+    LLM (e.g. Claude Haiku or GPT-nano) for unknowns. Returns `None` today;
+    a future wiring will issue a one-shot prompt with the token + an example
+    of the canonical-expansion shape and parse the response. Kept here so
+    call sites can be wired now without depending on the LLM being live.
+
+    Args:
+        token: The uppercase shorthand token (e.g. `"APP"`, `"FIG"`).
+
+    Returns:
+        The spoken expansion, or `None` if no guess is available.
+    """
+    # TODO(2026-05-19): wire Haiku/GPT-nano fallback per user request.
+    _ = token
+    return None
 
 # Negative lookbehind shared by all chapter / section patterns: skip tokens
 # preceded by another letter, digit, hyphen, or underscore (i.e. identifier-

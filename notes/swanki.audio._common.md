@@ -238,3 +238,27 @@ timing.
   accumulator if missing -- never an independent re-derivation) and assert
   `audio_type` (chunk indices are audio-type-local). Frozen constants
   (`tail_buffer_ms=350`, gain target, paragraph=1100/sentence=500) untouched.
+
+## 2026.05.19 - Bookend "Chapter N" rendering via SHORTHAND_EXPANSIONS
+
+User flagged the bookend's chapter-number rendering as imprecise: the chapter
+form (landed earlier today as the simple "This {type} is posted as ...
+Let's Begin." frame) routed `chapter_number_spoken("07")` -> "o seven" into
+the context_key, so Fish read "...o seven, artificial intelligence two...".
+"o seven" is the citation-key style spoken form (matches the written "07")
+but the bookend reads better as **"Chapter 7"** -- explicit chapter label,
+no leading-zero phonetics, Fish reads the integer naturally as "chapter
+seven".
+
+Single-line change in the chapter branch of `build_bookend_text`: replaced
+`num_spoken = chapter_number_spoken(num_str)` with
+`num_spoken = f"{SHORTHAND_EXPANSIONS['CH']} {int(num_str)}"`. The literal
+"Chapter" word comes from the new canonical dict in
+[[swanki.utils.formatting]] so future callers ride the same source of truth.
+`chapter_number_spoken` stays invariant -- it returns "o seven" for legacy
+callers (per-card audio prefix, sync log, etc.); the bookend is the only
+spot that needed the cleaner form. A regression-guard test asserts
+`"Chapter 3" in out` and `"o three" not in out` so a future revert is
+caught immediately. Combined with the 2026.05.19a `humanize_chapter_slug_spoken`
+roman-numeral fix, ch07 reads cleanly: *"This lecture is posted as Hamming,
+Art Doing Science, 2020, Chapter 7, artificial intelligence two. Let's Begin."*

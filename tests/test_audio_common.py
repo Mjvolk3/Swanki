@@ -617,7 +617,8 @@ def test_restitch_from_chunks_caller_override_wins_over_manifest(tmp_path):
 
 
 _CH_KEY = "hammingArtDoingScience2020_03_history-of-computers-hardware"
-_CH_EXACT = "Hamming, Art Doing Science, 2020, o three, history of computers hardware"
+_CH_KEY_PREFIXED = "hammingArtDoingScience2020_CH03_history-of-computers-hardware"
+_CH_EXACT = "Hamming, Art Doing Science, 2020, Chapter 3, history of computers hardware"
 
 
 def test_build_bookend_text_lecture_chapter_start():
@@ -655,7 +656,7 @@ def test_build_bookend_text_reading_chapter_end():
 def test_build_bookend_text_chapter_slug_roman_numeral_spelled_as_word():
     # ch07 AI-II: trailing "-ii" must be spoken as "two", not "i i" / "g i s".
     ck = "hammingArtDoingScience2020_07_artificial-intelligence-ii"
-    exact = "Hamming, Art Doing Science, 2020, o seven, artificial intelligence two"
+    exact = "Hamming, Art Doing Science, 2020, Chapter 7, artificial intelligence two"
     assert build_bookend_text(ck, "lecture", "start") == (
         f"This lecture is posted as {exact}. Let's Begin."
     )
@@ -669,10 +670,30 @@ def test_build_bookend_text_chapter_slug_three_letter_roman():
     ck = "hammingArtDoingScience2020_08_artificial-intelligence-iii"
     out = build_bookend_text(ck, "summary", "start")
     assert (
-        "Hamming, Art Doing Science, 2020, o eight, artificial intelligence three"
+        "Hamming, Art Doing Science, 2020, Chapter 8, artificial intelligence three"
         in out
     )
     assert "Let's Begin." in out
+
+
+def test_build_bookend_text_legacy_and_ch_prefix_keys_are_equivalent():
+    # `_03_<slug>` and `_CH03_<slug>` MUST produce byte-identical bookends for
+    # every audio_type and position so adopting the documented CH prefix is a
+    # no-op rename. Non-negotiable invariant; future regex tweaks must keep it.
+    for at in ("lecture", "summary", "transcript"):
+        for pos in ("start", "end"):
+            legacy = build_bookend_text(_CH_KEY, at, pos)
+            prefixed = build_bookend_text(_CH_KEY_PREFIXED, at, pos)
+            assert legacy == prefixed, f"diverged for {at}/{pos}"
+
+
+def test_build_bookend_text_uses_chapter_word_not_o_form():
+    # Regression guard for the 2026.05.19b "Chapter N" rendering -- catches a
+    # future revert to `chapter_number_spoken` ("o seven") leaking into the
+    # bookend context_key.
+    out = build_bookend_text(_CH_KEY, "lecture", "start")
+    assert "Chapter 3" in out
+    assert "o three" not in out
 
 
 def test_build_bookend_text_non_chapter_lecture_keeps_legacy_form():

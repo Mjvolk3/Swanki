@@ -66,3 +66,38 @@ Two follow-on fixes triggered by listening to the regen v5 audio:
 - **Inline prose parens -> commas.** Image summaries appended to card audio contained patterns like `(a rod-shaped bacterium)` or `(German microbiologist)`, and Fish Speech literally spoke "open parenthesis" / "close parenthesis" instead of treating them as parenthetical asides. New `_INLINE_PAREN = r"\(([A-Za-z][^()]{1,})\)"` matches multi-char content starting with a letter; the substitution function additionally skips content containing `_` or `^` so math identifiers like `(x_1)` / `(W^T)` survive. Single-letter inline `(a)` and digit-leading `(2x+1)` are preserved by the regex shape itself.
 
 Tests added in `TestChoiceLabels::test_mc_choices_stripped_with_{fish_speech,elevenlabs}_pause` and a new `TestInlineParens` class covering image-summary, prose aside, math subscript/superscript, digit-leading, and single-letter cases.
+
+## 2026.05.19 - SHORTHAND_EXPANSIONS dict + parse_chapter_key accepts _CH<NN>_
+
+Two small additive changes closing the gap between [[feedback_book_chapter_slug]]
+(documented `<citation>_CH##_<slug>` convention) and the code (which only
+accepted bare `_<NN>_<slug>` for chapter keys).
+
+- **`SHORTHAND_EXPANSIONS`** — canonical dict mapping uppercase short tokens
+  to their spoken expansions: `CH -> Chapter`, `SI -> Supplementary
+  Information`, `S -> Section`, `SEC -> Section`, `PART -> Part`,
+  `APP -> Appendix`. Placed next to `_LABEL_EXPANSION` so both lookups live
+  in one place. Intentionally NOT routed through `humanize_citation_key` --
+  the per-card scaffolding path (`MC-CH1-13:` -> prose expander) depends on
+  `CH` surviving until `humanize_card_text_for_tts` runs, and the 8+ other
+  callers expect literal-segment behavior. The dict is consumed by the
+  bookend chapter branch in [[swanki.audio._common]] (`CH` -> "Chapter") and
+  is the canonical lookup that the inert `_llm_guess_shorthand` stub will
+  fall back to once wired.
+- **`_CHAPTER_KEY_PATTERN`** now matches both `<base>_<NN>_<slug>` and
+  `<base>_CH<NN>_<slug>`. Non-capturing `(?:CH)?` keeps the `num`/`slug`
+  groups identical, so `parse_chapter_key` returns the same
+  `(base, num_str, slug)` tuple for both forms -- adopting the documented
+  prefix is a no-op for the rest of the pipeline. The equivalence is
+  pinned by `test_build_bookend_text_legacy_and_ch_prefix_keys_are_equivalent`
+  in [[tests.test_audio_common]].
+- **`_llm_guess_shorthand(token) -> None`** stub for the user's
+  2026-05-19 request: prepopulate the known cases in `SHORTHAND_EXPANSIONS`,
+  fall back to a small LLM (Haiku / GPT-nano) for unknowns. Returns `None`
+  today with a `TODO` comment; call sites can be wired now without
+  depending on the LLM being live.
+
+No directory rename of the existing Hamming chapter content_keys -- the
+regex extension closes the convention gap without churning ~60 chunk mp3
+filenames + manifests. If/when content_keys are migrated to the CH prefix
+later, the equivalence test guards the transition.

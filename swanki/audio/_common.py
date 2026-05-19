@@ -1617,7 +1617,7 @@ def build_bookend_text(
         The text to feed to the TTS provider.
     """
     from ..utils.formatting import (
-        chapter_number_spoken,
+        SHORTHAND_EXPANSIONS,
         humanize_chapter_slug_spoken,
         humanize_citation_key,
         parse_chapter_key,
@@ -1627,16 +1627,18 @@ def build_bookend_text(
     humanized_full = humanize_citation_key(citation_key)
 
     if parsed_chapter is not None and audio_type in ("lecture", "summary", "transcript"):
-        # Simple chapter bookend (2026.05.19). The earlier "Let's begin chapter
+        # Simple chapter bookend (2026.05.19a). The earlier "Let's begin chapter
         # N, <slug>" / "This concludes chapter N, <slug>, which is posted as ..."
-        # form said the slug twice and Fish garbled roman-numeral suffixes
-        # ("artificial-intelligence-ii" -> "i i" / "g i s"). New form drops the
-        # duplicate slug + the "chapter N" clause and routes the slug through
-        # humanize_chapter_slug_spoken so trailing roman numerals speak as
-        # words ("artificial intelligence two").
+        # form said the slug twice and Fish garbled roman-numeral suffixes; the
+        # 2026.05.19b refinement renders the chapter number as "Chapter <int>"
+        # (no leading-zero "o seven" form) so Fish reads "chapter seven" cleanly.
+        # The literal "Chapter" word comes from SHORTHAND_EXPANSIONS as canonical
+        # source; the integer rendering is intentional -- do NOT funnel through
+        # `chapter_number_spoken` (it returns the legacy "o seven" form that
+        # other call sites depend on).
         base, num_str, slug = parsed_chapter
         base_humanized = humanize_citation_key(base)
-        num_spoken = chapter_number_spoken(num_str)  # e.g. "01" -> "o one"
+        num_spoken = f"{SHORTHAND_EXPANSIONS['CH']} {int(num_str)}"
         humanized_slug = humanize_chapter_slug_spoken(slug)
         context_key = f"{base_humanized}, {num_spoken}, {humanized_slug}"
         # "reading" audio is announced as "transcript" externally in the
