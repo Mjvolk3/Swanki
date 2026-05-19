@@ -8,6 +8,8 @@ Theme 8 fix surface (chapter-slug humanization for lecture bookends).
 """
 
 from swanki.utils.formatting import (
+    SHORTHAND_EXPANSIONS,
+    _llm_guess_shorthand,
     chapter_number_spoken,
     humanize_chapter_slug,
     humanize_chapter_slug_spoken,
@@ -181,3 +183,70 @@ def test_humanize_chapter_slug_spoken_does_not_touch_mid_slug_letters():
 
 def test_humanize_chapter_slug_spoken_empty():
     assert humanize_chapter_slug_spoken("") == ""
+
+
+# ---------------------------------------------------------------------------
+# parse_chapter_key — `_CH<NN>_<slug>` form (2026.05.19 — closes the
+# feedback_book_chapter_slug convention gap without renaming existing assets)
+# ---------------------------------------------------------------------------
+
+
+def test_parse_chapter_key_accepts_ch_prefix():
+    base, num, slug = parse_chapter_key(
+        "hammingArtDoingScience2020_CH03_history-of-computers-hardware"
+    )
+    assert base == "hammingArtDoingScience2020"
+    assert num == "03"
+    assert slug == "history of computers hardware"
+
+
+def test_parse_chapter_key_ch_prefix_identical_to_legacy():
+    # Non-negotiable: both forms must produce identical tuples so the rest of
+    # the pipeline (build_bookend_text etc.) is form-agnostic.
+    assert parse_chapter_key(
+        "hammingArtDoingScience2020_07_artificial-intelligence-ii"
+    ) == parse_chapter_key(
+        "hammingArtDoingScience2020_CH07_artificial-intelligence-ii"
+    )
+
+
+def test_parse_chapter_key_ch_prefix_with_at_sign():
+    base, num, slug = parse_chapter_key("@paper2024_CH05_some-slug")
+    assert base == "paper2024"
+    assert num == "05"
+    assert slug == "some slug"
+
+
+def test_parse_chapter_key_two_digit_with_ch():
+    base, num, slug = parse_chapter_key("paper2024_CH12_foo-bar-baz")
+    assert num == "12"
+    assert slug == "foo bar baz"
+
+
+# ---------------------------------------------------------------------------
+# SHORTHAND_EXPANSIONS + _llm_guess_shorthand (2026.05.19 — canonical
+# reference for short tokens; LLM fallback stub for unknowns)
+# ---------------------------------------------------------------------------
+
+
+def test_shorthand_expansions_canonical_entries():
+    assert SHORTHAND_EXPANSIONS["CH"] == "Chapter"
+    assert SHORTHAND_EXPANSIONS["SI"] == "Supplementary Information"
+    assert SHORTHAND_EXPANSIONS["S"] == "Section"
+    assert SHORTHAND_EXPANSIONS["SEC"] == "Section"
+    assert SHORTHAND_EXPANSIONS["PART"] == "Part"
+    assert SHORTHAND_EXPANSIONS["APP"] == "Appendix"
+
+
+def test_shorthand_expansions_keys_uppercase():
+    # All keys uppercase so callers can normalize tokens via `.upper()` before
+    # lookup without worrying about case.
+    assert all(k == k.upper() for k in SHORTHAND_EXPANSIONS)
+
+
+def test_llm_guess_shorthand_returns_none_today():
+    # Inert stub: TODO Haiku/GPT-nano fallback. Until wired, every token
+    # returns None so call sites can be deployed without a live LLM dependency.
+    assert _llm_guess_shorthand("FIG") is None
+    assert _llm_guess_shorthand("UNKNOWN") is None
+    assert _llm_guess_shorthand("") is None
