@@ -75,6 +75,7 @@ def generate_card_transcript(
     model: str | None = None,
     citation_key: str | None = None,
     humanized_citation: str | None = None,
+    provider: str = "fish_speech",
 ) -> str:
     """Generate an audio-optimized transcript for one side of a card.
 
@@ -203,7 +204,9 @@ def generate_card_transcript(
     # Pre-process: expand problem-set type labels (T/F, MC, MAT-CH../CMP-CH..)
     # and chapter/section abbreviations into full spoken forms so Fish Speech
     # doesn't read "T/F 12:" as garbled letters / split "12" into "1, 2".
-    content = humanize_card_text_for_tts(content)
+    # Provider also drives the pause-tag form injected after MC choice
+    # letters and the inline (prose) paren cleanup.
+    content = humanize_card_text_for_tts(content, provider=provider)
 
     # Pre-process: humanize LaTeX before transcript generation
     # This dedicated pass converts all math to spoken form so the transcript
@@ -417,6 +420,8 @@ def generate_card_audio(
             f"Card {card.card_id} - Using humanized citation: '{humanized_citation}' (from '{citation_key}')"
         )
 
+    provider = str(tts_kwargs.get("provider", "fish_speech"))
+
     # Generate transcripts without citation (added separately as audio)
     front_transcript = generate_card_transcript(
         card,
@@ -424,6 +429,7 @@ def generate_card_audio(
         model=model,
         citation_key=None,
         humanized_citation=None,
+        provider=provider,
     )
 
     back_transcript = generate_card_transcript(
@@ -432,6 +438,7 @@ def generate_card_audio(
         model=model,
         citation_key=None,
         humanized_citation=None,
+        provider=provider,
     )
 
     card.audio_front_transcript = front_transcript

@@ -98,7 +98,7 @@ class TestChoiceLabels:
     (sounds like "pee a oh") and sometimes duplicates or skips choices.
     """
 
-    def test_mc_choices_stripped(self) -> None:
+    def test_mc_choices_stripped_with_fish_pause(self) -> None:
         text = (
             "Multiple choice 2: Among the foods produced for human "
             "consumption by microorganisms is\n"
@@ -110,12 +110,21 @@ class TestChoiceLabels:
         expected = (
             "Multiple choice 2: Among the foods produced for human "
             "consumption by microorganisms is\n"
-            "A. milk\n"
-            "B. ham\n"
-            "C. yogurt\n"
-            "D. cucumbers"
+            "A. [short pause] milk\n"
+            "B. [short pause] ham\n"
+            "C. [short pause] yogurt\n"
+            "D. [short pause] cucumbers"
         )
-        assert humanize_card_text_for_tts(text) == expected
+        assert humanize_card_text_for_tts(text, provider="fish_speech") == expected
+
+    def test_mc_choices_stripped_with_elevenlabs_pause(self) -> None:
+        text = "MC 2: stem\n(a) one\n(b) two"
+        expected = (
+            'Multiple choice 2: stem\n'
+            'A. <break time="0.3s" /> one\n'
+            'B. <break time="0.3s" /> two'
+        )
+        assert humanize_card_text_for_tts(text, provider="elevenlabs") == expected
 
     def test_matching_options_stripped(self) -> None:
         text = (
@@ -128,16 +137,58 @@ class TestChoiceLabels:
         expected = (
             "Matching 6: Match the cell-shape description to the organism "
             "group:\n"
-            "A. Bacteria\n"
-            "B. Fungi\n"
-            "C. Viruses"
+            "A. [short pause] Bacteria\n"
+            "B. [short pause] Fungi\n"
+            "C. [short pause] Viruses"
         )
-        assert humanize_card_text_for_tts(text) == expected
+        assert humanize_card_text_for_tts(text, provider="fish_speech") == expected
 
     def test_inline_choice_reference_preserved(self) -> None:
         # The line-anchor ``^`` (multiline mode) keeps mid-line references
         # like "see (a) above" intact — they read fine inline.
         text = "The pattern in option (a) and option (b) demonstrates the rule."
+        assert humanize_card_text_for_tts(text) == text
+
+
+class TestInlineParens:
+    """Multi-char ``(prose)`` parens are converted to comma form because Fish
+    Speech literally pronounces "open parenthesis" / "close parenthesis" in
+    image-summary text. Math-like ``(x_1)`` / ``(W^T)`` and single-letter
+    inline ``(a)`` references are preserved.
+    """
+
+    def test_image_summary_paren_to_commas(self) -> None:
+        text = (
+            "Image description: shows Bacillus anthracis "
+            "(a rod-shaped bacterium) infecting tissue."
+        )
+        expected = (
+            "Image description: shows Bacillus anthracis "
+            ", a rod-shaped bacterium, infecting tissue."
+        )
+        assert humanize_card_text_for_tts(text) == expected
+
+    def test_prose_aside_paren_to_commas(self) -> None:
+        text = "Koch (German microbiologist) proved the germ theory."
+        expected = "Koch , German microbiologist, proved the germ theory."
+        assert humanize_card_text_for_tts(text) == expected
+
+    def test_math_subscript_preserved(self) -> None:
+        text = "The variable (x_1) is math."
+        assert humanize_card_text_for_tts(text) == text
+
+    def test_math_superscript_preserved(self) -> None:
+        text = "The matrix (W^T) is math."
+        assert humanize_card_text_for_tts(text) == text
+
+    def test_math_with_digit_start_preserved(self) -> None:
+        # Content starting with a digit (e.g. "(2x+1)") falls outside the
+        # ``[A-Za-z]`` first-char requirement and is preserved.
+        text = "The expression (2x+1) is preserved."
+        assert humanize_card_text_for_tts(text) == text
+
+    def test_single_letter_inline_preserved(self) -> None:
+        text = "See option (a) and option (b)."
         assert humanize_card_text_for_tts(text) == text
 
 

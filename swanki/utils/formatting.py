@@ -434,6 +434,20 @@ _SECTION_BARE = re.compile(r"(?<![A-Za-z0-9_\-])SEC(\d+)\b")
 # period. Line-anchored so inline back-references like "see (a) above" in
 # body prose are not transformed.
 _CHOICE_LABEL = re.compile(r"(?m)^\(([a-z])\)\s+")
+# Inline parens around prose (e.g. ``(Bacillus anthracis)`` inside an image
+# summary, ``(see above)``) — Fish Speech literally speaks "open parenthesis"
+# / "close parenthesis" instead of the natural read. Replace with commas.
+# Constraints: content must start with a LETTER (skips math like ``(2x+1)``,
+# ``(x_1)``) and be at least 2 chars (skips single-letter ``(a)`` which is
+# either handled by ``_CHOICE_LABEL`` at line start or preserved inline as a
+# legitimate back-reference).
+_INLINE_PAREN = re.compile(r"\(([A-Za-z][^()]{1,})\)")
+# Pause-tag literals injected after the choice letter so Fish stops running
+# "A." straight into the option text. Mid-chunk pause tags are preserved by
+# ``swanki.audio._common.append_chunk_pause``; only chunk-boundary tags are
+# stripped, so this is safe.
+_CHOICE_PAUSE_FISH = "[short pause]"
+_CHOICE_PAUSE_ELEVENLABS = '<break time="0.3s" />'
 
 
 def _expand_problem_label(match: re.Match[str]) -> str:
@@ -445,11 +459,16 @@ def _expand_problem_label(match: re.Match[str]) -> str:
     return f"{expanded} {num}:"
 
 
-def humanize_card_text_for_tts(text: str) -> str:
+def humanize_card_text_for_tts(text: str, provider: str = "fish_speech") -> str:
     """Expand abbreviations that confuse Fish Speech into spoken forms.
 
     Designed for per-card complementary-audio transcripts. Applied BEFORE the
     transcript LLM call so the LLM (and downstream TTS) sees natural prose.
+
+    Args:
+        text: The card text to humanize.
+        provider: TTS provider name (``"fish_speech"`` or ``"elevenlabs"``).
+            Drives the pause-tag form injected after choice letters.
 
     Expansions
     ----------
@@ -463,9 +482,16 @@ def humanize_card_text_for_tts(text: str) -> str:
     - Chapter / section scaffolding:
       ``CH1`` / ``Ch. 1`` / ``Chapter 1`` → ``chapter 1``
       ``SEC4`` / ``Sec. 4`` / ``Section 4`` → ``section 4``
-    - Lettered choice labels at start of line (MC stems, Matching options):
-      ``(a) milk``  → ``A. milk``
-      ``(c) Viruses`` → ``C. Viruses``
+    - Lettered choice labels at start of line (MC stems, Matching options),
+      with a provider-specific pause tag inserted after the letter so the
+      letter doesn't run straight into the option text:
+      ``(a) milk``  → ``A. [short pause] milk``  (fish)
+      ``(c) Viruses`` → ``C. <break time="0.3s" /> Viruses``  (elevenlabs)
+    - Inline ``(prose)`` parens (e.g. image-summary citations like
+      ``(Bacillus anthracis)``, or back-references like ``(see above)``):
+      replaced with comma-delimited form so Fish stops reading "open
+      parenthesis" / "close parenthesis" literally. Math like ``(2x+1)``
+      is preserved (content must start with a letter to qualify).
 
     Notes:
         - ``P``/``Pt.`` (part) is intentionally NOT expanded — too many false
@@ -473,11 +499,16 @@ def humanize_card_text_for_tts(text: str) -> str:
           letter (phosphorus, probability symbols, etc.).
         - The label regex anchors to start-of-line OR after whitespace/colon
           so it does not eat embedded mentions inside body prose.
-        - Choice labels are line-anchored so inline references like
-          ``compare option (a) above`` in prose are preserved.
+        - Single-letter inline parens like ``compare (a) above`` are
+          preserved — they never reach Fish-Speech as standalone choice
+          labels and are read naturally in prose context.
     """
     if not text:
         return text
+
+    pause_tag = (
+        _CHOICE_PAUSE_FISH if provider == "fish_speech" else _CHOICE_PAUSE_ELEVENLABS
+    )
 
     def _ch(m: re.Match[str]) -> str:
         return f"chapter {int(m.group(1))}"
@@ -486,13 +517,25 @@ def humanize_card_text_for_tts(text: str) -> str:
         return f"section {int(m.group(1))}"
 
     def _choice(m: re.Match[str]) -> str:
-        return f"{m.group(1).upper()}. "
+        return f"{m.group(1).upper()}. {pause_tag} "
 
     # Long form first so "TF-CH1-12:" expands to "True or false 12:" before
     # the short pattern sees a leading "T/F " from a stray prefix.
     out = _PROBLEM_LABEL_LONG.sub(_expand_problem_label, text)
     out = _PROBLEM_LABEL_SHORT.sub(_expand_problem_label, out)
     out = _CHOICE_LABEL.sub(_choice, out)
+    # Inline (prose) parens — strip to commas. Runs AFTER choice-label
+    # expansion so single-letter "(a)" at line start is already converted
+    # and only multi-char inline parens remain to match. Skips content that
+    # contains "_" or "^" (math subscripts / superscripts) so identifiers
+    # like ``(x_1)`` or ``(W^T)`` survive untouched.
+    def _strip_paren(m: re.Match[str]) -> str:
+        content = m.group(1)
+        if "_" in content or "^" in content:
+            return m.group(0)
+        return f", {content},"
+
+    out = _INLINE_PAREN.sub(_strip_paren, out)
     # int() on the captured digits drops leading zeros so "CH01" reads as
     # "chapter 1" not "chapter oh one".
     out = _CHAPTER_TOKEN.sub(_ch, out)

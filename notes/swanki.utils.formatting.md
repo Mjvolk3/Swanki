@@ -57,3 +57,12 @@ Two new helpers extracted from `humanize_chapter_slug` to support the rewritten 
 Extended `humanize_card_text_for_tts` with one more line-anchored pattern: `(?m)^\(([a-z])\)\s+` -> `<UPPERCASE>. `. Fish Speech tokenized `(a)` / `(b)` / `(c)` / `(d)` as phonetic glyphs (sounds like "pee a oh", or in some cards just "e"), and in worse failure modes the TTS skipped or duplicated choices entirely (e.g. MC 2 said "a milk" twice and skipped "b"). Stripping the parens and uppercasing the letter gives Fish Speech `A. milk` / `B. ham` etc., which reads as natural lettered list items with a period-induced pause.
 
 The line-anchor (`(?m)^`) is deliberate: inline back-references in body prose like "compare option (a) above" should stay readable as-is. New tests in `tests/test_card_text_humanizer.py::TestChoiceLabels` cover MC stems, Matching options, and the inline-preserve case.
+
+## 2026.05.18 - Choice-letter pause tag + inline-paren strip
+
+Two follow-on fixes triggered by listening to the regen v5 audio:
+
+- **Pause tag after choice letter.** The bare `A. milk` / `B. ham` rendering ran the letter into the option text too fast. `humanize_card_text_for_tts` now takes a `provider` arg and injects a mid-chunk pause tag after the letter — `A. [short pause] milk` for fish, `A. <break time="0.3s" /> milk` for elevenlabs. Mid-chunk pause tags are preserved by `append_chunk_pause` (which only strips chunk-boundary tags), so this is safe. Wired through by extending `generate_card_transcript(...)` with the same `provider` arg and reading `tts_kwargs.get("provider", "fish_speech")` at the `generate_card_audio` call site.
+- **Inline prose parens -> commas.** Image summaries appended to card audio contained patterns like `(a rod-shaped bacterium)` or `(German microbiologist)`, and Fish Speech literally spoke "open parenthesis" / "close parenthesis" instead of treating them as parenthetical asides. New `_INLINE_PAREN = r"\(([A-Za-z][^()]{1,})\)"` matches multi-char content starting with a letter; the substitution function additionally skips content containing `_` or `^` so math identifiers like `(x_1)` / `(W^T)` survive. Single-letter inline `(a)` and digit-leading `(2x+1)` are preserved by the regex shape itself.
+
+Tests added in `TestChoiceLabels::test_mc_choices_stripped_with_{fish_speech,elevenlabs}_pause` and a new `TestInlineParens` class covering image-summary, prose aside, math subscript/superscript, digit-leading, and single-letter cases.
