@@ -51,7 +51,6 @@ from ..processing import (
     MarkdownCleaner,
     PDFProcessor,
 )
-from ..processing.markdown_cleaner import _natural_sort_key
 
 # Import content utilities
 from ..utils.content import (
@@ -244,6 +243,10 @@ class Pipeline:
 
         # Log output directory for easy navigation
         logger.info(f"Output directory: {self.output_base.absolute()}")
+
+        # Remember the source PDF for OCR providers (mineru) that consume the
+        # whole document rather than the per-page split.
+        self.source_pdf_path = pdf_path
 
         # 1. Split PDF based on config
         self.state.current_stage = "pdf_split"
@@ -592,71 +595,43 @@ class Pipeline:
         return pdf_files
 
     def convert_to_markdown(self, pages: list[Path]) -> list[Path]:
-        """Convert PDF pages to markdown format.
+        """Convert the PDF to per-page markdown via the configured OCR provider.
 
-        Converts individual PDF pages to markdown using the Mathpix
-        service. Handles conversion errors gracefully and logs progress.
+        Dispatches to the configured OCR provider (mathpix | mineru) selected by
+        ``models.ocr.provider`` (default mathpix). Both providers return
+        naturally-sorted ``md-singles/page-N.md`` paths.
 
         Parameters
         ----------
         pages : List[Path]
-            List of single-page PDF files to convert
+            Single-page PDF files (consumed by mathpix; mineru consumes the
+            original PDF via ``self.source_pdf_path``).
 
         Returns:
         -------
         List[Path]
-            List of paths to generated markdown files
+            List of paths to generated per-page markdown files
 
         Raises:
         ------
         RuntimeError
             If no pages could be converted successfully
-
-        Notes:
-        -----
-        Uses os.system for better TTY handling with the mpx command.
-        Creates output in 'md-singles' subdirectory.
         """
-        # Create output directory
-        md_singles_dir = self.output_base / "md-singles"
-        md_singles_dir.mkdir(parents=True, exist_ok=True)
+        # self.config is a plain dict here (OmegaConf.to_container in __main__),
+        # so the ocr subtree needs no DictConfig conversion. Doubled "models"
+        # key matches the Hydra group nesting (see the TTS config access).
+        ocr_cfg = self.config.get("models", {}).get("models", {}).get("ocr", {})
+        provider = ocr_cfg.get("provider", "mathpix")
 
-        markdown_files = []
+        from ..ocr import convert_to_markdown as _ocr_convert
 
-        logger.info(f"Converting {len(pages)} PDF pages to markdown")
-
-        # Convert each page individually (like the legacy approach)
-        for page_pdf in pages:
-            # Create corresponding markdown filename
-            md_filename = page_pdf.stem + ".md"  # page-1.pdf -> page-1.md
-            md_path = md_singles_dir / md_filename
-
-            # Use os.system approach which handles clearLine errors better
-            cmd = f"mpx convert '{page_pdf}' '{md_path}'"
-
-            logger.debug(f"Converting {page_pdf.name} to {md_path.name}")
-
-            try:
-                # Use os.system - it handles TTY issues better than subprocess
-                exit_code = os.system(cmd)
-
-                if exit_code == 0 and md_path.exists() and md_path.stat().st_size > 0:
-                    logger.debug(f"Successfully converted {page_pdf.name}")
-                    markdown_files.append(md_path)
-                else:
-                    logger.warning(
-                        f"Failed to convert {page_pdf.name} - exit code: {exit_code}"
-                    )
-
-            except Exception as e:
-                logger.error(f"Error converting {page_pdf.name}: {e}")
-
-        if not markdown_files:
-            raise RuntimeError("Failed to convert any PDF pages to markdown.")
-
-        logger.info(f"Successfully converted {len(markdown_files)} pages to markdown")
-        # Use natural sorting to ensure page-2.md comes before page-10.md
-        return sorted(markdown_files, key=_natural_sort_key)
+        return _ocr_convert(
+            provider,
+            pages=pages,
+            pdf_path=getattr(self, "source_pdf_path", None),
+            output_base=self.output_base,
+            ocr_config=ocr_cfg,
+        )
 
     def clean_markdown(self, markdown_files: list[Path]) -> list[Path]:
         """Clean and standardize markdown files.

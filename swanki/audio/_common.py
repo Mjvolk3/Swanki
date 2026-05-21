@@ -8,7 +8,9 @@ Shared TTS utilities: chunking, speech synthesis, audio combination, and metadat
 
 import json
 import logging
+import os
 import re
+import threading as _threading
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal, NamedTuple
@@ -590,11 +592,13 @@ def _tts_elevenlabs(
     _apply_speed(data, output_path, speed)
 
 
-_FISH_SPEECH_PORTS = [8080, 8081, 8082, 8083]
+# GPU 3 / port 8083 is reserved for MinerU OCR by default (see
+# scripts/free-gpu-for-mineru.sh). Override with SWANKI_FISH_PORTS to restore it.
+_FISH_SPEECH_PORTS = [
+    int(p) for p in os.getenv("SWANKI_FISH_PORTS", "8080,8081,8082").split(",")
+]
 
 # Thread-safe round-robin state for multi-server distribution
-import threading as _threading
-
 _server_lock = _threading.Lock()
 _server_index = 0
 _healthy_servers: list[str] = []

@@ -1,0 +1,9 @@
+[
+  {"type": "text", "text": "Introduction", "text_level": 1, "page_idx": 0},
+  {"type": "text", "text": "This is the first paragraph of body text.", "page_idx": 0},
+  {"type": "equation", "text": "$$E = mc^2$$", "text_format": "latex", "page_idx": 0},
+  {"type": "header", "text": "Running Head Should Be Skipped", "page_idx": 0},
+  {"type": "image", "img_path": "images/fig1.jpg", "image_caption": ["Figure 1: a diagram."], "image_footnote": [], "page_idx": 1},
+  {"type": "table", "table_caption": ["Table 1: results."], "table_footnote": [], "table_body": "<table><tr><td>a</td></tr></table>", "img_path": "images/tab1.jpg", "page_idx": 1},
+  {"type": "page_number", "text": "2", "page_idx": 1}
+]
