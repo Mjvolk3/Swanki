@@ -24,7 +24,11 @@ from swanki.processing.markdown_cleaner import _natural_sort_key
 logger = logging.getLogger(__name__)
 
 # content_list.json block types that are page noise, not card content.
-_SKIP_TYPES = frozenset({"header", "footer", "page_number", "page_footnote", "aside_text"})
+# "discarded" is MinerU's own noise bucket (running heads, footers, reprint
+# lines) -- confirmed against a real run; MinerU's flat .md omits these too.
+_SKIP_TYPES = frozenset(
+    {"discarded", "header", "footer", "page_number", "page_footnote", "aside_text"}
+)
 
 
 def convert_pdf_mineru(

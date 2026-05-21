@@ -44,8 +44,9 @@ def test_split_renders_headings_and_equations(tmp_path):
     assert "# Introduction" in page1
     assert "first paragraph" in page1
     assert "$$E = mc^2$$" in page1
-    # header noise block must be skipped
+    # header + discarded noise blocks must be skipped
     assert "Running Head" not in page1
+    assert "Reprinted from" not in page1
 
 
 def test_split_copies_images_and_rewrites_path(tmp_path):

@@ -18,4 +18,13 @@ Key decisions:
 - **GPU 3.** Defaults `CUDA_VISIBLE_DEVICES=3` (the GPU freed from Fish by `scripts/free-gpu-for-mineru.sh`).
 - **Page-split via `content_list.json`.** MinerU emits one flat `.md` with NO page markers; `split_content_list_to_pages` groups blocks by `page_idx`, renders text/heading/equation/image/table (skipping `header`/`footer`/`page_number`/etc.), copies images to `output_base/images/` so `ImageProcessor` resolves them, and backfills an empty `page-N.md` for every page in `1..num_pages` (count from `PdfReader`) to keep the per-page index 1:1 and contiguous with the source PDF — downstream stages index these positionally.
 
-content_list.json schema is the documented MinerU 2.x pipeline-backend schema; capture a real run during rollout to confirm. See [[plan.transition-ocr-to-mineru-dual-path.2026.05.19]].
+content_list.json schema is the documented MinerU 2.x pipeline-backend schema. See [[plan.transition-ocr-to-mineru-dual-path.2026.05.19]].
+
+## 2026-05-21 — Validated against a real MinerU run (mineru 2.7.6)
+
+Ran the runner on the 9-page Wigner paper (GPU 3, pipeline backend). Findings:
+
+- Schema confirmed: `text` blocks carry `type`/`text`/`text_level`/`bbox`/`page_idx`; headings use `text_level`. All 9 pages present and contiguous (page_idx 0-8).
+- **New block type `discarded`** — MinerU's own noise bucket (the reprint/copyright footer landed here). It was NOT in the documented schema and initially leaked into `page-1.md` via the fallback branch. Added `discarded` to `_SKIP_TYPES`; MinerU's own flat `.md` omits these too, so skipping aligns us with native output.
+- **Per-page reconstruction is clean**: splitter output is byte-for-byte equivalent to MinerU's native flat `.md` (modulo trailing whitespace), so the `content_list.json` -> per-page approach is not lossy. The persistent-MinerU-server-per-page idea remains a viable future simplification for Mathpix-parity, but is not needed for output quality.
+- This paper had no image/table/equation blocks (text-only); those branches remain covered by the hand-built unit fixture against the documented schema.
