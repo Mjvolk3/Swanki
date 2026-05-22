@@ -617,10 +617,10 @@ class Pipeline:
         RuntimeError
             If no pages could be converted successfully
         """
-        # self.config is a plain dict here (OmegaConf.to_container in __main__),
-        # so the ocr subtree needs no DictConfig conversion. Doubled "models"
-        # key matches the Hydra group nesting (see the TTS config access).
-        ocr_cfg = self.config.get("models", {}).get("models", {}).get("ocr", {})
+        # OCR is its own Hydra group (conf/ocr/{mineru,mathpix}.yaml), selected
+        # per run with `ocr=mineru` (default) or `ocr=mathpix`. self.config is a
+        # plain dict here (OmegaConf.to_container in __main__), so no conversion.
+        ocr_cfg = self.config.get("ocr", {})
         provider = ocr_cfg.get("provider", "mathpix")
 
         from ..ocr import convert_to_markdown as _ocr_convert

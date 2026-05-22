@@ -40,4 +40,8 @@ Ran MinerU on `luoWhenCausalInference2020` (2-page Nature methods paper, 4 equat
 - **Structure:** Mathpix emits semantic LaTeX (`\title`, `\begin{abstract}`, `\author`, `\caption{}`); MinerU emits flat `#` markdown headings and captures the running journal header ("CAUSALITY IN MACHINE LEARNING") as an H1. MinerU keeps the figure-caption text but not as an attached `\caption{}`. Net: MinerU ~+230 words/page (running header + inline caption text).
 - **OCR character accuracy (Mathpix win, minor):** MinerU intermittently drops ligatures / chars in the abstract font — "efciently" (efficiently), "woul" (would); earlier Wigner run had "EFFECTIVENSS". Mathpix rendered all correctly. Real but minor and intermittent; it would propagate into card text. Worth watching; the `discarded` cleanup already removes the worst noise.
 
-Verdict: differences are acceptable for the default flip given the local-image and zero-cost wins; the ligature regression is the one thing to monitor on text-dense pages.
+Verdict: differences are acceptable for the default flip given the local-image and zero-cost wins; the ligature regression is the one thing to monitor on text-dense pages (the downstream LLM card-generation step rephrases text and should correct most ligature drops; markdown_cleaner does regex normalization only and won't).
+
+## 2026-05-21 — OCR promoted to its own Hydra group (per-run switch)
+
+Moved OCR config out of `models/*.yaml` into a dedicated `swanki/conf/ocr/` group (`mineru.yaml`, `mathpix.yaml`) wired into `config.yaml` defaults as `ocr: mineru`. Per-run selection is now `ocr=mineru` (default) or `ocr=mathpix` -- mirrors the `models=fish_speech` pattern and decouples OCR from the LLM/TTS model group. `pipeline.py` reads `self.config.get("ocr", {})` (was `config["models"]["models"]["ocr"]`); the in-code fallback stays `mathpix`. Verified via Hydra compose: `ocr=mathpix` and `ocr=mineru models=fish_speech` resolve correctly.

@@ -55,14 +55,4 @@ models:
       chunk_tail_trim_ms: 250
       chunk_crossfade_ms: 50
       section_pause_ms: 5000
-  ocr:
-    # mineru is the default; override per-run with models.ocr.provider=mathpix for handwriting.
-    provider: mineru
-    python_bin: ~/opt/miniconda3/envs/swanki-mineru/bin/python
-    runner: scripts/run_mineru_swanki.py
-    cuda_visible_devices: "3"  # GPU freed from Fish (free-gpu-for-mineru.sh)
-    device_mode: cuda
-    backend: pipeline
-    lang: en
-    method: auto
-    timeout: 3600
+# OCR backend is its own Hydra group now (ocr=mineru | ocr=mathpix); see swanki/conf/ocr/.

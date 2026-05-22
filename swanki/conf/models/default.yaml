@@ -11,18 +11,5 @@ models:
     lecture_model: eleven_multilingual_v2
     stability: 0.5
     similarity_boost: 0.5
-  ocr:
-    provider: mineru           # mathpix | mineru (mineru is now the default; use mathpix for handwriting)
-    # --- mineru-only knobs (ignored when provider=mathpix) ---
-    python_bin: ~/opt/miniconda3/envs/swanki-mineru/bin/python
-    runner: scripts/run_mineru_swanki.py
-    cuda_visible_devices: "3"  # GPU freed from Fish (free-gpu-for-mineru.sh)
-    # hf_home omitted on purpose: mineru.py resolves it lazily from
-    # $SWANKI_DATA/models/mineru/hf_cache. Do NOT set ${oc.env:SWANKI_DATA}
-    # here -- that would force SWANKI_DATA at compose time even on the mathpix
-    # default path. Set hf_home explicitly only to override.
-    device_mode: cuda
-    backend: pipeline          # pipeline | vlm-auto-engine | hybrid-auto-engine
-    lang: en
-    method: auto               # auto | txt | ocr
-    timeout: 3600
+# OCR backend moved to its own Hydra group: select per run with `ocr=mineru`
+# (default) or `ocr=mathpix`. See swanki/conf/ocr/.
