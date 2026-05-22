@@ -47,15 +47,19 @@ _READING_COVERAGE_MIN_RATIO = 0.95
 
 
 def reading_coverage_ratio(source: str, transcript: str) -> float:
-    """Token-count ratio of the Pass-2 transcript to the Pass-1 source.
+    """Token-count ratio of the final transcript to the pre-humanize source.
 
-    `source` must be the post-humanize Pass-1 text, not raw LaTeX, so that
-    symbol/equation rewrites are not miscounted as deletions. A value below
-    `_READING_COVERAGE_MIN_RATIO` means Pass-2 likely dropped source prose.
+    `source` must be the pre-humanize reference (post filter_metadata, before
+    Pass-1 humanize_latex), not raw LaTeX, so that symbol/equation rewrites are
+    not miscounted as deletions. Comparing against the pre-humanize text — not
+    the post-humanize Pass-1 output — means a Pass-1 collapse cannot truncate
+    both sides of the ratio equally and slip through. humanize and Pass-2 only
+    ever expand prose, so a value below `_READING_COVERAGE_MIN_RATIO` is a real
+    omission somewhere in the pipeline.
 
     Args:
-        source: Post-humanize Pass-1 text fed into Pass-2.
-        transcript: Concatenated Pass-2 output.
+        source: Pre-humanize reference text the transcript must cover.
+        transcript: Concatenated final Pass-2 output.
 
     Returns:
         Ratio of transcript tokens to source tokens; 1.0 if source is empty.
@@ -170,6 +174,13 @@ def generate_reading_audio(
         humanized_key = humanize_citation_key(citation_key)
         user_content = f"Citation: {humanized_key}\n\n{user_content}"
 
+    # Stable pre-humanize reference for the completeness guard. Captured
+    # BEFORE Pass 1 so a humanize_latex collapse (which would otherwise
+    # truncate both sides of the coverage ratio equally and pass) is caught:
+    # humanize only expands prose, so the final transcript must still cover
+    # this baseline.
+    coverage_reference = user_content
+
     # Pass 1: Humanize LaTeX / math / inline symbols
     logger.info("Humanizing LaTeX notation in content...")
     user_content = humanize_latex(user_content, model)
@@ -204,20 +215,21 @@ def generate_reading_audio(
 
     full_transcript = "\n\n".join(transcript_chunks)
 
-    # RC2 completeness guard: Pass-2 must not silently drop source prose.
-    # Compares against user_content (post-humanize Pass-1), NOT raw LaTeX, so
-    # equation/symbol rewrites do not count as deletions. Fail loud, no
-    # auto-retry — the user reviews and decides (CLAUDE.md fail-fast).
-    coverage = reading_coverage_ratio(user_content, full_transcript)
+    # RC2 completeness guard: the final transcript must not silently drop
+    # source prose. Compares against the pre-humanize reference (post
+    # filter_metadata, NOT raw LaTeX) so equation/symbol rewrites never count
+    # as deletions, while a Pass-1 humanize collapse OR a Pass-2 omission both
+    # trip it. Hard-fail (no auto-retry) so a truncated reading aborts the
+    # paper instead of publishing — the user re-runs (CLAUDE.md fail-fast).
+    coverage = reading_coverage_ratio(coverage_reference, full_transcript)
     if coverage < _READING_COVERAGE_MIN_RATIO:
-        logger.warning(
-            "READING COMPLETENESS GUARD tripped for %s: Pass-2 transcript is "
-            "%.1f%% of post-humanize source (threshold %.0f%%). Pass-2 likely "
-            "dropped source prose -- review %s before publishing.",
-            citation_key or output_path.stem,
-            coverage * 100,
-            _READING_COVERAGE_MIN_RATIO * 100,
-            output_path.stem,
+        raise RuntimeError(
+            f"READING COMPLETENESS GUARD failed for "
+            f"{citation_key or output_path.stem}: transcript is "
+            f"{coverage * 100:.1f}% of pre-humanize source (threshold "
+            f"{_READING_COVERAGE_MIN_RATIO * 100:.0f}%). The reading pipeline "
+            f"dropped source prose (Pass-1 humanize collapse or Pass-2 "
+            f"omission); refusing to publish a truncated reading."
         )
 
     # Save transcripts
