@@ -3,6 +3,7 @@ defaults:
 - pipeline: default
 - prompts: default
 - models: default
+- ocr: mineru
 - audio: none
 - output: default
 - anki: default
@@ -15,6 +16,7 @@ mode: full
 pipeline: null
 prompts: null
 models: null
+ocr: null
 audio: null
 output: null
 anki: null

@@ -1,0 +1,15 @@
+# swanki/conf/ocr/mineru.yaml
+# MinerU OCR backend (GPU-local, free). Select per run with `ocr=mineru`.
+# This is the default (see conf/config.yaml). Use `ocr=mathpix` for handwriting.
+provider: mineru
+python_bin: ~/opt/miniconda3/envs/swanki-mineru/bin/python
+runner: scripts/run_mineru_swanki.py
+cuda_visible_devices: "3"  # GPU freed from Fish (scripts/free-gpu-for-mineru.sh)
+# hf_home resolved lazily in swanki/ocr/mineru.py from $SWANKI_DATA; set here only
+# to override. Do NOT use ${oc.env:SWANKI_DATA} -- that forces SWANKI_DATA at
+# compose time even for the mathpix path.
+device_mode: cuda
+backend: pipeline          # pipeline | vlm-auto-engine | hybrid-auto-engine
+lang: en
+method: auto               # auto | txt | ocr
+timeout: 3600

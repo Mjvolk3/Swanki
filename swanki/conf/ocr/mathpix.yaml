@@ -1,0 +1,4 @@
+# swanki/conf/ocr/mathpix.yaml
+# Mathpix OCR backend (cloud mpx CLI). Select per run with `ocr=mathpix`.
+# Preferred for handwriting, where Mathpix still beats MinerU.
+provider: mathpix

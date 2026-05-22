@@ -55,3 +55,4 @@ models:
       chunk_tail_trim_ms: 250
       chunk_crossfade_ms: 50
       section_pause_ms: 5000
+# OCR backend is its own Hydra group now (ocr=mineru | ocr=mathpix); see swanki/conf/ocr/.

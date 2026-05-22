@@ -262,3 +262,7 @@ spot that needed the cleaner form. A regression-guard test asserts
 caught immediately. Combined with the 2026.05.19a `humanize_chapter_slug_spoken`
 roman-numeral fix, ch07 reads cleanly: *"This lecture is posted as Hamming,
 Art Doing Science, 2020, Chapter 7, artificial intelligence two. Let's Begin."*
+
+## 2026-05-21 — Fish Speech port list is env-configurable
+
+`_FISH_SPEECH_PORTS` now derives from `SWANKI_FISH_PORTS` (default `8080,8081,8082`), dropping `8083` so GPU 3 can be reserved for MinerU OCR (`scripts/free-gpu-for-mineru.sh`). Discovery already tolerates missing ports via try/except; restoring the 4th Fish server is a matter of setting `SWANKI_FISH_PORTS=8080,8081,8082,8083`. See [[plan.transition-ocr-to-mineru-dual-path.2026.05.19]].

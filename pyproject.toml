@@ -39,6 +39,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["ruff", "semantic-release", "pip-tools", "pytest", "pytest-testmon", "pre-commit", "mypy", "coverage"]
+# Documentation/discoverability only. MinerU pulls torch+paddleocr (multi-GB) and
+# must NOT enter core deps (PyPI publish). Production install uses the isolated
+# `swanki-mineru` conda env -- see env/swanki-mineru-requirements.txt.
+mineru = ["mineru[pipeline]>=2.0.0,<3", "torch<2.11", "torchvision<0.26", "huggingface_hub>=0.23"]
 
 [project.urls]
 Homepage = "https://github.com/Mjvolk3/Swanki"

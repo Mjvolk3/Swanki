@@ -1,0 +1,16 @@
+# env/swanki-mineru-requirements.txt
+#
+# Isolated MinerU 2.x OCR env. MinerU bundles its own torch CUDA runtime and a
+# torch-based PaddleOCR fork; keep it out of the swanki (Python 3.13) env to
+# avoid two CUDA runtimes in one environment.
+#
+# Create: mamba create -n swanki-mineru python=3.11 && \
+#         pip install -r env/swanki-mineru-requirements.txt
+# Runner: scripts/run_mineru_swanki.py
+#
+# torch<2.11 forces a CUDA 12 build; torch 2.11+ ships cu13 wheels that refuse
+# to init against cu12.x drivers.
+mineru[pipeline]>=2.0.0,<3
+torch<2.11
+torchvision<0.26
+huggingface_hub>=0.23

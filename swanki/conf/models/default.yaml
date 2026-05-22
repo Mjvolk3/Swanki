@@ -11,3 +11,5 @@ models:
     lecture_model: eleven_multilingual_v2
     stability: 0.5
     similarity_boost: 0.5
+# OCR backend moved to its own Hydra group: select per run with `ocr=mineru`
+# (default) or `ocr=mathpix`. See swanki/conf/ocr/.
