@@ -12,7 +12,7 @@ models:
     stability: 0.5
     similarity_boost: 0.5
   ocr:
-    provider: mathpix          # mathpix | mineru
+    provider: mineru           # mathpix | mineru (mineru is now the default; use mathpix for handwriting)
     # --- mineru-only knobs (ignored when provider=mathpix) ---
     python_bin: ~/opt/miniconda3/envs/swanki-mineru/bin/python
     runner: scripts/run_mineru_swanki.py

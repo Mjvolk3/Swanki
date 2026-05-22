@@ -28,3 +28,16 @@ Ran the runner on the 9-page Wigner paper (GPU 3, pipeline backend). Findings:
 - **New block type `discarded`** — MinerU's own noise bucket (the reprint/copyright footer landed here). It was NOT in the documented schema and initially leaked into `page-1.md` via the fallback branch. Added `discarded` to `_SKIP_TYPES`; MinerU's own flat `.md` omits these too, so skipping aligns us with native output.
 - **Per-page reconstruction is clean**: splitter output is byte-for-byte equivalent to MinerU's native flat `.md` (modulo trailing whitespace), so the `content_list.json` -> per-page approach is not lossy. The persistent-MinerU-server-per-page idea remains a viable future simplification for Mathpix-parity, but is not needed for output quality.
 - This paper had no image/table/equation blocks (text-only); those branches remain covered by the hand-built unit fixture against the documented schema.
+
+## 2026-05-21 — Default flipped to mineru + luoWhenCausalInference2020 vs Mathpix comparison
+
+Flipped `models.ocr.provider` to `mineru` in all 5 model configs (default.yaml + fish_speech*). The in-code fallback in `pipeline.py` stays `mathpix` (zero-dependency safe default if a config omits the ocr block); the shipped user-facing default is now mineru. Use `models.ocr.provider=mathpix` per-run for handwriting.
+
+Ran MinerU on `luoWhenCausalInference2020` (2-page Nature methods paper, 4 equations + 1 figure) and compared per-page md to the prior Mathpix `md-singles/`:
+
+- **Math delimiters:** MinerU `$...$` / `$$...$$`; Mathpix `\(...\)` / `\[...\]`. Equivalent content; both downstream-safe (markdown_cleaner already normalizes mathpix's, MinerU is already `$`).
+- **Images (MinerU win):** MinerU extracts local `images/<hash>.jpg` (6 files, persistent/offline); Mathpix emits expiring `https://cdn.mathpix.com/cropped/...` URLs. This was the original motivation and it holds.
+- **Structure:** Mathpix emits semantic LaTeX (`\title`, `\begin{abstract}`, `\author`, `\caption{}`); MinerU emits flat `#` markdown headings and captures the running journal header ("CAUSALITY IN MACHINE LEARNING") as an H1. MinerU keeps the figure-caption text but not as an attached `\caption{}`. Net: MinerU ~+230 words/page (running header + inline caption text).
+- **OCR character accuracy (Mathpix win, minor):** MinerU intermittently drops ligatures / chars in the abstract font — "efciently" (efficiently), "woul" (would); earlier Wigner run had "EFFECTIVENSS". Mathpix rendered all correctly. Real but minor and intermittent; it would propagate into card text. Worth watching; the `discarded` cleanup already removes the worst noise.
+
+Verdict: differences are acceptable for the default flip given the local-image and zero-cost wins; the ligature regression is the one thing to monitor on text-dense pages.
