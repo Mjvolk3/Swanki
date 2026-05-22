@@ -1,3 +1,13 @@
+"""
+scripts/zotero_paper_import.py
+[[scripts.zotero_paper_import]]
+https://github.com/Mjvolk3/Swanki/tree/main/scripts/zotero_paper_import.py
+
+Download PDFs from Zotero by citation key, classify pages with the LLM PDF
+cutter, trim non-educational end-matter, and write the Swanki .sh runner.
+The classifier is required -- there is no regex fallback; a missing key or a
+classifier error fails fast so a cruder cut can never pass as finished.
+"""
 
 import argparse
 import importlib.util
@@ -7,12 +17,10 @@ import re
 import shutil
 import subprocess
 import sys
-import warnings
 from pathlib import Path
 
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from PyPDF2 import PdfReader
 from pyzotero import zotero
 
 # Import pdf_classifier directly to avoid triggering swanki/__init__.py
@@ -34,52 +42,6 @@ ZOTERO_LIBRARY_TYPE = os.environ.get("ZOTERO_LIBRARY_TYPE", "user")
 
 SWANKI_DATA = Path(__file__).resolve().parent.parent.parent / "Swanki_Data"
 QPDF = "qpdf"
-
-# Headings that mark the start of non-educational content (references,
-# acknowledgments, etc.).  Cut pages matching these.
-#
-# NOTE: We omit short mid-page headings like "Author Information",
-# "Author Contributions", "Competing Interests", "Notes" because
-# journals often place these partway through a page that still has
-# real content above.  The headings below reliably start a section
-# that fills the rest of the page (and beyond) with non-educational text.
-END_MATTER_PATTERNS = re.compile(
-    r"^[■□▪▸►]?\s*("
-    r"References|REFERENCES|Bibliography|BIBLIOGRAPHY|Literature Cited"
-    r"|Acknowledg(?:e)?ments?|ACKNOWLEDG(?:E)?MENTS?"
-    r"|Supporting Information|SUPPORTING INFORMATION"
-    r"|Supplementary (?:Information|Materials?)|SUPPLEMENTARY (?:INFORMATION|MATERIALS?)"
-    r"|Online [Cc]ontent"
-    r"|Author [Cc]ontributions|AUTHOR CONTRIBUTIONS"
-    r"|Declaration of [Ii]nterests?|DECLARATION OF INTERESTS?"
-    r"|Competing [Ii]nterests?|COMPETING INTERESTS?"
-    r")\s*$",
-    re.IGNORECASE,
-)
-
-# Headings that resume educational content after a non-educational gap
-# (e.g. Extended Data figures after references in Nature papers, STAR
-# Methods + supplemental figures after references in Cell papers).
-RESUME_EDUCATIONAL_PATTERNS = re.compile(
-    r"^[■□▪▸►]?\s*("
-    r"Extended Data"
-    r"|STAR\s*[★✩]?\s*METHODS|STAR\s*[★✩]?\s*Methods|Star\s*Methods"
-    r"|Supplemental [Ff]igures?"
-    r"|Supplementary [Ff]igures?"
-    r")\b",
-    re.IGNORECASE,
-)
-
-# Headings that mark content to cut at the very end (reporting summaries,
-# checklists appended by publishers).
-TAIL_CUT_PATTERNS = re.compile(
-    r"("
-    r"nature\s+portfolio"
-    r"|Reporting [Ss]ummary"
-    r"|REPORTING SUMMARY"
-    r")",
-    re.IGNORECASE,
-)
 
 
 class ZoteroConfig(BaseModel):
@@ -233,64 +195,6 @@ def download_pdfs(
 # --- PDF cleaning ---
 
 
-def _classify_pages_regex(pdf_path: Path) -> tuple[list[str], int]:
-    """Classify each page as 'keep', 'cut', or 'resume' using regex.
-
-    Returns (labels, total_pages) where labels[i] is the classification.
-    """
-    warnings.filterwarnings("ignore")
-    reader = PdfReader(str(pdf_path), strict=False)
-    total = len(reader.pages)
-    labels = ["keep"] * total
-
-    in_cut_zone = False
-    for i, page in enumerate(reader.pages):
-        text = page.extract_text() or ""
-        lines = [line.strip() for line in text.split("\n")]
-
-        # Check if this page resumes educational content
-        if in_cut_zone:
-            for line in lines:
-                if RESUME_EDUCATIONAL_PATTERNS.search(line):
-                    in_cut_zone = False
-                    break
-
-        # Check if this page starts non-educational content
-        if not in_cut_zone:
-            for line in lines:
-                if END_MATTER_PATTERNS.match(line):
-                    in_cut_zone = True
-                    break
-
-        # Check if this page starts tail-end publisher content (always cut)
-        for line in lines:
-            if TAIL_CUT_PATTERNS.search(line):
-                in_cut_zone = True
-                break
-
-        if in_cut_zone:
-            labels[i] = "cut"
-
-    return labels, total
-
-
-def _labels_to_ranges(labels: list[str]) -> list[tuple[int, int]]:
-    """Convert page labels to keep-ranges (0-based, end-exclusive)."""
-    ranges: list[tuple[int, int]] = []
-    start = None
-    for i, label in enumerate(labels):
-        if label == "keep":
-            if start is None:
-                start = i
-        else:
-            if start is not None:
-                ranges.append((start, i))
-                start = None
-    if start is not None:
-        ranges.append((start, len(labels)))
-    return ranges
-
-
 def cut_pdf(input_pdf: Path, output_pdf: Path, start: int, end: int) -> None:
     """Cut a PDF page range (0-based start, end-exclusive).
 
@@ -319,12 +223,28 @@ def unite_pdfs(inputs: list[Path], output: Path) -> None:
 def write_sh_script(
     output_dir: Path, citation_key: str, models: str | None = None
 ) -> Path:
-    """Write the swanki .sh runner script."""
+    """Write the swanki .sh runner script.
+
+    The runner self-activates the ``swanki`` conda env (so the ``swanki`` CLI
+    and ``ffmpeg``/``ffprobe`` -- required by pydub for audio -- are on PATH),
+    then ``cd``s into the repo and sources ``.env`` (``SWANKI_DATA`` + API keys)
+    so it works from any working directory.
+    """
     clean_pdf = output_dir / f"{citation_key}_clean.pdf"
     sh_path = output_dir / f"{citation_key}.sh"
+    repo_dir = Path(__file__).resolve().parent.parent
     models_flag = f"models={models} " if models else ""
     sh_path.write_text(
-        f"#!/bin/bash\n\n"
+        "#!/bin/bash\n"
+        "set -euo pipefail\n\n"
+        "# Generated by scripts/zotero_paper_import.py.\n"
+        "# Activate the swanki env (swanki CLI + ffmpeg/ffprobe on PATH) and load\n"
+        "# repo .env so this runs correctly from any working directory.\n"
+        'CONDA_BASE="$(conda info --base 2>/dev/null || echo "$HOME/miniconda3")"\n'
+        'source "$CONDA_BASE/etc/profile.d/conda.sh"\n'
+        "conda activate swanki\n"
+        f'cd "{repo_dir}"\n'
+        "set -a; source .env; set +a\n\n"
         f"swanki pdf_path={clean_pdf} citation_key={citation_key} "
         f"+output_dir=../Swanki_Data/{citation_key}/{citation_key} "
         f"audio=all anki=default {models_flag}"
@@ -337,7 +257,7 @@ def _get_keep_ranges_llm(pdf_path: Path) -> tuple[list[tuple[int, int]], int]:
     """Use LLM classifier to get keep-ranges. Returns (keep_ranges, total_pages)."""
     plan = classify_pdf(pdf_path)
     total = len(plan.pages)
-    print(f"  LLM classification:")
+    print("  LLM classification:")
     for p in plan.pages:
         status = "KEEP" if p.keep else "CUT"
         print(f"    Page {p.page}: {p.label} [{status}]")
@@ -345,36 +265,19 @@ def _get_keep_ranges_llm(pdf_path: Path) -> tuple[list[tuple[int, int]], int]:
     return ranges, total
 
 
-def _get_keep_ranges_regex(pdf_path: Path) -> tuple[list[tuple[int, int]], int]:
-    """Use regex fallback to get keep-ranges. Returns (keep_ranges, total_pages)."""
-    labels, total = _classify_pages_regex(pdf_path)
-    ranges = _labels_to_ranges(labels)
-
-    cut_pages = [i + 1 for i, l in enumerate(labels) if l == "cut"]
-    if cut_pages:
-        ranges_str = ", ".join(f"{s+1}-{e}" for s, e in ranges)
-        print(f"  Regex fallback: keeping [{ranges_str}], cutting pages {cut_pages}")
-    else:
-        print(f"  Regex fallback: no end-matter detected, keeping all {total} pages")
-
-    return ranges, total
-
-
 def _get_keep_ranges(pdf_path: Path) -> tuple[list[tuple[int, int]], int, bool]:
-    """Get keep-ranges via LLM (preferred) or regex fallback.
+    """Get keep-ranges via the LLM classifier. Fails fast if it can't run.
+
+    No silent regex fallback: a missing key or a classifier error raises, so
+    the cruder path can never masquerade as a finished cut.
 
     Returns (keep_ranges, total_pages, used_llm).
     """
-    if os.environ.get("OPENAI_API_KEY"):
-        try:
-            ranges, total = _get_keep_ranges_llm(pdf_path)
-            return ranges, total, True
-        except ImportError as e:
-            print(f"  LLM classifier unavailable ({e}), using regex fallback")
-    else:
-        print("  OPENAI_API_KEY not set, using regex fallback")
-    ranges, total = _get_keep_ranges_regex(pdf_path)
-    return ranges, total, False
+    assert os.environ.get(
+        "OPENAI_API_KEY"
+    ), "OPENAI_API_KEY required: PDF classifier must run (regex fallback removed)"
+    ranges, total = _get_keep_ranges_llm(pdf_path)
+    return ranges, total, True
 
 
 def clean_pdf(
@@ -494,11 +397,10 @@ def main():
 
         if not args.download_only:
             result = clean_pdf(output_dir, key, models=args.models)
-            method = "LLM" if result.used_llm else "regex"
             ranges_str = ", ".join(f"{s+1}-{e}" for s, e in result.keep_ranges)
             print(
                 f"  Summary: {result.kept_pages}/{result.total_pages} pages kept "
-                f"({method}), ranges: [{ranges_str}]"
+                f"(LLM), ranges: [{ranges_str}]"
             )
 
     print(f"\nDone. Processed {len(args.keys)} paper(s).")

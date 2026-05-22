@@ -14,6 +14,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,35 @@ logger = logging.getLogger(__name__)
 _SKIP_TYPES = frozenset(
     {"discarded", "header", "footer", "page_number", "page_footnote", "aside_text"}
 )
+
+
+def _resolve_mineru_python(ocr_config: dict[str, Any]) -> str:
+    """Resolve the ``swanki-mineru`` interpreter, machine-independently.
+
+    Order: the configured ``python_bin`` if it exists on disk; else the
+    ``swanki-mineru`` env sitting beside the running interpreter's conda env;
+    else the configured path unchanged (so the subprocess fails with a clear
+    path). This survives differing conda roots across machines -- e.g.
+    ``~/miniconda3`` on gilahyper vs ``~/opt/miniconda3`` elsewhere -- without a
+    per-run override.
+    """
+    configured = os.path.expanduser(
+        ocr_config.get("python_bin", "~/opt/miniconda3/envs/swanki-mineru/bin/python")
+    )
+    if Path(configured).exists():
+        return configured
+    exe = Path(sys.executable).resolve()
+    if "envs" in exe.parts:
+        envs_dir = Path(*exe.parts[: exe.parts.index("envs") + 1])
+        sibling = envs_dir / "swanki-mineru" / "bin" / "python"
+        if sibling.exists():
+            logger.info(
+                "MinerU python_bin %s not found; using sibling env %s",
+                configured,
+                sibling,
+            )
+            return str(sibling)
+    return configured
 
 
 def convert_pdf_mineru(
@@ -74,9 +104,7 @@ def convert_pdf_mineru(
         }
     )
 
-    python_bin = os.path.expanduser(
-        ocr_config.get("python_bin", "~/opt/miniconda3/envs/swanki-mineru/bin/python")
-    )
+    python_bin = _resolve_mineru_python(ocr_config)
     runner = str(
         Path(__file__).resolve().parents[2]
         / ocr_config.get("runner", "scripts/run_mineru_swanki.py")
