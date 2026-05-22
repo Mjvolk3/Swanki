@@ -337,6 +337,20 @@ class Pipeline:
                     _yaml.safe_dump(provenance_log.model_dump(), sort_keys=False)
                 )
                 outputs["provenance"] = prov_path
+        elif mode == "glossary":
+            # Glossary explicit override: treat the entire input as a wordlist /
+            # glossary. Bypasses the classifier and emits one card per term.
+            from .glossary import run_glossary_override
+
+            logger.info("Running in glossary mode (whole-document override)")
+            self.citation_key = effective_key
+            self.state.current_stage = "glossary"
+            all_cards = run_glossary_override(self, cleaned_files, doc_summary)
+            self.state.cards_generated = len(all_cards)
+            self.state.current_stage = "output_generation"
+            outputs = self.generate_outputs(
+                all_cards, doc_summary, self.output_base
+            )
         else:
             # mode == "full" — classifier-driven dispatch. main_content sections
             # route through the existing segment-based card-gen; review_exercises

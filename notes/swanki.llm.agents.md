@@ -31,3 +31,7 @@ All four response types live in [[swanki.models.problem_set]] (NOT in `pipeline/
 
 Added `section_classifier_agent: Agent[None, ClassificationResult]` (retries=2). Used as a low-confidence fallback by [[swanki.pipeline.section_classifier]]'s `classify_sections()` when the heading-driven pass can't disambiguate (e.g. PDFs without clean `## Heading` anchors). Imports `ClassificationResult` from [[swanki.models.sections]] — same pattern as the problem-set agents.
 
+
+## 2026.05.21 - Glossary mode agents
+
+Added two structured-output agents for [[swanki.pipeline.glossary]]: `glossary_enumeration_agent` (output `GlossaryEnumerationResponse`, retries=3) for LLM-assisted enumeration of definition units from OCR'd wordlist markdown, and `definition_card_gen_agent` (output `DefinitionCardBatchResponse`, retries=3) for batched per-term card generation. Both response types live in [[swanki.models.glossary]] so this module's imports don't cycle back through the pipeline package.

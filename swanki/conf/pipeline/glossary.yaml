@@ -1,0 +1,21 @@
+defaults:
+  - default
+  - _self_
+
+processing:
+  # glossary override bypasses the segmenter; enumeration operates on the
+  # whole-document markdown and emits one card per term.
+  segmentation: none
+  image_cards:
+    enabled: false
+
+glossary:
+  # Body-length threshold above which a future build would emit elaboration
+  # cards. v1 always emits exactly one definition_main card per term, so for
+  # GRE wordlists this knob is inert.
+  long_entry_chars: 600
+  # Terms per definition_card_gen LLM call (each term needs no shared context,
+  # so batching is safe; the coverage audit still guarantees one card per term).
+  batch_size: 25
+  # Append an `*e.g.*` usage-example sentence to each card back.
+  generate_example: true

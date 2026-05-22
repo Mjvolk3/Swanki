@@ -203,3 +203,7 @@ outright. Non-biosec exceptions still raise.
 `_SAFETY_MARKERS` imported locally inside the function rather than at the
 module top to keep the per-segment skip-logic discoverable next to its
 call site (the file already has plenty of top-level imports).
+
+## 2026.05.21 - mode=glossary dispatch branch
+
+Added an `elif mode == "glossary":` branch in `process_full`, parallel to `solution_manual`: bypasses the section classifier, calls `run_glossary_override(self, cleaned_files, doc_summary)` from [[swanki.pipeline.glossary]], then runs `generate_outputs`. Downstream audio/apkg/zotero blocks are card-format-agnostic and unchanged. See [[plan.glossary-definition-cards-gre-wordlist.2026.05.21]].

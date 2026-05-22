@@ -12,6 +12,7 @@ defaults:
 pdf_path: null
 citation_key: null
 content_key: null
+# full | audio_only | solution_manual | glossary
 mode: full
 pipeline: null
 prompts: null

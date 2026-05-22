@@ -712,6 +712,9 @@ class PlainCard(BaseModel):
         "subproblem",
         "problem_overview",
         "full_solution",
+        "definition_main",
+        "definition_example",
+        "definition_elaboration",
     ] = Field(
         default="regular",
         description="Card subtype for downstream styling and length policy.",

@@ -129,14 +129,14 @@ Configuration:
   swanki --config-info      Show all active config locations
 
 Configuration Options:
-  mode=<full|audio_only|solution_manual>                                   Pipeline mode
-  pipeline=<default|standard|larger|smaller|solution_manual>               Pipeline preset
+  mode=<full|audio_only|solution_manual|glossary>                          Pipeline mode
+  pipeline=<default|standard|larger|smaller|solution_manual|glossary>      Pipeline preset
   audio=<none|all|complementary_summary|complementary_summary_lecture|lecture|summary_lecture>
-  prompts=<default|technical|solution_manual>                              Prompt style
+  prompts=<default|technical|solution_manual|glossary>                     Prompt style
   models=<default|openai_tts>                                              Model config
   anki=<default|auto_send|custom_deck>                                     Anki integration
   refinement=<default|strict|minimal|disabled>                             Refinement strategy
-  output=<default|problem_set>                                             Output preset
+  output=<default|problem_set|glossary>                                    Output preset
 
 Examples:
   swanki pdf_path=paper.pdf citation_key=smith2023
@@ -146,6 +146,8 @@ Examples:
   swanki pdf_path=paper.pdf citation_key=smith2023 anki=auto_send
   swanki pdf_path=ch01_packed.pdf citation_key=alcamo2010 mode=solution_manual \\
          pipeline=solution_manual prompts=solution_manual output=problem_set audio=none
+  swanki pdf_path=gre_words.pdf citation_key=manprep2018 mode=glossary \\
+         pipeline=glossary prompts=glossary output=glossary audio=none
   swanki --send-to-anki path/to/cards.md --send --host 127.0.0.1 --port 8765
 """)
         sys.exit(0)

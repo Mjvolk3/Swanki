@@ -29,6 +29,9 @@ CardSubtype = Literal[
     "subproblem",
     "problem_overview",
     "full_solution",
+    "definition_main",
+    "definition_example",
+    "definition_elaboration",
 ]
 
 
