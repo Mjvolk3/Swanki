@@ -88,3 +88,50 @@ punchline isolation as one-sentence paragraphs -- Fish emotion tags are
 force-stripped and the prompt forbids literal `[pause]`, so paragraph
 placement (which `add_tts_pauses` brackets with real silence) is the only
 delivery lever that survives.
+
+## 2026.05.22 - Per-chunk completeness retry replaces the paper-level hard-fail floor
+
+The 0.95 paper-level `_READING_COVERAGE_MIN_RATIO` guard was too coarse:
+qiu's reading at 94.2% tripped a hard-fail that aborted the whole paper for
+what was likely small natural variance (image-URL stripping + a paragraph
+the LLM trimmed). At the same time, the guard's empty-output fallback in
+both passes was too narrow -- a Pass-2 chunk returning 70% of its input
+slid through silently. The user's directive: "fix the reason for incomplete
+readings; there shouldn't be any floor for readings."
+
+Replaced the paper-level guard with two surgical, self-healing per-chunk
+checks:
+
+- **Pass-1 (`_humanize_chunk_with_completeness` in `_common.py`)**: per-chunk
+  floor `0.5`. Math-heavy chunks legitimately compress
+  (`$\alpha + \beta = \gamma$` → "alpha plus beta equals gamma" is ~50%),
+  so the floor only catches structural collapse. The Hamming Ch1 disaster
+  was 0.0075. Retries up to 3× with a stricter "do not drop prose" addendum;
+  if every attempt is below the floor, returns the raw input chunk so
+  Pass-2 still sees the source verbatim.
+- **Pass-2 (`_pass2_chunk_with_completeness` in `reading.py`)**: per-chunk
+  floor `0.85`. Pass-2 only ever expands (acronym first-use, citation
+  rendering, SECTION_BREAK markers); a chunk below 0.85 is a real omission
+  -- the qiu-class summarization-tendency failure. Same retry+fallback
+  shape; fallback returns the humanized input chunk so content survives.
+
+The paper-level `_READING_COVERAGE_MIN_RATIO` constant and its `RuntimeError`
+hard-fail are removed. `reading_coverage_ratio()` survives as a pure
+diagnostic function; the paper-level ratio is logged at INFO along with a
+per-pass fallback count for telemetry.
+
+Tightened Pass-2 prompt rules #8 and #9 -- the two that invited omission --
+so the LLM doesn't preemptively "smooth" or de-dupe within a chunk:
+
+- Rule #7: extended with "Every sentence in the input must appear in the
+  output; if a sentence feels redundant or off-topic, include it verbatim
+  anyway. Omission of any sentence is a failure."
+- Rule #8: rewritten from "Make the text flow naturally for listening, not
+  reading" to "The source is already prose; do NOT smooth, condense, or
+  rephrase to make it 'flow better'. Render exactly what is written."
+- Rule #9: scoped to "WITHIN THIS CHUNK ONLY" so the LLM doesn't omit
+  sentences it imagines were already covered by earlier chunks it cannot
+  see.
+
+`text_agent` lifted to module level in `_common.py` for consistent
+mock-patching (matches `card.py`/`summary.py`/`lecture.py`/`reading.py`).

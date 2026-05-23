@@ -266,3 +266,23 @@ Art Doing Science, 2020, Chapter 7, artificial intelligence two. Let's Begin."*
 ## 2026-05-21 — Fish Speech port list is env-configurable
 
 `_FISH_SPEECH_PORTS` now derives from `SWANKI_FISH_PORTS` (default `8080,8081,8082`), dropping `8083` so GPU 3 can be reserved for MinerU OCR (`scripts/free-gpu-for-mineru.sh`). Discovery already tolerates missing ports via try/except; restoring the 4th Fish server is a matter of setting `SWANKI_FISH_PORTS=8080,8081,8082,8083`. See [[plan.transition-ocr-to-mineru-dual-path.2026.05.19]].
+
+## 2026.05.22 - `humanize_latex` self-heals chunk-level collapse
+
+New helper `_humanize_chunk_with_completeness` wraps each Pass-1 chunk in a
+per-chunk completeness check: if the LLM output's token count drops below
+`_HUMANIZE_CHUNK_MIN_RATIO=0.5` of the input, retries up to
+`_CHUNK_RETRY_ATTEMPTS=3` times with a stricter "do not drop prose"
+addendum, then falls back to the raw input chunk so source content always
+reaches Pass-2. Replaces the prior all-or-nothing empty-output fallback
+that let the Hamming Ch1 240-char stub slip through. The 0.5 floor allows
+legitimate math-heavy compression (`$\alpha$` → "alpha" is ~50%) while
+catching catastrophic collapse (Hamming Ch1 was 0.0075).
+
+`text_agent` is now imported at module level (was previously imported
+inside `humanize_latex`'s body), matching `card.py`/`summary.py`/
+`lecture.py`/`reading.py` and giving mock-patching consistent behavior.
+
+See [[swanki.audio.reading]] (2026.05.22) for the matching Pass-2
+self-healing in `reading.py` and the removal of the paper-level
+`_READING_COVERAGE_MIN_RATIO` hard-fail.

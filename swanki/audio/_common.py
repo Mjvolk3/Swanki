@@ -20,6 +20,8 @@ from elevenlabs import ElevenLabs, VoiceSettings
 from pydantic import BaseModel, Field
 from pydub import AudioSegment
 
+from ..llm.agents import text_agent
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_VOICE_ID = "7p1Ofvcwsv7UBPoFNcpI"
@@ -1822,6 +1824,87 @@ Special Cases:
 DO NOT change any other text. Preserve prose exactly; only transform the math/units/symbols and linearize tables exactly as instructed above."""
 
 
+# Pass-1 (humanize_latex) per-chunk completeness floor. Math-heavy chunks
+# legitimately compress (a $\alpha + \beta = \gamma$ becomes "alpha plus
+# beta equals gamma"; the dollar signs and braces all drop), so the floor
+# has to allow ~50% shrinkage. The Hamming Ch1 disaster collapsed an
+# 8000-token chunk to a 240-char stub (ratio ~0.0075) -- a 0.5 floor
+# catches that with massive margin without flagging real compression.
+_HUMANIZE_CHUNK_MIN_RATIO = 0.5
+
+# Per-chunk LLM retry budget before a chunk falls back to its raw input.
+_CHUNK_RETRY_ATTEMPTS = 3
+
+
+def _humanize_chunk_with_completeness(chunk: str, model: str) -> str:
+    """Humanize one Pass-1 chunk with per-chunk completeness retry.
+
+    Pass-1 can silently collapse on safety refusals or LLM truncation -- the
+    Hamming Ch1 chunk returned a 240-char stub. The empty-output fallback in
+    the prior implementation only caught the all-or-nothing case; a stub
+    slipped through. This checks token-ratio against the input, retries up
+    to ``_CHUNK_RETRY_ATTEMPTS`` times with a stricter "do not drop prose"
+    addendum, and -- if every attempt is below the floor -- returns the raw
+    chunk verbatim so Pass-2 still sees the source content (it will then
+    humanize the math as best it can, but no content is lost).
+
+    Args:
+        chunk: One Pass-1 input chunk.
+        model: pydantic-ai model string.
+
+    Returns:
+        Humanized chunk, or the raw chunk if every attempt fell below the
+        completeness floor.
+    """
+    import tiktoken
+
+    enc = tiktoken.get_encoding("cl100k_base")
+    input_tokens = len(enc.encode(chunk))
+    best_output = ""
+    best_ratio = 0.0
+
+    for attempt in range(_CHUNK_RETRY_ATTEMPTS):
+        instructions = _LATEX_SYSTEM_PROMPT
+        if attempt > 0:
+            instructions = (
+                _LATEX_SYSTEM_PROMPT
+                + "\n\nRETRY -- A previous attempt dropped source prose. "
+                "Convert math/units/symbols ONLY; reproduce every sentence "
+                "of surrounding prose verbatim. Do not summarize, skip, or "
+                "condense any sentence even if it feels repetitive."
+            )
+        result = text_agent.run_sync(
+            chunk,
+            instructions=instructions,
+            model=model,
+            model_settings={"max_tokens": 10000},
+        )
+        candidate = result.output.strip()
+        candidate_ratio = (
+            len(enc.encode(candidate)) / input_tokens if input_tokens else 1.0
+        )
+        if candidate_ratio > best_ratio:
+            best_output = candidate
+            best_ratio = candidate_ratio
+        if candidate_ratio >= _HUMANIZE_CHUNK_MIN_RATIO:
+            return best_output
+        logger.warning(
+            "humanize_latex chunk attempt %d ratio %.3f < %.2f; retrying",
+            attempt + 1,
+            candidate_ratio,
+            _HUMANIZE_CHUNK_MIN_RATIO,
+        )
+
+    logger.error(
+        "humanize_latex chunk exhausted %d retries (best ratio %.3f < %.2f); "
+        "returning raw input verbatim to preserve content",
+        _CHUNK_RETRY_ATTEMPTS,
+        best_ratio,
+        _HUMANIZE_CHUNK_MIN_RATIO,
+    )
+    return chunk
+
+
 def humanize_latex(content: str, model: str) -> str:
     """Convert all LaTeX notation to natural readable text using LLM.
 
@@ -1834,8 +1917,6 @@ def humanize_latex(content: str, model: str) -> str:
     """
     import tiktoken
 
-    from ..llm.agents import text_agent
-
     enc = tiktoken.get_encoding("cl100k_base")
     tokens = enc.encode(content)
     max_chunk = 8000
@@ -1843,19 +1924,6 @@ def humanize_latex(content: str, model: str) -> str:
 
     for start in range(0, len(tokens), max_chunk):
         chunk = enc.decode(tokens[start : start + max_chunk])
-
-        result = text_agent.run_sync(
-            chunk,
-            instructions=_LATEX_SYSTEM_PROMPT,
-            model=model,
-            model_settings={"max_tokens": 10000},
-        )
-        humanized_chunk = result.output.strip()
-
-        if not humanized_chunk:
-            logger.error("LaTeX humanization failed, using original chunk")
-            humanized_chunk = chunk
-
-        humanized_chunks.append(humanized_chunk)
+        humanized_chunks.append(_humanize_chunk_with_completeness(chunk, model))
 
     return "\n\n".join(humanized_chunks)
