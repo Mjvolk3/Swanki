@@ -152,3 +152,18 @@ The post-refine pre-TTS scrubber pipeline is wired between `_strip_duplicate_ope
 `_CRITIQUE_PROMPT` gains three new numbered checks (12 INTER-SECTION BRIDGES — Theme 12, 13 REPEATED PHRASES — Theme 5, 14 SOURCE-TEXT CHRONOLOGY — Theme 10) and the prompt now asks the critic to populate `bridge_quality: bool` and `repeated_phrases: list[str]` on `LectureTranscriptFeedback`. The "DO NOT FLAG first-person framings" preamble carries through so book voice still survives the new dimensions.
 
 `_refine_transcript` runs `detect_repeated_phrases(current_transcript, n=5, threshold=3)` after each LLM critique returns. Detected phrases are merged into `critique_feedback.repeated_phrases` via `LectureTranscriptFeedback.model_validate(model.model_dump() | {...})` — `model_copy(update=...)` does NOT re-run validators in Pydantic 2, so the explicit dump/validate cycle is required to fire the validator that flips `done=False`. The next refine iteration injects an explicit phrase list ("REPEATED PHRASES (Theme 5): vary or remove these multi-word phrases that occur 3+ times -- ...") into the refiner's feedback so it knows exactly what to vary.
+
+## 2026.05.24 - `_gen_with_safety_retry` becomes a thin wrapper over the shared helper
+
+The biosec-refusal retry pattern (originally introduced here per 2026.04.26)
+is now shared via [[swanki.llm.safety]] so the same `EDU_CONTEXT_PREAMBLE` and
+`SAFETY_REFUSAL_MARKERS` apply uniformly across lecture, card generation,
+self-refine feedback, and self-refine output paths. Local
+`_SAFETY_REFUSAL_MARKERS` / `_EDU_CONTEXT_PREAMBLE` constants removed (one
+source of truth); the lecture-side `_gen_with_safety_retry` keeps its
+"return empty string on terminal failure" contract by wrapping the shared
+helper in a try/except that converts safety exceptions back into the empty
+sentinel its callers downstream expect (e.g., section-drop logic). No
+behavior change for existing lecture flows; the move enables structured-output
+agents to use the same retry pattern (see [[swanki.pipeline.pipeline]]
+2026.05.24).

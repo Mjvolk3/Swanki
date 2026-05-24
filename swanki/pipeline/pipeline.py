@@ -32,6 +32,7 @@ from ..llm.agents import (
     get_model_string,
     text_agent,
 )
+from ..llm.safety import with_safety_retry
 from ..models import (
     AudioTranscriptFeedback,
     CardFeedback,
@@ -1005,10 +1006,12 @@ MATHEMATICAL CONTENT PRIORITY (CRITICAL):
 
 Generate {adjusted_num_cards} regular Q&A cards now. Focus on the actual subject matter, not document structure."""
 
-        regular_result = card_gen_agent.run_sync(
+        regular_result = with_safety_retry(
+            card_gen_agent,
             regular_prompt,
             instructions="Generate ONLY regular Q&A flashcards. Do NOT create any cloze deletion cards.\n\nCRITICAL LENGTH REQUIREMENT:\n- Card answers (back) MUST be under 500 characters (HARD LIMIT - validation will fail otherwise)\n- Aim for 200-400 characters for optimal learning\n- Be concise and focus on key points only\n- Remove verbose explanations and unnecessary words\n\nCRITICAL: ALL mathematical variables, symbols, and expressions MUST be wrapped in LaTeX delimiters using $ for inline math. For example: $W$, $X_j$, $h(W) = 0$, $W_{ji} \\neq 0$. NEVER write bare mathematical symbols without LaTeX.",
             model=get_model_string(llm_config),
+            label="regular cards",
         )
         regular_response = regular_result.output
 
@@ -1081,10 +1084,12 @@ BAD Examples (AVOID):
 REMEMBER: EVERY cloze card MUST have tags just like regular cards!
 Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formulas, and facts from the actual content."""
 
-            cloze_result = card_gen_agent.run_sync(
+            cloze_result = with_safety_retry(
+                card_gen_agent,
                 cloze_prompt,
                 instructions="Generate ONLY cloze deletion flashcards using {{c1::text}} syntax.\n\nCRITICAL LENGTH REQUIREMENT:\n- Cloze card BACKS should be MINIMAL (ideally empty, max 100 characters)\n- Front content (full text with cloze) must stay under 500 characters total\n- Keep content concise - cloze cards are meant to be brief\n\nCRITICAL LaTeX RULES:\n1. ALL mathematical variables and expressions MUST use LaTeX with $ delimiters\n2. When math is NOT inside cloze markers, wrap it properly: $W$, $X_j$, $h(W) = 0$\n3. When math IS inside cloze markers, still use LaTeX: {{c1::$E = mc^2$}}\n4. NEVER write bare math symbols without LaTeX (WRONG: W, X_j, W_{ji})",
                 model=get_model_string(llm_config),
+                label="cloze cards",
             )
             cloze_response = cloze_result.output
         else:
@@ -1294,13 +1299,15 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
             # Generate cards using pydantic-ai
             try:
-                img_result = card_gen_agent.run_sync(
+                img_result = with_safety_retry(
+                    card_gen_agent,
                     image_prompt,
                     instructions=cards_prompts.get(
                         "system",
                         "You are an expert at creating educational flashcards that test understanding of visual content.",
                     ),
                     model=get_model_string(llm_config),
+                    label=f"image card {image_info['path']}",
                 )
                 response = img_result.output
 
@@ -1597,13 +1604,15 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
                 # Generate cards using pydantic-ai
                 try:
-                    img_result2 = card_gen_agent.run_sync(
+                    img_result2 = with_safety_retry(
+                        card_gen_agent,
                         image_prompt,
                         instructions=cards_prompts.get(
                             "system",
                             "You are an expert at creating educational flashcards that test understanding of visual content.",
                         ),
                         model=get_model_string(llm_config),
+                        label=f"image card {image_info['path']}",
                     )
                     response = img_result2.output
 
@@ -2664,7 +2673,8 @@ Check for these issues in {card_type} cards:
 If ALL cards are high quality AND educationally valuable, set done=True.
 Otherwise provide specific, actionable feedback focused on what matters for learning."""
 
-        eval_result = card_feedback_agent.run_sync(
+        eval_result = with_safety_retry(
+            card_feedback_agent,
             f"""
 Document context:
 Title: {doc_summary.title}
@@ -2682,6 +2692,7 @@ Cards should focus on these fundamental ideas, not trivial notation or random de
 """,
             instructions=system_prompt,
             model=get_model_string(llm_config),
+            label=f"{card_type} card feedback",
         )
         return eval_result.output
 
@@ -2760,7 +2771,8 @@ Example fixes:
         llm_config = models_config.get("llm", {})
 
         try:
-            refine_result = card_gen_agent.run_sync(
+            refine_result = with_safety_retry(
+                card_gen_agent,
                 f"""
 Original cards:
 {cards_text}
@@ -2795,6 +2807,7 @@ WRITING STYLE IMPROVEMENTS:
 5. Ensure content sounds good when read aloud
 6. Use varied sentence structure for better engagement""",
                 model=get_model_string(llm_config),
+                label=f"{card_type} card refine",
             )
             return refine_result.output
         except (ValidationError, Exception) as e:
