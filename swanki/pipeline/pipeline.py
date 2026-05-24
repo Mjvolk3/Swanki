@@ -809,15 +809,21 @@ Image summaries:
 {image_summaries}""",
         )
 
-        # Generate summary using pydantic-ai
+        # Generate summary using pydantic-ai. Wrapped with the biosec-refusal
+        # retry because this is the call where iCBF `qu` (CRISPR-GPT) and
+        # `swanson` (SARS-CoV-2 nanobody) died on the 2026.05.24 cleanup run --
+        # the prior 2026.05.23 commit only wrapped card-gen call sites, but
+        # OpenAI's biosec guard tightened to also refuse here.
         models_config = self.config.get("models", {}).get("models", {})
         llm_config = models_config.get("llm", {})
-        result = document_summary_agent.run_sync(
+        result = with_safety_retry(
+            document_summary_agent,
             user_prompt.format(
                 content=combined_content, image_summaries=image_summary_text
             ),
             instructions=system_prompt,
             model=get_model_string(llm_config),
+            label="document summary",
         )
 
         return result.output
@@ -2908,7 +2914,8 @@ WRITING STYLE IMPROVEMENTS:
         models_config = self.config.get("models", {}).get("models", {})
         llm_config = models_config.get("llm", {})
 
-        af_result = audio_feedback_agent.run_sync(
+        af_result = with_safety_retry(
+            audio_feedback_agent,
             f"""
 Transcript to evaluate:
 {transcript}
@@ -2921,6 +2928,7 @@ Acronyms in document: {doc_summary.acronyms}
 """,
             instructions="You are an expert in audio transcript quality for text-to-speech.",
             model=get_model_string(llm_config),
+            label=f"{card_type} audio feedback",
         )
         return af_result.output
 
@@ -2983,10 +2991,12 @@ Rewrite the transcript addressing all issues.
             },
         ]
 
-        rat_result = text_agent.run_sync(
+        rat_result = with_safety_retry(
+            text_agent,
             messages[1]["content"],
             instructions=messages[0]["content"],
             model=get_model_string(llm_config),
+            label=f"{card_type} audio refine",
         )
 
         return rat_result.output

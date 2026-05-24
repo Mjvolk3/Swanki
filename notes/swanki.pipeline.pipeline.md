@@ -139,3 +139,30 @@ of the module, then replace `agent.run_sync(prompt, instructions=..., model=...)
 with `with_safety_retry(agent, prompt, instructions=..., model=...,
 label="...")` at each call site. `label` shows up in retry / failure logs so
 operators can tell *which* call refused.
+
+## 2026.05.24 - Extend biosec-refusal retry to document_summary + audio feedback/refine
+
+Follow-up to the 2026.05.24 card-gen wrap. The iCBF cleanup run for `qu` and
+`swanson` died at `document_summary_agent.run_sync` (pipeline.py:815) -- the
+prior commit wrapped card-gen call sites but not the upstream
+document-summary call, where OpenAI's biosec guard now refuses both papers
+(it appears to have tightened in the 24h between the original wave-2 failures
+and the cleanup re-run; both papers previously got past document-summary on
+the first attempts).
+
+Three additional call sites now route through `with_safety_retry`:
+
+7. `generate_document_summary` -- `document_summary_agent.run_sync`
+   (pipeline.py:815). Critical: this fires right after image-summaries and
+   gates everything downstream (cards, audio).
+8. `_evaluate_audio_transcript` -- `audio_feedback_agent.run_sync`
+   (pipeline.py:2917). Defensive: synthesizes the full transcript for review.
+9. `_refine_audio_transcript` -- `text_agent.run_sync` (pipeline.py:2994).
+   Defensive: rewrites the transcript on feedback.
+
+Together with the six card-gen sites wrapped earlier today, every
+non-multimodal pydantic-ai agent call site in `pipeline.py` is now
+preamble-retry'd. (The multimodal `text_agent.run_sync` in
+`image_processor.py:265` takes a `[prompt, image_content]` list rather than a
+plain string, so the current string-only `with_safety_retry` doesn't fit;
+that site has not been a failure point empirically and is left unwrapped.)
