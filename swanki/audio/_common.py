@@ -594,10 +594,15 @@ def _tts_elevenlabs(
     _apply_speed(data, output_path, speed)
 
 
-# GPU 3 / port 8083 is reserved for MinerU OCR by default (see
-# scripts/free-gpu-for-mineru.sh). Override with SWANKI_FISH_PORTS to restore it.
+# Probe one port per GPU on the typical 4-GPU workstation. `_discover_fish_speech_servers`
+# health-checks each port at startup and uses only the responders, so missing
+# servers (e.g., on a 1-GPU laptop) are tolerated and a late-starting fish-3 is
+# auto-picked-up. MinerU runs briefly (~30-60s) per paper at the OCR step and
+# briefly contends with fish-3 on GPU 3 during that window; outside that
+# window, fish-3 has full use of GPU 3 (~99% of each paper's runtime).
+# Override SWANKI_FISH_PORTS to widen for >4-GPU machines.
 _FISH_SPEECH_PORTS = [
-    int(p) for p in os.getenv("SWANKI_FISH_PORTS", "8080,8081,8082").split(",")
+    int(p) for p in os.getenv("SWANKI_FISH_PORTS", "8080,8081,8082,8083").split(",")
 ]
 
 # Thread-safe round-robin state for multi-server distribution

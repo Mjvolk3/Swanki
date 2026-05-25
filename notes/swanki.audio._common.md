@@ -286,3 +286,20 @@ inside `humanize_latex`'s body), matching `card.py`/`summary.py`/
 See [[swanki.audio.reading]] (2026.05.22) for the matching Pass-2
 self-healing in `reading.py` and the removal of the paper-level
 `_READING_COVERAGE_MIN_RATIO` hard-fail.
+
+## 2026.05.25 - Default Fish port probe list back to 4 ports (auto-use all GPUs)
+
+Reversed the 2026-05-21 exclusion of port 8083. The discovery code at
+`_discover_fish_speech_servers` already health-checks each port and tolerates
+missing servers, so the right behavior is to probe one port per GPU and let
+discovery decide which are alive -- not to hardcode-exclude a port "for
+MinerU" when MinerU sits idle for ~99% of each paper's runtime.
+
+Trade-off accepted: when MinerU runs its ~30-60s OCR pass at paper start,
+fish-3 contends with it on GPU 3. For the next ~3h of audio generation
+(complementary cards, summary, reading, lecture), fish-3 has full use of
+GPU 3. Net: ~30-60s contention buys ~3h of extra TTS capacity per paper.
+
+User flagged the prior design as too low-level: capacity should follow
+GPU count via probing, not be configured via env var.
+`SWANKI_FISH_PORTS` remains as an override for >4-GPU machines.
