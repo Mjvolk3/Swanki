@@ -30,15 +30,13 @@ import zipfile
 from pathlib import Path
 
 import yaml
+from _swanki_zotero_artifacts import latest_zips
 from dotenv import load_dotenv
 from pyzotero import zotero
 
 load_dotenv()
 
 BOOK_TYPES = {"book", "bookSection"}
-ZIP_PATTERN = re.compile(
-    r"^(?P<key>.+)-(?P<ts>\d{8}T\d{4})-(?P<hash>[a-f0-9]+)\.zip$"
-)
 MP3_PATTERN = re.compile(
     r"^(?P<key>.+)-(?P<type>summary|reading|lecture)"
     r"(?:-\d{8}T\d{4}-[a-f0-9]+)?\.mp3$"
@@ -100,42 +98,6 @@ def fetch_items(zot: zotero.Zotero, tag: str | None) -> list[dict]:
     return items
 
 
-def latest_zips(zot: zotero.Zotero, item_key: str) -> list[dict]:
-    """Return one zip per distinct content prefix on the item — the newest of each.
-
-    A book item may carry multiple zips (one per chapter, with prefix like
-    ``{citation_key}_01-...`` and ``{citation_key}_02-...``). Earlier code
-    picked only the single newest zip across the item, which discarded all
-    but one chapter. Group by prefix, then keep the newest in each group.
-    """
-    by_prefix: dict[str, tuple[str, dict]] = {}
-    for child in zot.children(item_key):
-        name = child.get("data", {}).get("filename", "")
-        if not name.endswith(".zip"):
-            continue
-        m = ZIP_PATTERN.match(name)
-        if not m:
-            continue
-        prefix = m.group("key")
-        ts = m.group("ts")
-        prev = by_prefix.get(prefix)
-        if prev is None or ts > prev[0]:
-            by_prefix[prefix] = (ts, child)
-    return [c for _, c in by_prefix.values()]
-
-
-def latest_zip(zot: zotero.Zotero, item_key: str) -> dict | None:
-    """Back-compat: newest zip (single) — defers to ``latest_zips`` and
-    returns the most recent if any exist."""
-    zips = latest_zips(zot, item_key)
-    if not zips:
-        return None
-    return max(
-        zips,
-        key=lambda c: ZIP_PATTERN.match(c["data"]["filename"]).group("ts"),  # type: ignore[union-attr]
-    )
-
-
 def extract_audio(
     zip_bytes: bytes,
     audiotypes: set[str],
@@ -183,6 +145,10 @@ def extract_audio(
 def sync_projection(
     name: str, cfg: dict, abs_root: Path, api_key: str
 ) -> None:
+    """Sync audio mp3s for one projection, unless ``push_audio`` is false."""
+    if not cfg.get("push_audio", True):
+        print(f"\n=== Projection: {name} -- push_audio=false, skipping audio ===")
+        return
     lib_id, lib_type = resolve_library(cfg["zotero"])
     tag = cfg["zotero"].get("tag")
     audiotypes = set(cfg["audiotypes"])

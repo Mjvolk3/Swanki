@@ -19,3 +19,9 @@ Books that share a single Zotero parent item (e.g. Bechtel — one citation key,
 - Refactored to `latest_zips(zot, item_key) -> list[dict]`. Groups attachment children by zip-name prefix (the `{key}` capture in `ZIP_PATTERN`), keeps the newest within each prefix, and returns one zip per chapter. The legacy `latest_zip(...)` wrapper is preserved for callers that genuinely want the single newest.
 - `sync_projection` now iterates all returned zips per item and accumulates extractions across them.
 - `zot.file(att["key"])` is wrapped in try/except so a stale Zotero attachment whose file is missing logs a warning and is skipped, instead of aborting the whole projection. The previous single-zip path tolerated this incidentally because it only ever fetched one attachment.
+
+## 2026.05.27 - latest_zips extracted into the shared artifact helper
+
+`ZIP_PATTERN`, `latest_zips`, and `latest_zip` moved into [[scripts._swanki_zotero_artifacts]] so the new [[scripts.swanki_anki_sync]] can mirror the same "newest attachment per content-prefix" logic for apkgs (`latest_apkgs`). `swanki_abs_sync.py` imports `latest_zips` from the helper; no behavior change on the audio side.
+
+Also added a `push_audio: bool` early-return at the top of `sync_projection` (default `True` when the key is absent). Set `push_audio: false` on a projection in `infra/abs/projections.yml` to suppress its audio extraction while still letting the anki side push apkgs for the same projection. Existing michaelvolk / mv-ll projections inherit the `True` default and behave exactly as before.
