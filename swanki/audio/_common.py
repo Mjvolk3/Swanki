@@ -917,8 +917,25 @@ def validate_audio_file(
 def filter_metadata(content: str) -> str:
     """Remove academic paper metadata (authors, affiliations, references).
 
-    Filters section-level blocks (References, Acknowledgments, Author info)
-    and individual lines (emails, affiliations, postal addresses).
+    Two-tier skip logic:
+
+    - **section_skip_patterns** enter *persistent* skip-mode until a new H1/H2
+      heading that doesn't itself match a skip pattern appears. Used for
+      whole-section omissions (References, Acknowledgments, Author Info, etc.).
+    - **line_skip_patterns** skip only the matched line — no persistent state.
+      Used for single-line metadata (DOI URL, e-mail, "Published online:",
+      LaTeX `\\title{...}`) that should be removed without dragging the rest
+      of the document into skip-mode.
+
+    The prior implementation lumped both into one list and triggered persistent
+    skip-mode on the DOI URL pattern. For Nature-style papers where the body
+    uses H1 (``# Article``, ``# Discussion``) rather than H2, skip-mode never
+    exited — swansonVirtualLabAI2025's reading stripped to 0.1% of source
+    because line 2 of page 1 was just the DOI URL.
+
+    Skip-mode now also exits on H1 headings (not just H2), so Nature-style
+    body sections after a triggered section block correctly bring skip-mode
+    back off.
 
     Args:
         content: Raw markdown content from an academic paper.
@@ -930,18 +947,23 @@ def filter_metadata(content: str) -> str:
     filtered_lines: list[str] = []
     skip_mode = False
 
-    skip_patterns = [
+    # Patterns that toggle persistent skip-mode until the next non-skip H1/H2.
+    section_skip_patterns = [
         r"^##?\s*References?\s*$",
         r"^##?\s*Competing\s+interests?\s*$",
         r"^##?\s*Author\s+",
         r"^##?\s*Acknowledg(?:e)?ments?\s*$",
         r"^\\author\{",
-        r"^\s*e-mail:",
-        r"Published online:",
-        r"https://doi\.org/",
-        r"^\\title\{",
         r"^\\end\{document\}",
-        r"^\s*\d+\.\s+[A-Z][a-z]+,\s+[A-Z]\.",
+        r"^\s*\d+\.\s+[A-Z][a-z]+,\s+[A-Z]\.",  # numbered bibliography entry
+    ]
+
+    # Patterns that skip ONLY the matched line; no persistent state.
+    line_skip_patterns = [
+        r"^\s*e-mail:",
+        r"^\s*Published online:",
+        r"^\s*https://doi\.org/",
+        r"^\\title\{",
     ]
 
     inline_skip_patterns = [
@@ -956,7 +978,11 @@ def filter_metadata(content: str) -> str:
     ]
 
     for line in lines:
-        if any(re.search(pattern, line, re.IGNORECASE) for pattern in skip_patterns):
+        # Section-level triggers enter persistent skip-mode.
+        if any(
+            re.search(pattern, line, re.IGNORECASE)
+            for pattern in section_skip_patterns
+        ):
             skip_mode = True
             continue
 
@@ -966,13 +992,22 @@ def filter_metadata(content: str) -> str:
             skip_mode = True
             continue
 
-        if line.startswith("##") and skip_mode:
+        # Exit skip-mode on a non-skip H1/H2 heading (was H2-only before;
+        # Nature-style papers use H1 for body section headers).
+        if line.startswith("#") and skip_mode:
             if not any(
-                re.search(pattern, line, re.IGNORECASE) for pattern in skip_patterns
+                re.search(pattern, line, re.IGNORECASE)
+                for pattern in section_skip_patterns
             ):
                 skip_mode = False
 
         if not skip_mode:
+            # Line-level triggers skip only the current line.
+            if any(
+                re.search(pattern, line, re.IGNORECASE)
+                for pattern in line_skip_patterns
+            ):
+                continue
             if not any(re.search(p, line) for p in inline_skip_patterns):
                 filtered_lines.append(line)
 
@@ -1878,11 +1913,21 @@ def _humanize_chunk_with_completeness(chunk: str, model: str) -> str:
                 "of surrounding prose verbatim. Do not summarize, skip, or "
                 "condense any sentence even if it feels repetitive."
             )
-        result = text_agent.run_sync(
+        # Biosec-refusal-aware: gpt-5.5 can return invalid_prompt on
+        # biology-adjacent content (CRISPR, viral material) even inside
+        # humanize_latex's narrow "convert math/symbols only" task. Wrap with
+        # the educational-context preamble retry so qu/swanson-class papers
+        # can pass this stage. with_safety_retry re-raises if all preamble
+        # retries are also refused, which is the correct terminal -- this
+        # chunk's CONTENT is unrenderable, not a token-count problem.
+        from ..llm.safety import with_safety_retry
+        result = with_safety_retry(
+            text_agent,
             chunk,
             instructions=instructions,
             model=model,
             model_settings={"max_tokens": 10000},
+            label="humanize_latex chunk",
         )
         candidate = result.output.strip()
         candidate_ratio = (

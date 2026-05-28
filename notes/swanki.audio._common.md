@@ -303,3 +303,45 @@ GPU 3. Net: ~30-60s contention buys ~3h of extra TTS capacity per paper.
 User flagged the prior design as too low-level: capacity should follow
 GPU count via probing, not be configured via env var.
 `SWANKI_FISH_PORTS` remains as an override for >4-GPU machines.
+
+## 2026.05.27 - `filter_metadata` two-tier skip logic + biosec retry on humanize_latex
+
+Two related fixes after the swansonVirtualLabAI2025 reading came out at 24
+seconds despite the per-chunk completeness fix logging "87.9% / 0 fallbacks":
+
+**1. `filter_metadata` was stripping 99.9% of Nature-style papers.** The
+prior implementation lumped section-level patterns (References,
+Acknowledgments) and line-level patterns (DOI URL, e-mail) into one
+`skip_patterns` list and triggered persistent skip-mode on any match.
+swansonVirtualLabAI2025's page-1 line 2 was just `https://doi.org/...` —
+the URL pattern caught it, set `skip_mode = True`, and skip-mode never
+exited because Nature OCR uses H1 (`# Article`, `# Discussion`) for body
+sections and the exit check was `line.startswith("##")` (H2 only). Result:
+74,426 chars of source → 65 chars of filtered output (just the title).
+
+Split into two lists:
+- `section_skip_patterns` -- enter *persistent* skip-mode (References,
+  Competing interests, Author block, Acknowledgments, bibliography entries,
+  `\\author{`, `\\end{document}`).
+- `line_skip_patterns` -- skip ONLY the matched line, no state (DOI URL,
+  e-mail, "Published online:", `\\title{`). These were the ones that
+  shouldn't drag the rest of the doc into skip-mode.
+
+Also broadened the skip-mode exit from `startswith("##")` to
+`startswith("#")` so Nature-style H1 body headings bring it back off.
+
+Re-test results: swanson 0.1%→85.7%, singh 32.1%→90.8%, qu 78.9%→97.6%,
+aygun 100%→100%, hu/fernandez each ≥99.5% kept. No regressions.
+
+**2. `humanize_latex` chunks now wrap their `text_agent.run_sync` call in
+`with_safety_retry`** (from [[swanki.llm.safety]]). qu died at exactly
+this call last night despite all other biosec-prone agents being wrapped
+in the 2026.05.24 commit. `text_agent` was the last unprotected gate in
+the reading pipeline. Re-raises after preamble retries are exhausted --
+the chunk-level token-ratio fallback below only engages on legit short
+outputs, not biosec refusals (those mean the content itself is
+unrenderable as audio, not under-tokenized).
+
+See [[swanki.audio.reading]] (2026.05.27) for the matching Pass-2 wrap
+and the implication chain (filter_metadata bug → tiny input → tiny
+transcript → 24s reading audio).

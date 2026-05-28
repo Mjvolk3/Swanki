@@ -135,3 +135,18 @@ so the LLM doesn't preemptively "smooth" or de-dupe within a chunk:
 
 `text_agent` lifted to module level in `_common.py` for consistent
 mock-patching (matches `card.py`/`summary.py`/`lecture.py`/`reading.py`).
+
+## 2026.05.27 - Pass-2 chunk generation now safety-retry-aware
+
+Mirror of the [[swanki.audio._common]] 2026.05.27 wrap of humanize_latex:
+`_pass2_chunk_with_completeness`'s `text_agent.run_sync` is now wrapped in
+`with_safety_retry`. Same rationale -- same content that biosec-refuses in
+Pass-1 can refuse in Pass-2 (same prompts, same model). The chunk-level
+token-ratio retry+fallback below the safety wrap only engages on legit
+short outputs; a biosec refusal across all 3 preamble attempts re-raises
+because that chunk's content is unrenderable as audio.
+
+Combined with the 2026.05.27 `filter_metadata` fix that prevented Nature
+papers from being 99.9%-stripped upstream, qu and swanson should now be
+able to land cleanly even though their content (CRISPR / SARS-CoV-2
+nanobody) is the most biosec-prone in the iCBF batch.

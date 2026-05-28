@@ -13,6 +13,7 @@ from pathlib import Path
 import tiktoken
 
 from ..llm.agents import text_agent
+from ..llm.safety import with_safety_retry
 from ..utils.formatting import humanize_citation_key
 from ._common import (
     DEFAULT_VOICE_ID,
@@ -114,11 +115,19 @@ def _pass2_chunk_with_completeness(
                 "Rule #9 (no repetition) applies only WITHIN this chunk; do "
                 "not assume earlier chunks already covered anything."
             )
-        result = text_agent.run_sync(
+        # Biosec-refusal-aware: same content that triggers gpt-5.5's safety
+        # guard in document_summary / card-gen can refuse here too. Wrap with
+        # the educational-context preamble retry; re-raises after the 3 inner
+        # preamble attempts so the chunk-level token-ratio fallback below
+        # only engages on legit short outputs, not biosec refusals (those
+        # mean the content is unrenderable, not under-tokenized).
+        result = with_safety_retry(
+            text_agent,
             chunk,
             instructions=instructions,
             model=model,
             model_settings={"max_tokens": 8000},
+            label="reading Pass-2 chunk",
         )
         candidate = result.output.strip()
         candidate_ratio = (
