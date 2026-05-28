@@ -166,3 +166,40 @@ preamble-retry'd. (The multimodal `text_agent.run_sync` in
 `image_processor.py:265` takes a `[prompt, image_content]` list rather than a
 plain string, so the current string-only `with_safety_retry` doesn't fit;
 that site has not been a failure point empirically and is left unwrapped.)
+
+## 2026.05.28 - Per-segment skip-on-exhausted-retry for biosec-stuck content
+
+`process_full`'s per-segment card-gen loop (around line 431) now wraps the
+`self._generate_cards_for_segment(...)` call in a try/except that catches
+biosec refusals after all preamble retries are exhausted. Swanson's failure
+mode last night was exactly this: 4 out of 5 biosec hits resolved via the
+[[swanki.llm.safety]] `with_safety_retry` preamble, but one specific
+SARS-CoV-2 spike-binding segment exhausted all 3 retries and the exception
+propagated up, killing the run after substantial progress (OCR, image
+summaries, doc summary, many other cards all completed cleanly).
+
+Implementation:
+
+```python
+try:
+    seg_cards = self._generate_cards_for_segment(seg_idx, ...)
+except Exception as e:
+    err = str(e)
+    if any(m in err for m in _SAFETY_MARKERS):
+        logger.error(
+            "Segment %d card-gen biosec-refused after all preamble "
+            "retries; skipping segment and continuing (lose %d cards "
+            "from %s)", seg_idx, cards_per_seg, seg_file.name,
+        )
+        continue
+    raise
+```
+
+Trade-off: an irrecoverable biosec segment loses its ~3 cards rather than
+killing the whole paper. Net for swanson on the next run: should land with
+n-cards-per-segment * (n_segments - 1) regular cards instead of failing
+outright. Non-biosec exceptions still raise.
+
+`_SAFETY_MARKERS` imported locally inside the function rather than at the
+module top to keep the per-segment skip-logic discoverable next to its
+call site (the file already has plenty of top-level imports).

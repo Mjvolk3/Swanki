@@ -40,11 +40,39 @@ EDU_CONTEXT_PREAMBLE: str = (
 )
 
 
+def _augment_with_preamble(message: Any, preamble: str) -> Any:
+    """Prepend ``preamble`` to ``message`` for a safety-refusal retry.
+
+    Handles three shapes:
+
+    - ``str`` -> ``preamble + message``
+    - ``list`` (multimodal, e.g. ``[text_prompt, BinaryContent(image)]``) ->
+      preamble prepended to the first ``str`` element in the list; image /
+      non-text elements left untouched. If no ``str`` element exists, the
+      preamble is inserted as a new first element.
+    - anything else -> ``preamble + str(message)``.
+
+    The list form is what image_processor.py:265 sends for image summaries:
+    ``[prompt_string, BinaryContent | ImageUrl]``. Without this handling the
+    wrapper would crash trying to concatenate ``str + list``.
+    """
+    if isinstance(message, str):
+        return preamble + message
+    if isinstance(message, list):
+        result = list(message)
+        for i, elem in enumerate(result):
+            if isinstance(elem, str):
+                result[i] = preamble + elem
+                return result
+        return [preamble, *result]
+    return preamble + str(message)
+
+
 def with_safety_retry(
     agent: Agent,
-    user_message: str,
+    user_message: Any,
     *,
-    instructions: str,
+    instructions: str | None = None,
     model: str,
     model_settings: dict | None = None,
     max_safety_retries: int = 2,
@@ -62,12 +90,17 @@ def with_safety_retry(
 
     Works with any pydantic-ai ``Agent`` regardless of output type, so callers
     needing structured outputs (``CardGenerationResponse``, ``CardFeedback``,
-    ...) can wrap their calls the same way as plain ``text_agent``.
+    ...) can wrap their calls the same way as plain ``text_agent``. Also
+    accepts list-shaped messages for multimodal calls; see
+    :func:`_augment_with_preamble`.
 
     Args:
         agent: A pydantic-ai ``Agent`` instance.
-        user_message: The original user message.
-        instructions: System prompt to pass through.
+        user_message: The original user message -- ``str`` for normal calls or
+            ``list`` for multimodal (``[prompt, image_content, ...]``).
+        instructions: Optional system prompt to pass through. Omitted from the
+            ``agent.run_sync`` call if ``None`` -- needed because some agents
+            (e.g. the image-summary call site) don't pass instructions.
         model: pydantic-ai model string (e.g. ``"openai:gpt-5.5"``).
         model_settings: Optional dict forwarded to ``agent.run_sync`` as
             ``model_settings`` (e.g. ``{"max_tokens": 8000}``). Omitted if None.
@@ -85,9 +118,12 @@ def with_safety_retry(
         immediately for non-safety exceptions).
     """
     attempts = [user_message] + [
-        EDU_CONTEXT_PREAMBLE + user_message for _ in range(max_safety_retries)
+        _augment_with_preamble(user_message, EDU_CONTEXT_PREAMBLE)
+        for _ in range(max_safety_retries)
     ]
-    kwargs_base = {"instructions": instructions, "model": model}
+    kwargs_base: dict = {"model": model}
+    if instructions is not None:
+        kwargs_base["instructions"] = instructions
     if model_settings is not None:
         kwargs_base["model_settings"] = model_settings
 

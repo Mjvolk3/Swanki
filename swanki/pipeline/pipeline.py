@@ -428,14 +428,33 @@ class Pipeline:
                 cards_per_seg = processing_config.get("cards_per_segment", 3)
 
                 last_image_page = -1
+                from ..llm.safety import SAFETY_REFUSAL_MARKERS as _SAFETY_MARKERS
                 for seg_idx, seg_file in enumerate(text_card_files):
-                    seg_cards = self._generate_cards_for_segment(
-                        seg_idx,
-                        text_card_files,
-                        doc_summary,
-                        context_radius=processing_config.get("context_radius", 1),
-                        num_cards=cards_per_seg,
-                    )
+                    # Tolerate biosec-exhausted-retry on one segment: with
+                    # gpt-5.5's biosec guard, a single problematic segment
+                    # (e.g. SARS-CoV-2 spike-binding content in swanson) can
+                    # exhaust the educational-context preamble retries.
+                    # Skip-with-log so the rest of the paper still lands;
+                    # other failure modes still raise.
+                    try:
+                        seg_cards = self._generate_cards_for_segment(
+                            seg_idx,
+                            text_card_files,
+                            doc_summary,
+                            context_radius=processing_config.get("context_radius", 1),
+                            num_cards=cards_per_seg,
+                        )
+                    except Exception as e:
+                        err = str(e)
+                        if any(m in err for m in _SAFETY_MARKERS):
+                            logger.error(
+                                "Segment %d card-gen biosec-refused after all "
+                                "preamble retries; skipping segment and "
+                                "continuing (lose %d cards from %s)",
+                                seg_idx, cards_per_seg, seg_file.name,
+                            )
+                            continue
+                        raise
                     all_cards.extend(seg_cards)
 
                     if image_cards_enabled:

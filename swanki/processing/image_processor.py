@@ -16,6 +16,7 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from ..llm.agents import text_agent
+from ..llm.safety import with_safety_retry
 
 logger = logging.getLogger(__name__)
 
@@ -262,10 +263,20 @@ Keep the summary concise but informative (2-4 sentences)."""
             else:
                 image_content = ImageUrl(url=image_url)
 
-        result = text_agent.run_sync(
+        # Biosec-refusal-aware: image-summary calls are the very first LLM
+        # contact a paper makes after OCR, and biology figures (CRISPR maps,
+        # SARS-CoV-2 spike structures) trip OpenAI's biosec guard. The
+        # multimodal call form ``[prompt, image_content]`` is now handled by
+        # with_safety_retry via _augment_with_preamble (prepends the
+        # educational-context preamble to the text element on retry; image
+        # left untouched). Without this wrap, qu died at 67 seconds on its
+        # first CRISPR figure.
+        result = with_safety_retry(
+            text_agent,
             [prompt, image_content],
             model=self.model,
             model_settings={"max_tokens": 1024, "temperature": 0.3},
+            label="image summary",
         )
         summary: str = result.output.strip()
         logger.debug(f"Generated summary for image: {summary[:50]}...")

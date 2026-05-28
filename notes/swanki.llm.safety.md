@@ -54,3 +54,27 @@ See [[swanki.pipeline.pipeline]] (2026.05.24) for the six wrapped call sites
 that unblock biology-content papers, and [[swanki.audio.lecture]] (2026.05.24)
 for the refactor that makes lecture.py's helper a thin wrapper around this
 shared one.
+
+## 2026.05.28 - Multimodal list-message support + optional instructions
+
+Two extensions for the final qu/swanson attempt:
+
+- **`_augment_with_preamble` helper** -- handles three message shapes: `str`
+  (preamble prepended), `list` (preamble prepended to the first `str` element,
+  image / non-text elements pass through unchanged), or other (preamble
+  prepended to `str(message)`). This is what `with_safety_retry` calls when
+  augmenting the message for a retry. Without it, the multimodal
+  image-summary call in `image_processor.py:265` would crash on retry.
+- **`instructions` is now optional** (defaults to `None`, omitted from the
+  `agent.run_sync` call when not provided). Needed because the
+  image-summary call site uses `text_agent.run_sync([prompt, image], ...)`
+  without a separate system prompt -- the text portion of the message IS
+  the instructions. Forwarding `instructions=None` previously would crash
+  pydantic-ai's signature; omitting the kwarg avoids that.
+
+The qu paper hit biosec on its first CRISPR figure at the image-summary
+call (which is now wrapped). The swanson paper got past doc-summary + many
+cards but exhausted all 3 preamble retries on one SARS-CoV-2-binding
+segment; the pipeline now has a segment-level try/except (see
+[[swanki.pipeline.pipeline]] 2026.05.28) that skips and continues on
+exhausted-retry biosec refusal.
