@@ -22,6 +22,7 @@ from ..llm.agents import (
     get_model_string,
     problem_card_gen_agent,
     problem_enumeration_agent,
+    problem_pairing_agent,
 )
 from ..models.cards import PlainCard
 from ..models.document import DocumentSummary
@@ -32,6 +33,7 @@ from ..models.problem_set import (
     ProblemEnumerationResponse,
     ProblemLocation,
     ProblemPairing,
+    ProblemPairingResponse,
     ProblemProvenance,
     ProblemTag,
     ProblemUnit,
@@ -461,6 +463,46 @@ def _try_pair_or_unpaired(
     return False
 
 
+_EXERCISES_HEADING = re.compile(
+    r"^#{1,3}\s+Exercises\b", re.MULTILINE | re.IGNORECASE
+)
+# Bishop-style worked solutions in a separate manual start with a bare
+# ``N.M`` followed by an English word — NO difficulty marker like ``(?)``,
+# ``($\star$)``, ``(* *)`` (those mark problem statements). MinerU strips
+# the ``Solutions N.M-N.K / Chapter N <Title>`` running header, so we
+# detect the boundary by this body-shape signal rather than a heading.
+_SOLUTION_BODY_START = re.compile(
+    r"^\d+\.\d+\s+(?![\(\$])[A-Za-z]",
+    re.MULTILINE,
+)
+
+
+def _partition_statement_solution_regions(
+    full_text: str,
+) -> tuple[str, str | None]:
+    """Split a packed-document into (statements_region, solutions_region).
+
+    Bishop-style packed PDFs concatenate the book chapter (ending with a
+    ``# Exercises`` section whose problems carry difficulty markers like
+    ``(?)``, ``($\\star$)``, ``(* *)``) and a slice of the separate solution
+    manual whose worked solutions are numbered as bare ``N.M`` followed by
+    plain English text. The boundary is the first such bare ``N.M ...``
+    line that appears AFTER the ``Exercises`` heading.
+
+    When the chapter has no ``Exercises`` heading, or no solution-body line
+    is found after it (Schaum's: inline Q&A, no separate solution span),
+    return ``(full_text, None)`` so callers fall back to the legacy
+    single-region path.
+    """
+    ex = _EXERCISES_HEADING.search(full_text)
+    if ex is None:
+        return full_text, None
+    sol = _SOLUTION_BODY_START.search(full_text, ex.end())
+    if sol is None:
+        return full_text, None
+    return full_text[: sol.start()], full_text[sol.start():]
+
+
 def enumerate_problems(
     clean_md_files: list[Path], chapter_id: str | None = None
 ) -> list[ProblemUnit]:
@@ -470,6 +512,12 @@ def enumerate_problems(
     review-subtype enumerators (Multiple Choice, Matching, True/False,
     Completion) run, each anchored on its inline section divider. Returns
     empty list if no items match.
+
+    For Bishop-style packed PDFs (chapter Exercises + separate-manual
+    solutions concatenated), only the statements region is scanned for
+    theory-problems — bare ``N.M`` worked-solution bodies on the right of
+    ``_partition_statement_solution_regions`` would otherwise be enumerated
+    as duplicate "statements".
 
     Args:
         clean_md_files: Per-page cleaned markdown files.
@@ -481,8 +529,11 @@ def enumerate_problems(
     """
     problems: list[ProblemUnit] = []
     full_text = "\n\n".join(f.read_text() for f in clean_md_files)
+    statements_text, _solutions_region = _partition_statement_solution_regions(
+        full_text
+    )
 
-    for m in _THEORY_PROBLEM.finditer(full_text):
+    for m in _THEORY_PROBLEM.finditer(statements_text):
         chap, num, body = m.group(1), m.group(2), m.group(3).strip()
         # First paragraph = statement; rest = solution.
         parts = body.split("\n\n", 1)
@@ -673,7 +724,47 @@ def pair_problems_across_pages(
                     ):
                         used_regex = True
 
-    method: Literal["regex", "llm", "mixed"] = "regex" if used_regex else "regex"
+    # Stage 3: LLM content-pairing for problems still without a solution.
+    # Bishop-style separate solution manuals carry no `Solution N.M` markers,
+    # so Stages 1-2 never bridge the statement → solution gap; the agent
+    # matches by content. Omits unmatchable problems (per prompt contract);
+    # `audit_coverage` + `allow_unsolved` enforce the gap.
+    used_llm = False
+    sm_config = config.get("pipeline", {}).get("solution_manual", {})
+    if sm_config.get("stage3_enabled", True):
+        unpaired = [p for p in pairings if not p.solutions]
+        _, solutions_region = _partition_statement_solution_regions(full_text)
+        if unpaired and solutions_region:
+            prompts_root = config.get("prompts", {}).get("prompts", {})
+            sm_prompts = prompts_root.get("solution_manual", {})
+            system_prompt = sm_prompts.get("problem_pairing", "")
+            problems_block = "\n".join(
+                f"- {p.problem_id}: {p.statement.text[:300]}" for p in unpaired
+            )
+            user_prompt = (
+                "Unpaired problems (id: statement excerpt):\n"
+                f"{problems_block}\n\n"
+                "Solutions region (worked solutions, numbered as bare `N.M`):\n"
+                f"{solutions_region}"
+            )
+            models_config = config.get("models", {}).get("models", {}).get("llm", {})
+            result = problem_pairing_agent.run_sync(
+                user_prompt,
+                instructions=system_prompt,
+                model=get_model_string(models_config),
+            )
+            response: ProblemPairingResponse = result.output
+            for loc in response.solutions:
+                pair = pairings_by_id.get(loc.problem_id)
+                if pair is not None:
+                    pair.solutions.append(loc)
+                    used_llm = True
+
+    method: Literal["regex", "llm", "mixed"] = (
+        "mixed" if used_llm and used_regex
+        else "llm" if used_llm
+        else "regex"
+    )
 
     return PairingResult(
         pairings=pairings,

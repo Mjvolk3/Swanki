@@ -24,6 +24,7 @@ IMAGE_RE = re.compile(r"!\[.*?\]\((.*?)\)")
 AUDIO_LINK_RE = re.compile(r"\[audio(?:-front|-back)?\]\((.*?)\)")
 MATH_FENCE_RE = re.compile(r"```+\s*([$]{1,2}[\s\S]*?[$]{1,2})\s*```+", re.DOTALL)
 HR_SPLIT_RE = re.compile(r"^[*-]{3,}\s*$")
+USER_FEEDBACK_RE = re.compile(r"^\s*<!--\s*user-feedback:\s*(.*?)\s*-->\s*$")
 
 
 # ── Module-level card-processing functions ──────────────────────────────
@@ -133,6 +134,20 @@ def extract_cards(lines: list[str]) -> list[dict[str, Any]]:
         heading = lines[start][3:].strip()
         body = lines[start + 1 : end]
 
+        # Strip user-feedback marker out of the body before any other
+        # processing. The marker is a single line of the form
+        # ``<!-- user-feedback: TEXT -->`` and surfaces as the
+        # ``user_feedback`` key on the card dict (empty when absent).
+        user_feedback = ""
+        filtered_body: list[str] = []
+        for line in body:
+            m = USER_FEEDBACK_RE.match(line)
+            if m:
+                user_feedback = m.group(1)
+            else:
+                filtered_body.append(line)
+        body = filtered_body
+
         tags: list[str] = []
         while body:
             last_line = body[-1].strip()
@@ -167,7 +182,14 @@ def extract_cards(lines: list[str]) -> list[dict[str, Any]]:
         else:
             logger.warning(f"No tags found for card: {heading[:50]}...")
 
-        cards.append({"front": front, "back": back, "tags": tags})
+        cards.append(
+            {
+                "front": front,
+                "back": back,
+                "tags": tags,
+                "user_feedback": user_feedback,
+            }
+        )
 
     return cards
 
@@ -731,15 +753,21 @@ class AnkiProcessor:
             back_content = self._prepare_for_anki(card["back"])
 
             # Prepare fields
+            user_feedback = card.get("user_feedback", "")
             if is_cloze:
                 # For cloze cards, put front content in Text and back content in Back Extra
                 fields = {
                     "Text": front_content,  # Front already has the cloze text and front audio
                     "Back Extra": back_content,  # All back content (including audio) goes in Back Extra
+                    "Feedback": user_feedback,
                 }
                 search_key = "Text"
             else:
-                fields = {"Front": front_content, "Back": back_content}
+                fields = {
+                    "Front": front_content,
+                    "Back": back_content,
+                    "Feedback": user_feedback,
+                }
                 search_key = "Front"
 
             # Check if card exists

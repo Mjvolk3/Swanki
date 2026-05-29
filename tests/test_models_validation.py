@@ -118,6 +118,50 @@ class TestDocumentSummary:
             )
 
 
+# ── PlainCard.user_feedback round-trip ───────────────────────────────────
+
+
+class TestPlainCardUserFeedback:
+    def test_default_is_empty_string(self) -> None:
+        card = _make_card()
+        assert card.user_feedback == ""
+
+    def test_to_md_omits_marker_when_empty(self) -> None:
+        md = _make_card().to_md()
+        assert "<!-- user-feedback:" not in md
+
+    def test_to_md_emits_marker_when_set(self) -> None:
+        card = PlainCard(
+            front=CardContent(text="What is X?"),
+            back=CardContent(text="Y"),
+            tags=["t"],
+            user_feedback="answer feels rote",
+        )
+        md = card.to_md()
+        assert "<!-- user-feedback: answer feels rote -->" in md
+        # Marker precedes the tag line
+        tag_idx = md.index("- #t")
+        marker_idx = md.index("<!-- user-feedback:")
+        assert marker_idx < tag_idx
+
+    def test_extract_cards_round_trip(self) -> None:
+        from swanki.processing.anki_processor import extract_cards
+
+        card = PlainCard(
+            front=CardContent(text="What is X?"),
+            back=CardContent(text="Y is the answer"),
+            tags=["t"],
+            user_feedback="needs example",
+        )
+        md = card.to_md()
+        parsed = extract_cards(md.splitlines())
+        assert len(parsed) == 1
+        assert parsed[0]["user_feedback"] == "needs example"
+        # Marker is stripped from front/back content
+        assert "user-feedback" not in parsed[0]["front"]
+        assert "user-feedback" not in parsed[0]["back"]
+
+
 # ── CardGenerationResponse ───────────────────────────────────────────────
 
 

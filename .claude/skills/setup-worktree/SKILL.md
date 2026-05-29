@@ -63,13 +63,15 @@ If the exit code is non-zero, fix lines that bash interprets as commands.
 
 ## Step 4: Verify import works
 
-Test that the package imports cleanly from the worktree:
+Test that the package imports cleanly from the worktree. Use the swanki conda env -- on gilahyper at `~/miniconda3/envs/swanki/bin/python` (per CLAUDE.md). Do NOT hardcode `/Users/...` paths.
 
 ```bash
-PYTHONPATH=<worktree_path> /Users/michaelvolk/miniconda3/bin/python -c "import swanki; print(swanki.__file__)"
+PYTHONPATH=<worktree_path> ~/miniconda3/envs/swanki/bin/python -c "import swanki; print(swanki.__file__)"
 ```
 
-The output path should point to the worktree, not the main repo.
+If `~/miniconda3` does not exist on this host, fall back to `conda run -n swanki python -c "..."`.
+
+The output path should point to the worktree, not the main repo or another worktree (a stale `pip install -e .` from another worktree can override).
 
 ## Step 5: Report
 

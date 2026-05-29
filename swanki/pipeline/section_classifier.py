@@ -38,7 +38,7 @@ _THEORY_HEADING = re.compile(
     r"^##\s+Theory and Problems\b", re.MULTILINE
 )
 _REVIEW_HEADINGS = re.compile(
-    r"^##\s+(Multiple Choice|Matching|True/False|Completion|Review Questions|Problems|Exercises|Practice Problems)\b",
+    r"^#{1,3}\s+(Multiple Choice|Matching|True/False|Completion|Review Questions|Problems|Exercises|Practice Problems)\b",
     re.MULTILINE,
 )
 # Schaum's inline form: "Multiple Choice. Select the letter..." — these are

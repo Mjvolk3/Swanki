@@ -149,10 +149,19 @@ class ApkgExporter:
             front_content = prepare_for_anki(card["front"])
             back_content = prepare_for_anki(card["back"])
 
+            user_feedback = card.get("user_feedback", "")
             if is_cloze:
-                fields = {"Text": front_content, "Back Extra": back_content}
+                fields = {
+                    "Text": front_content,
+                    "Back Extra": back_content,
+                    "Feedback": user_feedback,
+                }
             else:
-                fields = {"Front": front_content, "Back": back_content}
+                fields = {
+                    "Front": front_content,
+                    "Back": back_content,
+                    "Feedback": user_feedback,
+                }
 
             processed.append(
                 {
@@ -449,11 +458,19 @@ class ApkgExporter:
 
             if is_cloze:
                 mid = self.cloze_model_id
-                field_values = [fields.get("Text", ""), fields.get("Back Extra", "")]
+                field_values = [
+                    fields.get("Text", ""),
+                    fields.get("Back Extra", ""),
+                    fields.get("Feedback", ""),
+                ]
                 first_field = field_values[0]
             else:
                 mid = self.basic_model_id
-                field_values = [fields.get("Front", ""), fields.get("Back", "")]
+                field_values = [
+                    fields.get("Front", ""),
+                    fields.get("Back", ""),
+                    fields.get("Feedback", ""),
+                ]
                 first_field = field_values[0]
 
             flds = "\x1f".join(field_values)
@@ -603,6 +620,15 @@ class ApkgExporter:
                     "size": 20,
                     "media": [],
                 },
+                {
+                    "name": "Feedback",
+                    "ord": 2,
+                    "sticky": False,
+                    "rtl": False,
+                    "font": "Arial",
+                    "size": 20,
+                    "media": [],
+                },
             ],
             "css": ".card {\n font-family: arial;\n font-size: 20px;\n text-align: center;\n color: black;\n background-color: white;\n}\n",
             "latexPre": "\\documentclass[12pt]{article}\n\\special{papersize=3in,5in}\n\\usepackage[utf8]{inputenc}\n\\usepackage{amssymb,amsmath}\n\\pagestyle{empty}\n\\setlength{\\parindent}{0in}\n\\begin{document}\n",
@@ -646,6 +672,15 @@ class ApkgExporter:
                 {
                     "name": "Back Extra",
                     "ord": 1,
+                    "sticky": False,
+                    "rtl": False,
+                    "font": "Arial",
+                    "size": 20,
+                    "media": [],
+                },
+                {
+                    "name": "Feedback",
+                    "ord": 2,
                     "sticky": False,
                     "rtl": False,
                     "font": "Arial",

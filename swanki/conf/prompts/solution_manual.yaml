@@ -36,13 +36,27 @@ prompts:
       (e.g. '1.7'). For Multiple-Choice items without book-level IDs, synthesize 'MC-{n}'.
       Do not invent problems. Do not skip problems. Do not generate solutions.
     problem_pairing: |-
-      You receive a list of enumerated problems (each with id and statement) and a set of text
-      spans from the document's review_exercises pages that did NOT match any explicit
-      "Solution N.M" marker via regex. For each problem still missing a solution, find the span
-      whose content answers it and return a ProblemLocation entry with role=solution.
-      Match by content (the solution should derive or compute what the problem asks for), not
-      by position. If no span matches a problem, omit it from your output — do NOT fabricate
-      a solution. The pipeline's coverage audit will surface the gap.
+      You receive a list of unpaired problems (each with id and a short statement excerpt)
+      and the verbatim text of the document's solutions region. Some solution manuals (e.g.
+      Bishop's "Deep Learning: Foundations and Concepts" worked-solutions PDF) number their
+      worked solutions as bare `N.M` (e.g. `2.1 We first compute ...`) — NOT under an
+      explicit `Solution N.M` heading. Your job is to match each unpaired problem to its
+      worked solution in this region.
+
+      For each match, emit ONE ProblemLocation with:
+      - problem_id: the exact id from the supplied unpaired list (do NOT invent ids).
+      - role: "solution".
+      - text: the verbatim solution body — from the bare `N.M` label through (but not
+        including) the next bare `N.M` label or end-of-region. Include sub-parts (a),
+        (b), (c) when present.
+
+      Match by CONTENT, not by position: the solution should derive or compute what the
+      problem statement asks for. Ignore page running-headers like `Solutions 2.1–2.2`
+      and chapter-title headers like `## Chapter 2 Probabilities` — they are not solutions.
+
+      If you cannot find a solution for a problem in the supplied region, OMIT that
+      problem from your output. Do NOT fabricate. The pipeline's coverage audit will
+      surface the gap.
     problem_card_gen: |-
       You receive one problem (statement + solution, with cross-references already inlined) and a
       CardPlan describing exactly how many cards to emit. Generate exactly the cards specified

@@ -282,6 +282,104 @@ def test_flds_uses_unit_separator(exporter, tmp_dir):
     conn.close()
 
 
+# ── Feedback field ──────────────────────────────────────────────────────
+
+
+def test_basic_model_has_feedback_field(exporter, tmp_dir):
+    """Basic note type should expose Feedback at ord 2."""
+    cards = [{"front": "Q", "back": "A", "tags": []}]
+    out = tmp_dir / "fb_basic_model.apkg"
+    exporter.export_from_cards(cards, out, tmp_dir)
+
+    db = _extract_db(out, tmp_dir)
+    conn = sqlite3.connect(str(db))
+    c = conn.cursor()
+    c.execute("SELECT models FROM col")
+    models = json.loads(c.fetchone()[0])
+    basic = models[str(exporter.basic_model_id)]
+    names = [f["name"] for f in basic["flds"]]
+    assert names == ["Front", "Back", "Feedback"]
+    assert basic["flds"][2]["ord"] == 2
+    conn.close()
+
+
+def test_cloze_model_has_feedback_field(exporter, tmp_dir):
+    """Cloze note type should expose Feedback at ord 2."""
+    cards = [{"front": "{{c1::x}} y", "back": "", "tags": ["t"]}]
+    out = tmp_dir / "fb_cloze_model.apkg"
+    exporter.export_from_cards(cards, out, tmp_dir)
+
+    db = _extract_db(out, tmp_dir)
+    conn = sqlite3.connect(str(db))
+    c = conn.cursor()
+    c.execute("SELECT models FROM col")
+    models = json.loads(c.fetchone()[0])
+    cloze = models[str(exporter.cloze_model_id)]
+    names = [f["name"] for f in cloze["flds"]]
+    assert names == ["Text", "Back Extra", "Feedback"]
+    conn.close()
+
+
+def test_feedback_value_round_trips_into_flds(exporter, tmp_dir):
+    """user_feedback supplied on the card dict lands as the third field."""
+    cards = [
+        {
+            "front": "Q",
+            "back": "A",
+            "tags": ["t"],
+            "user_feedback": "answer feels rote",
+        }
+    ]
+    out = tmp_dir / "fb_value.apkg"
+    exporter.export_from_cards(cards, out, tmp_dir)
+
+    db = _extract_db(out, tmp_dir)
+    conn = sqlite3.connect(str(db))
+    c = conn.cursor()
+    c.execute("SELECT flds FROM notes")
+    parts = c.fetchone()[0].split("\x1f")
+    assert len(parts) == 3
+    assert parts[2] == "answer feels rote"
+    conn.close()
+
+
+def test_feedback_defaults_empty_when_absent(exporter, tmp_dir):
+    """Cards without user_feedback get an empty third field, not a missing one."""
+    cards = [{"front": "Q", "back": "A", "tags": []}]
+    out = tmp_dir / "fb_empty.apkg"
+    exporter.export_from_cards(cards, out, tmp_dir)
+
+    db = _extract_db(out, tmp_dir)
+    conn = sqlite3.connect(str(db))
+    c = conn.cursor()
+    c.execute("SELECT flds FROM notes")
+    parts = c.fetchone()[0].split("\x1f")
+    assert len(parts) == 3
+    assert parts[2] == ""
+    conn.close()
+
+
+def test_feedback_round_trips_through_markdown_file(exporter, tmp_dir):
+    """to_md marker -> extract_cards -> apkg keeps the feedback text intact."""
+    md = tmp_dir / "fb.md"
+    md.write_text(
+        "## What is water?\n\n"
+        "H2O\n\n"
+        "<!-- user-feedback: missing isotope nuance -->\n\n"
+        "- #chemistry\n"
+    )
+    out = tmp_dir / "fb_md.apkg"
+    exporter.export_from_file(md, out)
+
+    db = _extract_db(out, tmp_dir)
+    conn = sqlite3.connect(str(db))
+    c = conn.cursor()
+    c.execute("SELECT flds FROM notes")
+    parts = c.fetchone()[0].split("\x1f")
+    assert parts[2] == "missing isotope nuance"
+    conn.close()
+
+
 # ── Helpers ─────────────────────────────────────────────────────────────
 
 

@@ -110,12 +110,14 @@ Work through each file spec in order. For each:
 
 ### Step 9: Run verification
 
-Execute whatever verification the instruction file specifies. Common pattern:
+Execute whatever verification the instruction file specifies. Common pattern (use the swanki conda env -- on gilahyper this is `~/miniconda3/envs/swanki/bin/python`; on Mac the env is also named `swanki`):
 
-1. **Tests**: `/Users/michaelvolk/miniconda3/bin/python -m pytest <files> -xvs`
-2. **Type check**: `/Users/michaelvolk/miniconda3/bin/python -m mypy <files>`
-3. **Lint**: `/Users/michaelvolk/miniconda3/bin/python -m ruff check <files>`
-4. **Import check**: `python -c "from swanki.<module> import <thing>"`
+1. **Tests**: `~/miniconda3/envs/swanki/bin/python -m pytest <files> -xvs`
+2. **Type check**: `~/miniconda3/envs/swanki/bin/python -m mypy <files>`
+3. **Lint**: `~/miniconda3/envs/swanki/bin/python -m ruff check <files>`
+4. **Import check**: `~/miniconda3/envs/swanki/bin/python -c "from swanki.<module> import <thing>"`
+
+If `~/miniconda3` does not exist (older Mac layouts may use `~/opt/miniconda3`), fall back to `conda run -n swanki python -m ...`. Do NOT hardcode `/Users/...` paths.
 
 If any check fails, fix and re-run. Do not proceed until all pass.
 
@@ -136,19 +138,21 @@ Run the standard pipeline:
 
 ### Step 11: Rebase onto main with retry
 
+Use `git -C "$WT"` so cwd never matters; `$WT` is the worktree path from Step 6.
+
 ```bash
-git fetch origin main
-git rebase origin/main
+git -C "$WT" fetch origin main
+git -C "$WT" rebase origin/main
 ```
 
 **Retry logic** (for when multiple worktrees are merging concurrently):
 
 If rebase fails with conflicts:
 
-1. `git rebase --abort`
+1. `git -C "$WT" rebase --abort`
 2. Wait 10 seconds
-3. `git fetch origin main`
-4. Retry `git rebase origin/main`
+3. `git -C "$WT" fetch origin main`
+4. Retry `git -C "$WT" rebase origin/main`
 5. If conflicts again, attempt resolution:
    - Weekly notes (`tasks.weekly.*.md`): auto-resolved by `.gitattributes` `merge=union`
    - `__init__.py`: keep both sides (additive)
@@ -158,13 +162,13 @@ If rebase fails with conflicts:
 ### Step 12: Push and create PR
 
 ```bash
-git push -u origin plan/<slug>
+git -C "$WT" push -u origin plan/<slug>
 ```
 
-Create PR:
+Create PR (cd is fine here -- `gh` needs the branch context):
 
 ```bash
-gh pr create --title "<concise title from instruction file>" --body "$(cat <<'EOF'
+cd "$WT" && gh pr create --title "<concise title from instruction file>" --body "$(cat <<'EOF'
 ## Summary
 <key changes as bullets>
 
@@ -183,14 +187,16 @@ EOF
 
 ### Step 13: Merge (if requested)
 
-Only if the user said "merge when done" / "to completion" / similar:
+Only if the user said "merge when done" / "to completion" / similar. Discover `$MAIN` from `git -C "$WT" worktree list` so every command targets the right repo (cwd is irrelevant):
 
 1. `gh pr merge <number> --merge` (not squash)
-2. `git checkout main`
-3. `git pull --ff-only origin main`
-4. `git worktree remove --force ~/projects/Swanki.worktrees/plan/<slug>`
-5. `git branch -d plan/<slug>`
+2. `git -C "$MAIN" pull --ff-only origin main` -- **must use `-C "$MAIN"`**; running this in the worktree silently advances the branch instead of main
+3. **Verify** the branch's top commit is now in main's log: `git -C "$MAIN" log --oneline -5`. If it is not, stop -- the merge did not land
+4. `git -C "$MAIN" worktree remove --force "$WT"`
+5. `git -C "$MAIN" branch -d plan/<slug>` (use `-D` if `-d` fails on hash mismatch -- PR is merged)
 6. `gh api repos/Mjvolk3/Swanki/git/refs/heads/plan/<slug> --method DELETE`
+
+Before merging, **main must be clean** (`git -C "$MAIN" status --short` empty). If not, stop and tell the user to commit or discard main-side WIP. No stashing.
 
 If NOT merging, report the PR URL and stop.
 

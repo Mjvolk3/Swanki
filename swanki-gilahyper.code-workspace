@@ -87,7 +87,8 @@
             "${workspaceFolder}/src/*"
         ],
         "git.ignoreLimitWarning": true,
-        "esbonio.sphinx.confDir": ""
+        "esbonio.sphinx.confDir": "",
+        "terminal.integrated.cwd": "${workspaceFolder:Swanki}"
     },
     "extensions": {
         "recommendations": [

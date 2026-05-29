@@ -38,6 +38,23 @@ Rules for agents:
 
 This applies to every agent in this skill (scouts, deliberator, plan-writer, reducer-critic) that makes a library claim.
 
+## Paired-note policy (design intent of in-scope files)
+
+Most Python modules in this repo have a paired dendron note: `swanki/<module>.py` pairs with `notes/swanki.<module>.md`; `scripts/<name>.py` pairs with `notes/scripts.<name>.md`. Paired notes record dated design decisions, prior plan references, rejected alternatives, and open follow-ups -- they are the primary source of decision history (see CLAUDE.md "Finding Rationale for Changes").
+
+**Required for every agent in this skill:** before recommending an edit to or deletion of a file, read its paired dendron note. Source alone does not communicate which parts of a module are intentional and stable versus provisional and awaiting replacement.
+
+From the paired note, classify each in-scope file along one axis:
+
+| Classification | Indicators in the note                                                                       | Planning implication                                                                  |
+|----------------|----------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------|
+| `stable`       | Multiple dated entries over time; invariants documented; referenced by other notes/plans     | Preserve existing contracts; enumerate downstream callers; justify any signature change |
+| `provisional`  | Note marks the code as a first pass, stopgap, or placeholder pending a named follow-up       | Reshape freely; state in the plan that this is the redesign the note anticipated      |
+| `in-flux`      | Recent entries contradict earlier ones; an open `plan.*` note targets the same file          | Coordinate with the in-flight work; do not race or duplicate it                       |
+| `undocumented` | Note is empty, missing, or auto-generated stub only                                          | Flag in the plan; treat as `provisional` unless code structure clearly shows otherwise |
+
+The classification belongs in the plan's `## Relevant Files` table (see Phase 3) so the implementing agent inherits the same calibration.
+
 ## Phase 0: Setup
 
 1. Summarize the request into a 5-8 word title.
@@ -63,15 +80,19 @@ No word caps. Scouts report honestly; the critic trims later.
 >
 > Find: (1) existing files/modules directly in-scope; (2) integration points -- what imports what, what calls what; (3) patterns already used for this kind of change; (4) tests covering the affected area; (5) the **pinned versions** of any third-party libraries that show up in the in-scope files (check `requirements.txt`, `pyproject.toml`).
 >
-> Return: a bulleted list of relevant file paths with a one-line purpose each; bullets on integration points; and a short block listing pinned library versions relevant to the request. Do NOT paste file contents. Describe patterns in your own words. Focus on *where* things live and *how* they connect, not *how* to change them.
+> For every file you flag as a likely **MODIFY** or **DELETE** target, also read its paired dendron note (`notes/swanki.<module>.md` for sources under `swanki/`; `notes/scripts.<name>.md` for `scripts/`). The paired note communicates the file's design intent and stability; reading it is required before recommending changes. See the "Paired-note policy" section above for the classification rubric -- record whether the note marks the file as `stable`, `provisional`, `in-flux`, or `undocumented`.
+>
+> Return: a bulleted list of relevant file paths with a one-line purpose each, plus the paired-note classification for MODIFY/DELETE candidates; bullets on integration points; and a short block listing pinned library versions relevant to the request. Do NOT paste file contents. Describe patterns in your own words. Focus on *where* things live, *how* they connect, and *how settled the existing design is*.
 
 ### Scout B - Design history + conventions
 
 > You are Scout B. Gather design context for this request: `<request>`.
 >
-> Read: (1) paired dendron notes (`notes/swanki.<module>.md`) for the relevant files; (2) prior plan notes (`notes/plan.*.md`) touching the same subsystem; (3) CLAUDE.md + `.claude/rules/*.md` conventions that apply (if `.claude/rules/` is absent, just CLAUDE.md); (4) auto-memory feedback at `~/.claude/projects/-home-michaelvolk-Documents-projects-Swanki/memory/feedback_*.md` relevant to this area.
+> Read: (1) paired dendron notes for every in-scope file (`notes/swanki.<module>.md` for sources under `swanki/`, `notes/scripts.<name>.md` for `scripts/`); (2) prior plan notes (`notes/plan.*.md`) touching the same subsystem; (3) CLAUDE.md + `.claude/rules/*.md` conventions that apply (if `.claude/rules/` is absent, just CLAUDE.md); (4) auto-memory feedback at `~/.claude/projects/-home-michaelvolk-Documents-projects-Swanki/memory/feedback_*.md` relevant to this area.
 >
-> Return: (1) prior design decisions that constrain this work, with dendron links and dates; (2) conventions the plan MUST follow; (3) user-stated feedback rules ("do X", "don't do Y") with a pointer to the memory file.
+> Reading the paired note for each in-scope file is required, not optional. See the "Paired-note policy" section above for the classification rubric. Use the note's dated entries, references to other plans, and explicit framing ("first pass", "stopgap", "preserve invariant X") to assign each file one of: `stable`, `provisional`, `in-flux`, `undocumented`.
+>
+> Return: (1) per-file classification (`<path> -- <classification> -- <one-sentence justification citing the note's content and date>`); (2) prior design decisions that constrain this work, with dendron links and dates; (3) conventions the plan MUST follow; (4) user-stated feedback rules ("do X", "don't do Y") with a pointer to the memory file.
 
 ### Scout C - Gotchas + failure modes
 
@@ -123,7 +144,7 @@ Launch **one** Agent call (subagent_type: general-purpose) in the foreground. Pa
 > Required sections (H2, in this order, no H1):
 >
 > 1. `## Context` -- why this work, what it solves, what it replaces. Reference kanban issues as backtick-wrapped `` `#N` ``.
-> 2. `## Relevant Files` -- table or bullet list. Each row: path + one-line purpose + tag (NEW / MODIFY / DELETE / REFERENCE).
+> 2. `## Relevant Files` -- table. Columns: path, action (NEW / MODIFY / DELETE / REFERENCE), one-line purpose, stance (`stable` / `provisional` / `in-flux` / `undocumented` / `n/a` for NEW). Use Scout A and Scout B's classifications; if they disagree, follow the deliberator's resolution. Stance informs how aggressively the implementer may reshape each file.
 > 3. `## Key Design Decisions` -- numbered list. Lead with the decision, follow with why. Include rejected alternatives when illuminating.
 > 4. `## Approach` -- narrative, not a file-by-file spec. Describe the shape of the work: libraries, patterns, execution order, what stays out of scope. May name specific validators, classes, libraries. NOT allowed: long function skeletons, per-field model definitions, multi-page code listings. One 3-10 line snippet is fine when it disambiguates a subtle pattern; more is a failure.
 > 5. `## Gotchas` -- numbered list from Scout C + deliberation. Each: hazard + sidestep.

@@ -29,3 +29,7 @@ Foundation classifier for `mode=full`'s integrated routing. Walks per-page clean
 - `original_page_indices` — translate filtered-page idx → original-document idx for image-summary lookup.
 
 First validated on a synthetic 4-page Schaum's-style fixture: pages 0-1 → `main_content` (Theory and Problems, 71% density), page 2 → `review_exercises` (Multiple Choice), page 3 → `back_matter` (Index). Heading-driven path with confidence 1.00.
+
+## 2026.05.29 - Broaden review-heading detection to H1-H3
+
+`_REVIEW_HEADINGS` was anchored to `^##` (H2 only), but Bishop-style packed PDFs ([[scripts.book_solution_pack]]) emit the end-of-chapter exercises section as an H1 `# Exercises` rather than H2. Broadened the prefix from `^##` to `^#{1,3}` so H1-H3 review headings (Multiple Choice / Matching / True/False / Completion / Review Questions / Problems / Exercises / Practice Problems) all route to `review_exercises`. This keeps the classifier and the new Stage 3 statement/solution partition in [[swanki.pipeline.problem_set]] (`_EXERCISES_HEADING`, also H1-H3) in agreement on where the exercises region begins.

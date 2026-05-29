@@ -69,3 +69,25 @@ Two new fields plus a `@model_validator(mode="after")` that flips `done=False` w
 - `repeated_phrases: list[str]` — Theme 5. Populated either by the LLM critic or by `swanki.audio._common.detect_repeated_phrases` (deterministic n-gram scanner) wired into `_refine_transcript`. Each entry is a verbatim 5+ word phrase that occurred 3+ times; the refiner gets the list as explicit feedback to vary.
 
 The validator centralizes the gate: callers populate fields without also remembering to flip `done`. Pydantic 2 quirk recorded in the docstring — `model_copy(update=...)` does NOT re-run validators; callers wanting the validator to fire after a field update must use `model_validate(self.model_dump() | {...})`.
+
+## 2026.05.19 - PlainCard.user_feedback for review-time triage channel
+
+Added `user_feedback: str = Field("", description="User-authored feedback for review-time triage")` to `PlainCard`. Purpose: free-text channel the user fills in **inside Anki during review** (typically alongside marking + suspending a bad card). A future daily job will pull marked+suspended notes whose Feedback field is non-empty, write a triage report, and auto-open GitHub issues per card flagged for escalation (per the answered scope question — pipeline deferred, only the data plumbing landed in this change).
+
+Naming intentionally diverges from the existing `CardFeedback` (LLM self-refine output): `user_feedback` is human, not LLM. Defaults to empty so every existing call site keeps working unchanged.
+
+Round-trip: `to_md()` emits a single-line `<!-- user-feedback: TEXT -->` marker right before the tags line in all three branches (cloze, regular-with-audio, plain), only when non-empty. [[swanki.processing.anki_processor]] `extract_cards()` strips that marker out of the card body and surfaces the captured text on the dict so it never bleeds into Front/Back content during `prepare_for_anki`. Both Anki export paths ([[swanki.processing.apkg_exporter]] for .apkg and the AnkiConnect `send_cards_from_file` flow) write it to a new `Feedback` field (ord 2) on both the Basic and Cloze note types. Templates were NOT touched — the field is silent in review so cards render identically. The user just opens the editor mid-review, fills the field, marks, suspends.
+
+Note-type schema change requires a one-time migration on any pre-existing Anki collection: `scripts/anki_add_feedback_field.py` calls AnkiConnect's `modelFieldAdd` for both Basic and Cloze, idempotent. Must run on the laptop (gilahyper has no Anki client per the `anki=default` rule). Without it, importing a newer .apkg on top of the old two-field model is brittle. Model IDs stay stable (seeds unchanged), so once migrated the imports drop in cleanly.
+
+Daily-pull design (not implemented):
+- AnkiConnect query: `tag:marked is:suspended Feedback:_*` (the `_*` matches any non-empty string).
+- For each hit, produce one bullet in a dated Dendron triage note (front + back + feedback + tags + citation key parsed from the `@<key>:` prefix).
+- For cards the user flags for escalation, call the `gh-issue` skill path to open a GitHub issue with the card content and feedback as the body. The triage report stays the source of truth; deletes/fixes are still hand-pulled, not auto-applied.
+
+## 2026.05.29 - user_feedback marker on all three to_md branches (finalized)
+
+Finalized state of the review-time triage channel (extends the 2026.05.19 design above). `PlainCard.user_feedback: str = Field("", ...)` now emits its `<!-- user-feedback: {text} -->` marker — only when non-empty, immediately before the tag line — in ALL THREE `to_md()` branches: Basic, Cloze, and the image-card branch. Keeping the marker on the image branch matters so feedback authored on an image card also round-trips (the earlier pass only covered the text branches in practice).
+
+Distinct from `CardFeedback` (the LLM self-refine signal) — `user_feedback` is human-authored at review time. The matching extractor/strip and the `Feedback` field write live in [[swanki.processing.anki_processor]] (AnkiConnect path) and [[swanki.processing.apkg_exporter]] (.apkg path, field registered at ord 2 on both models); round-trip tests in [[tests.test_models_validation]] and [[tests.test_apkg_exporter]].
+

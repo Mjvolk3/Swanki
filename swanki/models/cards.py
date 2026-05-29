@@ -716,6 +716,14 @@ class PlainCard(BaseModel):
         default="regular",
         description="Card subtype for downstream styling and length policy.",
     )
+    # Free-text user feedback authored in Anki during review (or set in source
+    # markdown). Empty by default. Maps to the ``Feedback`` field on the Basic
+    # and Cloze note types so a daily triage job can find marked + suspended
+    # cards with comments. Distinct from :class:`CardFeedback`, which is the
+    # LLM self-refine signal.
+    user_feedback: str = Field(
+        "", description="User-authored feedback for review-time triage"
+    )
 
     @field_validator("tags", mode="before")
     def validate_tags(cls, v):
@@ -1093,6 +1101,8 @@ class PlainCard(BaseModel):
             if include_audio and back_uri:
                 md += f"[audio-back]({back_uri})\n\n"
 
+            if self.user_feedback:
+                md += f"<!-- user-feedback: {self.user_feedback} -->\n\n"
             if formatted_tags:
                 md += f"- #{', #'.join(formatted_tags)}\n\n"
         elif include_audio and front_uri and back_uri:
@@ -1112,6 +1122,8 @@ class PlainCard(BaseModel):
                 md += f"![Image]({self.back.image_path})\n\n"
 
             md += f"{self.back.text}\n\n"
+            if self.user_feedback:
+                md += f"<!-- user-feedback: {self.user_feedback} -->\n\n"
             if formatted_tags:
                 md += f"- #{', #'.join(formatted_tags)}\n\n"
         else:
@@ -1128,6 +1140,8 @@ class PlainCard(BaseModel):
             if self.back.image_path:
                 md += f"![Image]({self.back.image_path})\n\n"
 
+            if self.user_feedback:
+                md += f"<!-- user-feedback: {self.user_feedback} -->\n\n"
             if formatted_tags:
                 md += f"- #{', #'.join(formatted_tags)}\n\n"
 
