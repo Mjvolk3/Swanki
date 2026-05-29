@@ -29,6 +29,15 @@ models:
       acronym_allowlist:
         [USA, UK, NASA, DNA, RNA, PCR, CPU, GPU, API, HTTP, JSON, HTML, XML,
          SQL, PDF, MP3, WAV, TTS, LLM, AI, ML, NLP]
+      # Rewrite isolated binary tokens ("110") as digit-words ("one-one-zero")
+      # so TTS reads codewords digit-by-digit, not as cardinals ("one hundred
+      # ten"). Provider-agnostic and default-on pipeline-wide -- these keys
+      # mirror the in-code defaults (the audio modules default the toggle to
+      # True even when this block is absent, e.g. for elevenlabs). The cap
+      # leaves long numeric IDs alone; set verbalize_bit_strings: false in a
+      # fish_speech_<paper>.yaml to disable for a specific paper.
+      verbalize_bit_strings: true
+      bit_strings_max_len: 32
     chunking:
       # Per-chunk char cap. Fish quality decays past ~700 chars (Theme 4).
       max_chars: 700

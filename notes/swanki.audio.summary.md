@@ -73,3 +73,11 @@ The Hamming-PR fixes (chunker tightening, pre-TTS scrubbers, postprocessor knobs
 - **YAML-driven postprocessor knobs**: `combine_audio_with_section_pauses` now receives `chunk_pause_ms`, `chunk_tail_trim_ms`, `chunk_crossfade_ms`, `gain_match_target_dbfs` from `tts_kwargs.get("postprocessor")`. Summary previously had NONE of these; now consistent with lecture for fish providers (700 / 250 / 50 / -25.0 defaults match the Apr-30 boundary-fix bundle).
 
 Defaults preserve prior behavior when sub-trees absent — no regression for elevenlabs callers.
+
+## 2026.05.29 - Wired `verbalize_bit_strings` into the scrubber chain
+
+Added the provider-agnostic, default-on bit-string verbalizer step (binary
+codewords -> hyphenated digit-words) immediately after acronym expansion and
+before pronunciation overrides. See [[swanki.audio._common]] (2026.05.29) for
+the function, regex, gating, and rationale. Plan:
+[[plan.bit-string-verbalizer-hamming-annotations.2026.05.29]].

@@ -429,6 +429,51 @@ def apply_pronunciation_overrides(
     return text
 
 
+_BIT_WORDS = {"0": "zero", "1": "one"}
+
+
+def verbalize_bit_strings(text: str, max_len: int = 32) -> str:
+    """Rewrite isolated binary tokens as hyphenated digit-words for TTS.
+
+    A bare codeword like ``110`` is read by every TTS engine as the cardinal
+    "one hundred ten", which destroys the per-digit semantics a coding-theory
+    lecture depends on. This rewrites ``110`` to ``one-one-zero`` so the engine
+    reads it digit-by-digit. Default-on and provider-agnostic (binary read as a
+    cardinal is wrong on Fish and ElevenLabs alike).
+
+    Only runs of ``0``/``1`` of length 2..``max_len`` that are not part of a
+    larger token or number are matched: identifiers (``v01``, ``chunk0``),
+    paths/times (``a/01``, ``10:01``), decimals (``1.5``, ``0.01``),
+    thousands-commas (``1,000``), and integers containing a non-binary digit
+    (``2020``) are left untouched. Bare single ``0``/``1`` are skipped (the
+    length-2 floor). A codeword followed by prose punctuation (``"00, 01, and
+    11."``) IS verbalized -- the boundary tests reject only digits that
+    continue a number (``[.,]`` immediately abutting another digit), not
+    sentence punctuation. The substitution is idempotent: emitted digit-words
+    contain no binary run, so a second pass is a no-op.
+
+    Args:
+        text: Transcript bound for TTS.
+        max_len: Longest binary run to verbalize; longer runs (e.g. numeric
+            IDs) are left alone.
+
+    Returns:
+        Text with isolated binary tokens rewritten as ``one-one-zero`` form.
+    """
+    pattern = (
+        r"(?<![A-Za-z0-9_/:])"  # not inside an identifier, path, or time
+        r"(?<!\d[.,])"  # not the tail of a decimal / thousands number
+        r"[01]{2," + str(max_len) + r"}"
+        r"(?![A-Za-z0-9_/:])"  # not inside an identifier, path, or time
+        r"(?![.,]\d)"  # not the head of a decimal / thousands number
+    )
+
+    def _sub(m: re.Match) -> str:
+        return "-".join(_BIT_WORDS[c] for c in m.group(0))
+
+    return re.sub(pattern, _sub, text)
+
+
 _REPEATED_PHRASE_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'-]*")
 _REPEATED_PHRASE_STOPWORDS = frozenset({
     "the", "a", "an", "of", "to", "and", "or", "but", "is", "are", "was",

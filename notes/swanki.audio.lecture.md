@@ -167,3 +167,11 @@ sentinel its callers downstream expect (e.g., section-drop logic). No
 behavior change for existing lecture flows; the move enables structured-output
 agents to use the same retry pattern (see [[swanki.pipeline.pipeline]]
 2026.05.24).
+
+## 2026.05.29 - Wired `verbalize_bit_strings` into the scrubber chain
+
+Added the provider-agnostic, default-on bit-string verbalizer step (binary
+codewords -> hyphenated digit-words) immediately after acronym expansion and
+before pronunciation overrides. See [[swanki.audio._common]] (2026.05.29) for
+the function, regex, gating, and rationale. Plan:
+[[plan.bit-string-verbalizer-hamming-annotations.2026.05.29]].

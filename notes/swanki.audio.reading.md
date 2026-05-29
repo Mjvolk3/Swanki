@@ -150,3 +150,13 @@ Combined with the 2026.05.27 `filter_metadata` fix that prevented Nature
 papers from being 99.9%-stripped upstream, qu and swanson should now be
 able to land cleanly even though their content (CRISPR / SARS-CoV-2
 nanobody) is the most biosec-prone in the iCBF batch.
+
+## 2026.05.29 - Wired `verbalize_bit_strings` + reading prompt addendum
+
+Added the bit-string verbalizer step to the scrubber chain (after acronym
+expansion, before pronunciation overrides; provider-agnostic, default-on).
+Also added binary-codeword rule 10 to the HARDCODED `system_prompt` string in
+this module -- the reading system prompt is not in `default.yaml` (no
+`reading_system` key), so the prompt addendum lands here, not in YAML. See
+[[swanki.audio._common]] (2026.05.29) for the function and rationale. Plan:
+[[plan.bit-string-verbalizer-hamming-annotations.2026.05.29]].

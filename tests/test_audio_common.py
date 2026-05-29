@@ -33,6 +33,7 @@ from swanki.audio._common import (
     strip_chapter_filename_slug,
     strip_forbidden_fish_tags,
     validate_audio_file,
+    verbalize_bit_strings,
     write_chunk_manifest,
 )
 
@@ -329,6 +330,82 @@ def test_extract_acronyms_skips_all_caps_expansion():
     result = extract_acronyms(text)
     # "DEF" is all-caps so should be skipped as not a real expansion
     assert "ABC" not in result
+
+
+# ---------------------------------------------------------------------------
+# verbalize_bit_strings
+# ---------------------------------------------------------------------------
+
+
+def test_verbalize_bit_strings_basic():
+    assert verbalize_bit_strings("110") == "one-one-zero"
+    assert verbalize_bit_strings("11") == "one-one"
+    assert verbalize_bit_strings("0110") == "zero-one-one-zero"
+    assert verbalize_bit_strings("0011") == "zero-zero-one-one"
+
+
+def test_verbalize_bit_strings_single_digit_untouched():
+    # Bare 0/1 read fine as words and appear constantly in prose.
+    assert verbalize_bit_strings("I saw 0 errors and 1 success") == (
+        "I saw 0 errors and 1 success"
+    )
+
+
+def test_verbalize_bit_strings_ch10_codewords_with_punctuation():
+    # The real Hamming ch10 case: codewords abutting prose commas / periods
+    # must still verbalize (the boundary tests reject only number-continuation
+    # punctuation, not sentence punctuation).
+    text = "Encode them as 0, 00, 01, and 11. If you receive 0011, decode it."
+    expected = (
+        "Encode them as 0, zero-zero, zero-one, and one-one. "
+        "If you receive zero-zero-one-one, decode it."
+    )
+    assert verbalize_bit_strings(text) == expected
+
+
+def test_verbalize_bit_strings_idempotent():
+    once = verbalize_bit_strings("the codeword 1011010 has parity 11")
+    twice = verbalize_bit_strings(once)
+    assert once == twice
+    assert "one-zero-one-one-zero-one-zero" in once
+    assert "one-one" in once
+
+
+def test_verbalize_bit_strings_protects_numbers_and_identifiers():
+    # Decimals, thousands-commas, years, identifiers, paths, and times must
+    # pass through unchanged.
+    for token in ["1.5", "0.01", "1,000", "10,000", "2020", "2011",
+                  "v01", "chunk0", "chunk01", "10:01", "a/01"]:
+        assert verbalize_bit_strings(token) == token, token
+
+
+def test_verbalize_bit_strings_respects_max_len():
+    long_run = "1" * 33
+    # Default cap 32 leaves a 33-bit run alone.
+    assert verbalize_bit_strings(long_run) == long_run
+    # A custom cap below the run length also leaves it alone...
+    assert verbalize_bit_strings("10101", max_len=4) == "10101"
+    # ...and at/above it expands.
+    assert verbalize_bit_strings("10101", max_len=5) == "one-zero-one-zero-one"
+
+
+def test_verbalize_bit_strings_section_break_marker_survives():
+    assert verbalize_bit_strings(SECTION_BREAK_MARKER) == SECTION_BREAK_MARKER
+
+
+def test_verbalize_bit_strings_mixed_sentence():
+    text = "A Hamming distance of 11 between 0110 and 1001 looks large."
+    assert verbalize_bit_strings(text) == (
+        "A Hamming distance of one-one between zero-one-one-zero and "
+        "one-zero-zero-one looks large."
+    )
+
+
+def test_verbalize_bit_strings_empty():
+    assert verbalize_bit_strings("") == ""
+    assert verbalize_bit_strings("no binary here at all") == (
+        "no binary here at all"
+    )
 
 
 # ---------------------------------------------------------------------------

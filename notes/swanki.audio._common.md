@@ -345,3 +345,64 @@ unrenderable as audio, not under-tokenized).
 See [[swanki.audio.reading]] (2026.05.27) for the matching Pass-2 wrap
 and the implication chain (filter_metadata bug → tiny input → tiny
 transcript → 24s reading audio).
+
+## 2026.05.29 - `verbalize_bit_strings` pipeline-wide TTS scrubber
+
+Hamming chapter 10 (coding theory) is built around codewords written as bare
+binary strings ("11", "0110", "1011010"). The TTS path had no rule for
+isolated binary tokens, so every engine read them as cardinals: "11" → "eleven",
+"0110" → "one hundred ten". Annotation review found 8/21 lecture chunks and
+18/43 reading chunks in ch10 corrupted this way. The fix is a deterministic
+pre-TTS scrubber, `verbalize_bit_strings(text, max_len=32)`, that rewrites
+isolated binary tokens into hyphenated digit-words ("110" → "one-one-zero")
+so the engine reads each digit separately. Plan:
+[[plan.bit-string-verbalizer-hamming-annotations.2026.05.29]].
+
+Design:
+
+- **Regex** `(?<![A-Za-z0-9_/:])(?<!\d[.,])[01]{2,max_len}(?![A-Za-z0-9_/:])(?![.,]\d)`.
+  The min length 2 leaves bare single "0"/"1" alone. The boundary tests reject
+  *number-continuation* punctuation only -- a digit abutting `.`/`,` -- so
+  decimals (`1.5`, `0.01`), thousands-commas (`1,000`), years (`2020` has a
+  non-binary digit), identifiers (`v01`, `chunk0`), paths/times (`a/01`,
+  `10:01`) are protected, while a codeword followed by *sentence* punctuation
+  (`"as 0, 00, 01, and 11."`) still verbalizes. This is the key deviation from
+  the plan's literal flat-exclusion regex, which would have skipped every
+  codeword followed by a comma -- i.e. the actual ch10 case. Idempotent: the
+  emitted digit-words contain no binary run, so a second pass is a no-op
+  (verified on the real ch10 transcript).
+
+- **Placement**: in all four audio-module scrubber chains
+  (lecture/reading/summary/card), AFTER acronym expansion and BEFORE
+  pronunciation overrides. The passes are orthogonal (`expand_acronyms_for_tts`
+  only matches `[A-Z]{2,6}` letters, never digits); placing it before
+  pronunciations preserves the "overrides win last" invariant.
+
+- **Gating**: provider-agnostic, on the toggle only (NOT `is_fish_for_prep`).
+  Binary-as-cardinal is wrong on Fish and ElevenLabs alike. Default-on via
+  `prep_cfg.get("verbalize_bit_strings", True)` so it fires even where the
+  `preprocessor:` block is absent (elevenlabs `default.yaml`). The
+  `fish_speech.yaml` keys (`verbalize_bit_strings`, `bit_strings_max_len`)
+  mirror the in-code defaults; they document, not activate. Disable per-paper
+  with `verbalize_bit_strings: false` in a `fish_speech_<paper>.yaml`.
+
+- **`SECTION_BREAK_MARKER`** needs no masking (unlike the acronym pass): the
+  marker is uppercase letters + hyphens with no binary run, so the lookarounds
+  already protect it.
+
+- **Prompt addenda** (belt-and-suspenders): lecture rule 17 in
+  `default.yaml` `lecture_system`; reading rule 10 in the hardcoded
+  `system_prompt` in [[swanki.audio.reading]] (no `reading_system` key exists
+  in the YAML, so the request's "addendum in default.yaml" lands in
+  `reading.py` for reading). Both instruct the LLM to read codewords
+  digit-by-digit; the deterministic scrubber is the real guarantee.
+
+Dry-run on the real ch10 lecture transcript rewrote 5 codeword lines
+correctly (e.g. "0, 10, 110, and 111" → "0, one-zero, one-one-zero, and
+one-one-one", bare "0" preserved), touched no decimal/year/identifier, and
+was idempotent.
+
+Follow-up (post-merge, from `main`): Hamming ch1-10 annotation review --
+ch1-9 surgical edits via `/audio-fix-from-annotations`, ch10 full audio
+regen (now that the verbalizer is present) with the ABS bookmark
+clear-and-remark step. See the plan note Part B.

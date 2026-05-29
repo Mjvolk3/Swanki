@@ -28,6 +28,7 @@ from ._common import (
     strip_forbidden_fish_tags,
     text_to_speech,
     validate_audio_file,
+    verbalize_bit_strings,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,8 @@ def _preprocess_for_tts(text: str, tts_kwargs: dict) -> str:
     Pure no-op for elevenlabs (the fish-only steps are gated by provider).
 
     Order matches lecture.py / summary.py / reading.py: slug-strip ->
-    acronym letter-by-letter (fish only) -> pronunciation overrides ->
+    acronym letter-by-letter (fish only) -> bit-string verbalize
+    (provider-agnostic, default-on) -> pronunciation overrides ->
     forbidden-tag scrub (fish only). Card transcripts skip
     clean_markdown_for_tts and add_tts_pauses entirely (cards are short and
     arrive already TTS-shaped); this helper picks up the remaining scrubbers.
@@ -61,6 +63,10 @@ def _preprocess_for_tts(text: str, tts_kwargs: dict) -> str:
     if is_fish and prep_cfg.get("acronym_letter_by_letter", True):
         allowlist = set(prep_cfg.get("acronym_allowlist", []))
         out = expand_acronyms_for_tts(out, allowlist=allowlist)
+    if prep_cfg.get("verbalize_bit_strings", True):
+        out = verbalize_bit_strings(
+            out, max_len=int(prep_cfg.get("bit_strings_max_len", 32))
+        )
     pronunciations = prep_cfg.get("pronunciations", {}) or {}
     if pronunciations:
         out = apply_pronunciation_overrides(out, pronunciations)
