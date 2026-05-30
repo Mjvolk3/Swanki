@@ -20,33 +20,24 @@ from ..utils.formatting import humanize_card_text_for_tts, humanize_citation_key
 from ._common import (
     DEFAULT_VOICE_ID,
     append_chunk_pause,
-    apply_pronunciation_overrides,
     chunk_text,
     combine_audio,
-    expand_acronyms_for_tts,
-    strip_chapter_filename_slug,
-    strip_forbidden_fish_tags,
+    preprocess_for_tts,
     text_to_speech,
     validate_audio_file,
-    verbalize_bit_strings,
 )
 
 logger = logging.getLogger(__name__)
 
 
 def _preprocess_for_tts(text: str, tts_kwargs: dict) -> str:
-    """Apply Fish-Speech-aware TTS preprocessing to a single text fragment.
+    """Apply the shared TTS scrubber chain to a single card fragment.
 
-    Centralizes the deterministic scrubber chain so card.py's five
-    text_to_speech call sites all run the same passes in the same order.
-    Pure no-op for elevenlabs (the fish-only steps are gated by provider).
-
-    Order matches lecture.py / summary.py / reading.py: slug-strip ->
-    acronym letter-by-letter (fish only) -> bit-string verbalize
-    (provider-agnostic, default-on) -> pronunciation overrides ->
-    forbidden-tag scrub (fish only). Card transcripts skip
-    clean_markdown_for_tts and add_tts_pauses entirely (cards are short and
-    arrive already TTS-shaped); this helper picks up the remaining scrubbers.
+    Thin delegate to :func:`swanki.audio._common.preprocess_for_tts`. Cards
+    skip ``clean_markdown_for_tts`` and ``add_tts_pauses`` (they arrive short
+    and already TTS-shaped), so this passes ``clean_markdown=False,
+    add_pauses=False`` -- the scrubber order and per-paper gating live in the
+    shared helper.
 
     Args:
         text: Card transcript fragment about to be sent to text_to_speech.
@@ -56,23 +47,9 @@ def _preprocess_for_tts(text: str, tts_kwargs: dict) -> str:
     Returns:
         Preprocessed text safe for the provider's TTS endpoint.
     """
-    is_fish = str(tts_kwargs.get("provider", "")) == "fish_speech"
-    _prep_raw = tts_kwargs.get("preprocessor")
-    prep_cfg: dict = _prep_raw if isinstance(_prep_raw, dict) else {}
-    out = strip_chapter_filename_slug(text)
-    if is_fish and prep_cfg.get("acronym_letter_by_letter", True):
-        allowlist = set(prep_cfg.get("acronym_allowlist", []))
-        out = expand_acronyms_for_tts(out, allowlist=allowlist)
-    if prep_cfg.get("verbalize_bit_strings", True):
-        out = verbalize_bit_strings(
-            out, max_len=int(prep_cfg.get("bit_strings_max_len", 32))
-        )
-    pronunciations = prep_cfg.get("pronunciations", {}) or {}
-    if pronunciations:
-        out = apply_pronunciation_overrides(out, pronunciations)
-    if is_fish and prep_cfg.get("strip_forbidden_tags", True):
-        out = strip_forbidden_fish_tags(out)
-    return out
+    return preprocess_for_tts(
+        text, tts_kwargs, add_pauses=False, clean_markdown=False
+    )
 
 
 def generate_card_transcript(

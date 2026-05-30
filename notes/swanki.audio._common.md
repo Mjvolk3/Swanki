@@ -406,3 +406,19 @@ Follow-up (post-merge, from `main`): Hamming ch1-10 annotation review --
 ch1-9 surgical edits via `/audio-fix-from-annotations`, ch10 full audio
 regen (now that the verbalizer is present) with the ABS bookmark
 clear-and-remark step. See the plan note Part B.
+
+## 2026.05.30 - Extract public `preprocess_for_tts` (single scrubber-chain source)
+
+`preprocess_for_tts(text, tts_kwargs, *, add_pauses, clean_markdown=True)` is
+now the one definition of the deterministic pre-TTS scrubber order:
+optional `clean_markdown_for_tts` -> `strip_chapter_filename_slug` ->
+`expand_acronyms_for_tts` (fish) -> `verbalize_bit_strings` ->
+`apply_pronunciation_overrides` -> `strip_forbidden_fish_tags` (fish) ->
+optional `add_tts_pauses`. `card.py`'s private `_preprocess_for_tts` now
+delegates with `add_pauses=False, clean_markdown=False`; the new
+[[swanki.audio.comment_edit]] calls it with `add_pauses=True`. The `add_pauses`
+flag is load-bearing because `add_tts_pauses` is NOT idempotent -- it must run
+once on fresh prose and never on already-paused stored chunk text. lecture/
+reading/summary still inline the chain; folding them onto this helper is a
+recommended follow-up. Plan:
+[[plan.swanki-comment-driven-chunk-edits.2026.05.30]].

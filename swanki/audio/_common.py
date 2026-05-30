@@ -99,6 +99,63 @@ def add_tts_pauses(text: str, provider: str = "elevenlabs") -> str:
     return text
 
 
+def preprocess_for_tts(
+    text: str,
+    tts_kwargs: dict,
+    *,
+    add_pauses: bool,
+    clean_markdown: bool = True,
+) -> str:
+    """Run the deterministic pre-TTS scrubber chain on a fragment.
+
+    Single source of truth for the scrubber order used across the audio
+    modules: ``clean_markdown_for_tts`` (optional) -> ``strip_chapter_filename_slug``
+    -> ``expand_acronyms_for_tts`` (fish only) -> ``verbalize_bit_strings``
+    (default-on) -> ``apply_pronunciation_overrides`` -> ``strip_forbidden_fish_tags``
+    (fish only) -> ``add_tts_pauses`` (optional). The fish-only steps are gated
+    by ``tts_kwargs["provider"] == "fish_speech"``; per-paper toggles and
+    overrides come from the ``tts_kwargs["preprocessor"]`` sub-tree.
+
+    ``add_pauses`` is the load-bearing flag: ``add_tts_pauses`` is NOT
+    idempotent, so it must run exactly once on fresh prose and never on text
+    that already carries pause tags. card.py passes ``add_pauses=False,
+    clean_markdown=False`` (cards arrive TTS-shaped); comment_edit.py passes
+    ``add_pauses=True`` so a re-written chunk matches a fresh full-gen chunk.
+
+    Args:
+        text: Fragment bound for TTS.
+        tts_kwargs: Provider config dict; reads the optional ``preprocessor``
+            sub-tree (``pronunciations``, ``acronym_allowlist``, etc.).
+        add_pauses: Append provider-specific pause tags via ``add_tts_pauses``.
+        clean_markdown: Run ``clean_markdown_for_tts`` first.
+
+    Returns:
+        Scrubbed text ready for ``text_to_speech``.
+    """
+    is_fish = str(tts_kwargs.get("provider", "")) == "fish_speech"
+    _prep_raw = tts_kwargs.get("preprocessor")
+    prep_cfg: dict = _prep_raw if isinstance(_prep_raw, dict) else {}
+    out = clean_markdown_for_tts(text) if clean_markdown else text
+    out = strip_chapter_filename_slug(out)
+    if is_fish and prep_cfg.get("acronym_letter_by_letter", True):
+        allowlist = set(prep_cfg.get("acronym_allowlist", []))
+        out = expand_acronyms_for_tts(out, allowlist=allowlist)
+    if prep_cfg.get("verbalize_bit_strings", True):
+        out = verbalize_bit_strings(
+            out, max_len=int(prep_cfg.get("bit_strings_max_len", 32))
+        )
+    pronunciations = prep_cfg.get("pronunciations", {}) or {}
+    if pronunciations:
+        out = apply_pronunciation_overrides(out, pronunciations)
+    if is_fish and prep_cfg.get("strip_forbidden_tags", True):
+        out = strip_forbidden_fish_tags(out)
+    if add_pauses:
+        out = add_tts_pauses(
+            out, provider=str(tts_kwargs.get("provider", "elevenlabs"))
+        )
+    return out
+
+
 _CHUNK_BOUNDARY_PAUSE_RE = re.compile(
     r"(\s*\[(?:pause|short pause|long pause)\])+\s*$"
 )

@@ -94,3 +94,13 @@ Extended the `PlainCard.card_subtype` Literal with `"definition_main"`, `"defini
 Finalized state of the review-time triage channel (extends the 2026.05.19 design above). `PlainCard.user_feedback: str = Field("", ...)` now emits its `<!-- user-feedback: {text} -->` marker — only when non-empty, immediately before the tag line — in ALL THREE `to_md()` branches: Basic, Cloze, and the image-card branch. Keeping the marker on the image branch matters so feedback authored on an image card also round-trips (the earlier pass only covered the text branches in practice).
 
 Distinct from `CardFeedback` (the LLM self-refine signal) — `user_feedback` is human-authored at review time. The matching extractor/strip and the `Feedback` field write live in [[swanki.processing.anki_processor]] (AnkiConnect path) and [[swanki.processing.apkg_exporter]] (.apkg path, field registered at ord 2 on both models); round-trip tests in [[tests.test_models_validation]] and [[tests.test_apkg_exporter]].
+
+## 2026.05.30 - Add `ChunkEditResponse`
+
+Structured output for `chunk_edit_agent` ([[swanki.llm.agents]]), beside the
+other audio-feedback models. Fields: `action`
+(`edit_text|speech_only|needs_section_regen|cannot_fix`), `revised_text:
+str|None` (required for `edit_text`), `rationale`. Consumed by
+[[swanki.audio.comment_edit]]; only `edit_text`/`speech_only` are auto-applied,
+the other two escalate to the human. Plan:
+[[plan.swanki-comment-driven-chunk-edits.2026.05.30]].
