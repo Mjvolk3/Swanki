@@ -34,6 +34,7 @@ from ._common import (
     strip_forbidden_fish_tags,
     text_to_speech,
     tts_chunks_parallel,
+    verbalize_bit_strings,
     write_chunk_manifest,
 )
 
@@ -244,7 +245,11 @@ def generate_reading_audio(
         "9. WITHIN THIS CHUNK ONLY: do not duplicate a sentence that already appears "
         "literally in this chunk's input. Do NOT assume earlier chunks already covered "
         "anything — you cannot see them. If the input contains it, render it; deduplication "
-        "across the document is handled elsewhere.\n"
+        "across the document is handled elsewhere.\n\n"
+        "10. BINARY CODEWORDS — when a binary codeword or bit string appears (e.g. 0, 10, "
+        "110, 1011), read each digit separately as a word, never as a single number: "
+        "'one-one-zero', not '110' or 'one hundred ten'. Lengths, counts, and ordinary "
+        "quantities stay as numerals.\n"
         + acronym_instruction
     )
 
@@ -326,8 +331,9 @@ def generate_reading_audio(
 
     # Pre-TTS scrubber pipeline (mirrors lecture.py flow). Same order, same
     # rationale: clean markdown, slug-strip safety net, acronym rewrite,
-    # pronunciation overrides, forbidden-tag scrub. Fish-only steps gated by
-    # preprocessor flags.
+    # bit-string verbalize, pronunciation overrides, forbidden-tag scrub.
+    # Fish-only steps gated by preprocessor flags; bit-string verbalize is
+    # provider-agnostic (default-on).
     is_fish_for_prep = str(tts_kwargs.get("provider", "")) == "fish_speech"
     _prep_raw = tts_kwargs.get("preprocessor")
     prep_cfg: dict = _prep_raw if isinstance(_prep_raw, dict) else {}
@@ -336,6 +342,10 @@ def generate_reading_audio(
     if is_fish_for_prep and prep_cfg.get("acronym_letter_by_letter", True):
         allowlist = set(prep_cfg.get("acronym_allowlist", []))
         cleaned = expand_acronyms_for_tts(cleaned, allowlist=allowlist)
+    if prep_cfg.get("verbalize_bit_strings", True):
+        cleaned = verbalize_bit_strings(
+            cleaned, max_len=int(prep_cfg.get("bit_strings_max_len", 32))
+        )
     pronunciations = prep_cfg.get("pronunciations", {}) or {}
     if pronunciations:
         cleaned = apply_pronunciation_overrides(cleaned, pronunciations)

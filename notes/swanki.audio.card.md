@@ -53,3 +53,11 @@ No chunker change (cards use `chunk_text` and stay short). No combine change (ca
 ## 2026.05.14 - Wire problem-set label humanizer into card transcript prep
 
 `generate_card_transcript` now calls `humanize_card_text_for_tts` from `swanki.utils.formatting` after the citation prefix is attached and before the LaTeX humanization pass. Fish Speech tokenized short abbreviations like `T/F 12:` as letter sequences and read `12` as "one, two", derailing the rest of the transcript. The humanizer expands the canonical short form (`MC 13:` -> `Multiple choice 13:`, `T/F 12:` -> `True or false 12:`) and any LLM-regression long form (`TF-CH1-12:` -> `True or false 12:`, `MAT-CH1-3:` -> `Matching 3:`, `CMP-CH2-9:` -> `Completion 9:`), plus generic `Ch./Chapter/CH<n>` and `Sec./Section/SEC<n>` scaffolding. The expansion happens once per transcript call and is idempotent, so re-runs against the same card text produce stable output.
+
+## 2026.05.29 - Wired `verbalize_bit_strings` into the scrubber chain
+
+Added the provider-agnostic, default-on bit-string verbalizer step (binary
+codewords -> hyphenated digit-words) immediately after acronym expansion and
+before pronunciation overrides. See [[swanki.audio._common]] (2026.05.29) for
+the function, regex, gating, and rationale. Plan:
+[[plan.bit-string-verbalizer-hamming-annotations.2026.05.29]].
