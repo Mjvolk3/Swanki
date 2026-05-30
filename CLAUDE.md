@@ -62,6 +62,18 @@ swanki pdf_path=... citation_key=... +output_dir=... \
 
 Other workstations (laptops without the Fish server / with Anki installed) should not inherit these — they're gilahyper-specific.
 
+## Sync Terminology
+
+When the user says any of these, they mean push the latest artifacts to the **self-hosted endpoints** (the user's ABS server + the headless Anki on gilahyper). The pipeline is finished; this is the delivery step.
+
+- **"sync swanki data"** / **"sync to swanki servers"** / **"push to my servers"** → `bash scripts/swanki_sync.sh [--projection NAME] [--dry-run]`. Runs both halves: ABS audio refresh and headless Anki deck push.
+- **"land on abs"** → audio half only. `bash scripts/abs_refresh.sh`. (Also invoked by `swanki_sync.sh`.)
+- **"land on anki server"** / **"push to anki"** → deck half only. `python scripts/swanki_anki_sync.py [--projection NAME] [--dry-run]`. POSTs `importPackage` per latest `.apkg` then a single AnkiWeb `sync`.
+
+**Zotero sync is still part of the loop** (`sync_to_zotero`, triggered at pipeline end when `zotero.sync=true`) — it produces the versioned `.apkg` and audio `.zip` attachments that the self-hosted endpoints read from. Conceptually it is **the backup / source-of-truth layer**, not the primary delivery channel. Users without their own servers still sideload from the Zotero attachments by hand; advanced users with their own ABS + headless Anki use the shortcuts above.
+
+Prereqs and the headless Anki + AnkiConnect setup are documented in `notes/anki.headless-sync.md`.
+
 ## Weekly Notes
 
 - When checking off a task in the weekly note, always add a one-sentence summary before the `[[link]]`. Never leave a checked item as just a bare link.
