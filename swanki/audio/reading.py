@@ -467,6 +467,17 @@ def generate_reading_audio(
     chunk_pause_ms_by_boundary = post_cfg.get(
         "chunk_pause_ms_by_boundary", chunk_pause_map_default
     )
+    # Asymmetric bookend pauses (see lecture.py): fast front, distinct break
+    # before the end bookend, trailing silence after it.
+    bookend_start_pause_ms = int(
+        post_cfg.get("bookend_start_pause_ms", 300 if is_fish else 500)
+    )
+    bookend_end_pause_ms = int(
+        post_cfg.get("bookend_end_pause_ms", 2000 if is_fish else 500)
+    )
+    bookend_trailing_pause_ms = int(
+        post_cfg.get("bookend_trailing_pause_ms", 1500 if is_fish else 0)
+    )
     combine_audio_with_section_pauses(
         all_section_chunks,
         output_path,
@@ -474,6 +485,9 @@ def generate_reading_audio(
         chunk_crossfade_ms=chunk_crossfade_ms,
         bookend_start=bookend_start,
         bookend_end=bookend_end,
+        bookend_start_pause_ms=bookend_start_pause_ms,
+        bookend_end_pause_ms=bookend_end_pause_ms,
+        bookend_trailing_pause_ms=bookend_trailing_pause_ms,
         chunk_tail_trim_ms=chunk_tail_trim_ms,
         chunk_pause_ms=chunk_pause_ms,
         gain_match_target_dbfs=gain_match,
@@ -506,6 +520,9 @@ def generate_reading_audio(
             "chunk_crossfade_ms": chunk_crossfade_ms,
             "gain_match_target_dbfs": gain_match,
             "chunk_pause_ms_by_boundary": chunk_pause_ms_by_boundary,
+            "bookend_start_pause_ms": bookend_start_pause_ms,
+            "bookend_end_pause_ms": bookend_end_pause_ms,
+            "bookend_trailing_pause_ms": bookend_trailing_pause_ms,
         },
     )
 

@@ -422,3 +422,27 @@ once on fresh prose and never on already-paused stored chunk text. lecture/
 reading/summary still inline the chain; folding them onto this helper is a
 recommended follow-up. Plan:
 [[plan.swanki-comment-driven-chunk-edits.2026.05.30]].
+
+## 2026.05.30 - Asymmetric bookend pauses (split + persist on restitch)
+
+Replaced the single `bookend_pause_ms` (500, used for both the after-start and
+before-end gaps, no trailing silence) with three knobs in
+`combine_audio_with_section_pauses` / `_accumulate_timeline`:
+`bookend_start_pause_ms` (300, front plays in fast), `bookend_end_pause_ms`
+(2000, distinct break before the end bookend), and a NEW
+`bookend_trailing_pause_ms` (1500, silence AFTER the end bookend, gated on an
+end bookend existing). Driven by Hamming ABS lecture comments 53.6m/65.6m/75.9m
+(autoplay needs a clear chapter break). Plan:
+[[plan.audio-bookend-pauses-conceptual-prompt.2026.05.30]].
+
+`restitch_from_chunks` gains the 3 override params and PERSISTS any provided
+override into the manifest's postprocessor block, so later surgical /
+[[swanki.audio.comment_edit]] restitches inherit the new pauses (they read the
+manifest, not the caller args). Precedence: override > manifest key > global
+default. Backward-compatible: old manifests (no bookend keys) resolve to the
+global defaults via `.get(key, default)` everywhere, so existing-paper
+restitches don't crash (regression test:
+`test_restitch_old_manifest_without_bookend_keys_uses_defaults`). The second
+`_accumulate_timeline` caller (the `_ensure_timeline` recompute fallback) was
+updated in lockstep. Globals live in `fish_speech.yaml` postprocessor; all
+three audio types (lecture/reading/summary) read+forward+persist them.

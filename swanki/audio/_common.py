@@ -1207,7 +1207,9 @@ def _accumulate_timeline(
     chunk_crossfade_ms: int,
     bookend_start: Path | None,
     bookend_end: Path | None,
-    bookend_pause_ms: int,
+    bookend_start_pause_ms: int,
+    bookend_end_pause_ms: int,
+    bookend_trailing_pause_ms: int,
     chunk_tail_trim_ms: int,
     chunk_pause_ms: int,
     gain_match_target_dbfs: float | None,
@@ -1283,7 +1285,7 @@ def _accumulate_timeline(
         timeline.bookend_start = Span(
             offset_ms=0, duration_ms=len(bsa), end_ms=len(bsa)
         )
-        combined += AudioSegment.silent(duration=bookend_pause_ms)
+        combined += AudioSegment.silent(duration=bookend_start_pause_ms)
 
     gidx = 0
     for sec_idx, section_chunks in enumerate(sections):
@@ -1342,13 +1344,17 @@ def _accumulate_timeline(
         return None, timeline
 
     if bookend_end and bookend_end.exists():
-        combined += AudioSegment.silent(duration=bookend_pause_ms)
+        combined += AudioSegment.silent(duration=bookend_end_pause_ms)
         be_off = len(combined)
         bea = _gain_match(AudioSegment.from_mp3(str(bookend_end)))
         combined += bea
         timeline.bookend_end = Span(
             offset_ms=be_off, duration_ms=len(bea), end_ms=be_off + len(bea)
         )
+        # Trailing silence AFTER the end bookend so chapter autoplay lands on a
+        # clear break (the end-bookend Span records only the spoken audio).
+        if bookend_trailing_pause_ms > 0:
+            combined += AudioSegment.silent(duration=bookend_trailing_pause_ms)
 
     timeline.total_duration_ms = len(combined)
     return combined, timeline
@@ -1361,7 +1367,9 @@ def combine_audio_with_section_pauses(
     chunk_crossfade_ms: int = 0,
     bookend_start: Path | None = None,
     bookend_end: Path | None = None,
-    bookend_pause_ms: int = 500,
+    bookend_start_pause_ms: int = 300,
+    bookend_end_pause_ms: int = 2000,
+    bookend_trailing_pause_ms: int = 1500,
     chunk_tail_trim_ms: int = 0,
     chunk_pause_ms: int = 0,
     gain_match_target_dbfs: float | None = None,
@@ -1383,7 +1391,13 @@ def combine_audio_with_section_pauses(
             smoothing the join without bleeding speech.
         bookend_start: Optional start bookend audio file.
         bookend_end: Optional end bookend audio file.
-        bookend_pause_ms: Silence after start bookend / before end bookend.
+        bookend_start_pause_ms: Silence after the start bookend, before the
+            body. Small (~300) so the chapter front plays almost immediately.
+        bookend_end_pause_ms: Silence after the body, before the end bookend
+            (~2000) so the close reads as a distinct break.
+        bookend_trailing_pause_ms: Silence after the end bookend (~1500) so
+            chapter autoplay lands on a clear gap. Only added when an end
+            bookend exists.
         chunk_tail_trim_ms: Strip this many ms from the end of each chunk before
             concatenation. Used to clip Fish Speech tag-rendering artifacts
             (audible inhale/sigh that the [pause] tag renders as).
@@ -1414,7 +1428,9 @@ def combine_audio_with_section_pauses(
         chunk_crossfade_ms=chunk_crossfade_ms,
         bookend_start=bookend_start,
         bookend_end=bookend_end,
-        bookend_pause_ms=bookend_pause_ms,
+        bookend_start_pause_ms=bookend_start_pause_ms,
+        bookend_end_pause_ms=bookend_end_pause_ms,
+        bookend_trailing_pause_ms=bookend_trailing_pause_ms,
         chunk_tail_trim_ms=chunk_tail_trim_ms,
         chunk_pause_ms=chunk_pause_ms,
         gain_match_target_dbfs=gain_match_target_dbfs,
@@ -1459,7 +1475,8 @@ def write_chunk_manifest(
             original render passed to :func:`combine_audio_with_section_pauses`
             (``section_pause_ms``, ``chunk_pause_ms``, ``chunk_tail_trim_ms``,
             ``chunk_crossfade_ms``, ``gain_match_target_dbfs``,
-            ``bookend_pause_ms``). Recorded in the manifest so a later
+            ``bookend_start_pause_ms`` / ``bookend_end_pause_ms`` /
+            ``bookend_trailing_pause_ms``). Recorded in the manifest so a later
             ``restitch_from_chunks`` reproduces the original render exactly --
             without this, restitch defaults to zero inter-chunk silence and
             chunks crash into each other.
@@ -1543,7 +1560,9 @@ def restitch_from_chunks(
     manifest_path: Path,
     output_path: Path,
     section_pause_ms: int | None = None,
-    bookend_pause_ms: int | None = None,
+    bookend_start_pause_ms: int | None = None,
+    bookend_end_pause_ms: int | None = None,
+    bookend_trailing_pause_ms: int | None = None,
 ) -> None:
     """Reassemble final audio from chunk files using a manifest.
 
@@ -1559,22 +1578,39 @@ def restitch_from_chunks(
         section_pause_ms: Override for ``section_pause_ms`` from manifest.
             When None, uses manifest value (or 2000 if manifest predates the
             postprocessor field).
-        bookend_pause_ms: Override for ``bookend_pause_ms`` from manifest.
-            When None, uses manifest value (or 500 fallback).
+        bookend_start_pause_ms: Override for the gap after the start bookend.
+        bookend_end_pause_ms: Override for the gap before the end bookend.
+        bookend_trailing_pause_ms: Override for the silence after the end
+            bookend. For all three: caller override > manifest key > global
+            default. When any bookend override is given it is PERSISTED into
+            the manifest's postprocessor block so later surgical / comment_edit
+            restitches inherit the new pauses (they read the manifest, not
+            these args). Manifests predating these keys resolve to the global
+            defaults (300/2000/1500).
     """
     inp = _manifest_combine_inputs(manifest_path)
     post = inp.post
 
-    # Caller overrides win, then manifest, then sensible legacy defaults.
+    # Caller overrides win, then manifest, then sensible defaults.
     eff_section_pause = (
         section_pause_ms
         if section_pause_ms is not None
         else int(post.get("section_pause_ms", 2000))
     )
-    eff_bookend_pause = (
-        bookend_pause_ms
-        if bookend_pause_ms is not None
-        else int(post.get("bookend_pause_ms", 500))
+    eff_bk_start = (
+        bookend_start_pause_ms
+        if bookend_start_pause_ms is not None
+        else int(post.get("bookend_start_pause_ms", 300))
+    )
+    eff_bk_end = (
+        bookend_end_pause_ms
+        if bookend_end_pause_ms is not None
+        else int(post.get("bookend_end_pause_ms", 2000))
+    )
+    eff_bk_trailing = (
+        bookend_trailing_pause_ms
+        if bookend_trailing_pause_ms is not None
+        else int(post.get("bookend_trailing_pause_ms", 1500))
     )
     boundary_map = post.get("chunk_pause_ms_by_boundary") or None
     timeline = combine_audio_with_section_pauses(
@@ -1584,13 +1620,34 @@ def restitch_from_chunks(
         chunk_crossfade_ms=int(post.get("chunk_crossfade_ms", 0)),
         bookend_start=inp.bookend_start,
         bookend_end=inp.bookend_end,
-        bookend_pause_ms=eff_bookend_pause,
+        bookend_start_pause_ms=eff_bk_start,
+        bookend_end_pause_ms=eff_bk_end,
+        bookend_trailing_pause_ms=eff_bk_trailing,
         chunk_tail_trim_ms=int(post.get("chunk_tail_trim_ms", 0)),
         chunk_boundaries=inp.boundary_lists if boundary_map else None,
         chunk_pause_ms_by_boundary=boundary_map,
         chunk_pause_ms=int(post.get("chunk_pause_ms", 0)),
         gain_match_target_dbfs=post.get("gain_match_target_dbfs"),
     )
+
+    # Persist bookend-pause overrides into the manifest so later surgical /
+    # comment_edit restitches (which read the manifest, not these args) keep
+    # the new pauses instead of reverting to the gen-time values.
+    if any(
+        v is not None
+        for v in (
+            bookend_start_pause_ms,
+            bookend_end_pause_ms,
+            bookend_trailing_pause_ms,
+        )
+    ):
+        manifest = inp.manifest
+        new_post = dict(manifest.get("postprocessor") or {})
+        new_post["bookend_start_pause_ms"] = eff_bk_start
+        new_post["bookend_end_pause_ms"] = eff_bk_end
+        new_post["bookend_trailing_pause_ms"] = eff_bk_trailing
+        manifest["postprocessor"] = new_post
+        manifest_path.write_text(json.dumps(manifest, indent=2))
 
     # The timeline was measured off the exact bytes just exported. Stamp the
     # manifest-true index/audio_type and persist it as the sidecar so queries
@@ -1637,7 +1694,9 @@ def _ensure_timeline(manifest_path: Path, sidecar_path: Path) -> ChunkTimeline:
         chunk_crossfade_ms=int(post.get("chunk_crossfade_ms", 0)),
         bookend_start=inp.bookend_start,
         bookend_end=inp.bookend_end,
-        bookend_pause_ms=int(post.get("bookend_pause_ms", 500)),
+        bookend_start_pause_ms=int(post.get("bookend_start_pause_ms", 300)),
+        bookend_end_pause_ms=int(post.get("bookend_end_pause_ms", 2000)),
+        bookend_trailing_pause_ms=int(post.get("bookend_trailing_pause_ms", 1500)),
         chunk_tail_trim_ms=int(post.get("chunk_tail_trim_ms", 0)),
         chunk_pause_ms=int(post.get("chunk_pause_ms", 0)),
         gain_match_target_dbfs=post.get("gain_match_target_dbfs"),

@@ -8,6 +8,7 @@ Tests for pure functions in swanki.audio._common.
 """
 
 import json
+from pathlib import Path
 
 from pydub import AudioSegment
 
@@ -262,13 +263,15 @@ def test_combine_audio_with_section_pauses_basic(tmp_path):
     assert len(audio) > 3500
 
 
+def _silence(path: Path, ms: int) -> None:
+    AudioSegment.silent(duration=ms).export(str(path), format="mp3")
+
+
 def test_combine_audio_with_section_pauses_bookends(tmp_path):
-    chunk = tmp_path / "chunk.mp3"
-    start = tmp_path / "start.mp3"
-    end = tmp_path / "end.mp3"
-    AudioSegment.silent(duration=1000).export(str(chunk), format="mp3")
-    AudioSegment.silent(duration=500).export(str(start), format="mp3")
-    AudioSegment.silent(duration=500).export(str(end), format="mp3")
+    chunk, start, end = (tmp_path / n for n in ("chunk.mp3", "start.mp3", "end.mp3"))
+    _silence(chunk, 1000)
+    _silence(start, 500)
+    _silence(end, 500)
 
     out = tmp_path / "combined.mp3"
     combine_audio_with_section_pauses(
@@ -276,13 +279,58 @@ def test_combine_audio_with_section_pauses_bookends(tmp_path):
         out,
         bookend_start=start,
         bookend_end=end,
-        bookend_pause_ms=500,
+        bookend_start_pause_ms=300,
+        bookend_end_pause_ms=2000,
+        bookend_trailing_pause_ms=1500,
     )
 
     assert out.exists()
     audio = AudioSegment.from_mp3(str(out))
-    # 500ms start + 500ms pause + 1000ms chunk + 500ms pause + 500ms end = ~3000ms
-    assert len(audio) > 2500
+    # 500 start + 300 + 1000 chunk + 2000 + 500 end + 1500 trailing = ~5800ms
+    assert len(audio) > 5500
+
+
+def test_combine_audio_bookend_pauses_are_asymmetric(tmp_path):
+    """A larger end pause + trailing silence makes the same content longer
+    than a symmetric-small-pause assembly."""
+    chunk, start, end = (tmp_path / n for n in ("c.mp3", "s.mp3", "e.mp3"))
+    for p in (chunk, start, end):
+        _silence(p, 500)
+
+    small = tmp_path / "small.mp3"
+    big = tmp_path / "big.mp3"
+    combine_audio_with_section_pauses(
+        [[chunk]], small, bookend_start=start, bookend_end=end,
+        bookend_start_pause_ms=300, bookend_end_pause_ms=300,
+        bookend_trailing_pause_ms=0,
+    )
+    combine_audio_with_section_pauses(
+        [[chunk]], big, bookend_start=start, bookend_end=end,
+        bookend_start_pause_ms=300, bookend_end_pause_ms=2000,
+        bookend_trailing_pause_ms=1500,
+    )
+    # big has 1700 extra end-pause + 1500 trailing = ~3200ms more.
+    assert len(AudioSegment.from_mp3(str(big))) - len(
+        AudioSegment.from_mp3(str(small))
+    ) > 3000
+
+
+def test_combine_audio_trailing_pause_only_with_end_bookend(tmp_path):
+    """No end bookend -> the trailing pause is not added."""
+    chunk, start = (tmp_path / n for n in ("c.mp3", "s.mp3"))
+    _silence(chunk, 1000)
+    _silence(start, 500)
+    out = tmp_path / "o.mp3"
+    combine_audio_with_section_pauses(
+        [[chunk]], out, section_pause_ms=0,
+        bookend_start=start, bookend_end=None,
+        bookend_start_pause_ms=300, bookend_end_pause_ms=2000,
+        bookend_trailing_pause_ms=1500,
+    )
+    audio = AudioSegment.from_mp3(str(out))
+    # 500 start + 300 start_pause + 1000 chunk = ~1800ms; NO 2000 end / 1500
+    # trailing (no end bookend). section_pause_ms=0 isolates the bookend math.
+    assert len(audio) < 2200
 
 
 def test_combine_audio_with_section_pauses_empty(tmp_path):
@@ -622,12 +670,22 @@ def test_restitch_from_chunks_with_bookends(tmp_path):
     )
 
     out = tmp_path / "restitched.mp3"
-    restitch_from_chunks(manifest_path, out, bookend_pause_ms=500)
+    restitch_from_chunks(
+        manifest_path, out,
+        bookend_start_pause_ms=300,
+        bookend_end_pause_ms=2000,
+        bookend_trailing_pause_ms=1500,
+    )
 
     assert out.exists()
     audio = AudioSegment.from_mp3(str(out))
-    # 500ms start + 500ms pause + 1000ms chunk + 500ms pause + 500ms end = ~3000ms
-    assert len(audio) > 2500
+    # 500 start + 300 + 1000 chunk + 2000 + 500 end + 1500 trailing = ~5800ms
+    assert len(audio) > 5500
+    # Overrides were persisted into the manifest for future restitches.
+    saved = json.loads(manifest_path.read_text())["postprocessor"]
+    assert saved["bookend_start_pause_ms"] == 300
+    assert saved["bookend_end_pause_ms"] == 2000
+    assert saved["bookend_trailing_pause_ms"] == 1500
 
 
 def test_restitch_from_chunks_missing_file_fails(tmp_path):

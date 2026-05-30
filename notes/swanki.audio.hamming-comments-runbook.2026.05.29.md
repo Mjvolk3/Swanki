@@ -41,3 +41,27 @@ ch10@115.1m). Plan: [[plan.bit-string-verbalizer-hamming-annotations.2026.05.29]
 - [ ] Bookend pause/gap config change + re-stitch all lecture chapters (53.6m / 65.6m / 75.9m).
 - [ ] Surgical fixes: ch3 (29.1m), ch5 (62.7m), ch9 (104.0m, 112.3m).
 - [ ] After all land + re-listen: clear + re-mark ABS bookmarks (do NOT clear before — ch3/5/9 comments are still the task list).
+
+## 2026.05.30 - Bookend pauses + conceptual prompt landed (structural batch)
+
+The bookend pause/gap cluster (53.6m, 65.6m, 75.9m) and the conceptual-strength
+comment (128.0m) are addressed by code in
+[[plan.audio-bookend-pauses-conceptual-prompt.2026.05.30]] (asymmetric
+`bookend_start/end/trailing_pause_ms` global knobs + a book_voice lecture-prompt
+refinement). Post-merge runbook to land them on ABS:
+
+1. Re-stitch all 10 Hamming chapters with the new pauses (pure pydub, no Fish
+   needed; `scripts/regen_hamming_bookends_ch1_10.py` now passes+persists
+   300/2000/1500). This rewrites each chunk_timeline + persists the keys into
+   each manifest.
+2. Commit, then `sync_to_zotero` per chapter, then `bash scripts/abs_refresh.sh`.
+3. Clear+re-mark ABS bookmarks (all chapter offsets shift). The ch1-9 comment
+   task list above survives on content-match, not offsets.
+4. The conceptual-prompt refinement only affects a FRESH lecture transcript
+   regen (not a re-stitch); ch10 already regenerated 2026-05-29 before this
+   prompt change, so a fresh ch10 lecture regen would be needed to pick it up
+   (optional / judged by listening).
+
+Then the precise per-chunk fixes (ch3 29.1m, ch9 104.0m/112.3m) via
+[[swanki.audio.comment_edit]] `edit_chunk` -- each re-stitches its chapter and
+inherits the persisted bookend pauses from the manifest.

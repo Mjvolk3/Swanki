@@ -67,4 +67,10 @@ models:
       chunk_crossfade_ms: 50
       # Silence between sections.
       section_pause_ms: 5000
+      # Asymmetric bookend pauses (lecture/reading/summary). Front plays in
+      # almost immediately; a ~2s break sets off the end bookend; trailing
+      # silence after the end bookend so chapter autoplay lands on a clear gap.
+      bookend_start_pause_ms: 300
+      bookend_end_pause_ms: 2000
+      bookend_trailing_pause_ms: 1500
 # OCR backend is its own Hydra group now (ocr=mineru | ocr=mathpix); see swanki/conf/ocr/.
