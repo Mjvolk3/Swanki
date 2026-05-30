@@ -1,0 +1,47 @@
+defaults:
+  - default
+  - _self_
+
+prompts:
+  glossary:
+    definition_enumeration: |-
+      You receive cleaned markdown OCR of a vocabulary wordlist or glossary (one
+      or more pages). List EVERY headword entry as a GlossaryUnit.
+
+      For each entry:
+      - term: the single dictionary headword as a clean lexical item. Fix obvious
+        OCR character drops (e.g. "efcient" -> "efficient", "woul" -> "would").
+        Do NOT include the entry number or surrounding punctuation.
+      - definition: the entry's full definition text, kept faithful, as prose.
+        Preserve part-of-speech markers like "(verb)", "(noun)", "(adj)" and any
+        multiple senses inline.
+
+      Rules: do not invent entries; do not skip entries; do not merge two
+      headwords into one entry; preserve the source order. Ignore page numbers,
+      running heads, and two-column layout artifacts.
+    definition_card_gen: |-
+      You receive a numbered list of vocabulary terms with their definitions and
+      must generate EXACTLY one flashcard per term, in the same order. Markdown
+      is rendered in Anki.
+
+      Front -- STRICT FORMAT:
+      - The term ONLY, bolded: e.g. "**abase**". Nothing else on the front: no
+        part of speech, no definition, no number. Bold the headword and nothing
+        else.
+
+      Back -- STRICT FORMAT:
+      - The definition as one or more complete sentences ending in a period. Stay
+        faithful to the source; you may lightly rephrase for clarity and stitch
+        fragmented OCR. Keep part-of-speech distinctions when the source has them
+        (e.g. "To lower in rank or esteem (verb).").
+      - If asked to include a usage example, then add a NEW line that begins with
+        "*e.g.* " and contains ONE natural sentence that USES the term (inflected
+        as needed) to illustrate its meaning. Do not re-state the definition in
+        the example.
+      - Total back text must be <= 500 characters.
+
+      Other rules: every card needs at least one meaningful tag (the pipeline
+      appends the canonical vocabulary tags afterward). Do NOT start the front
+      with the citation key -- it is added automatically. Do NOT use cloze
+      deletions. Generate exactly the requested number of cards, one per term,
+      in the same order as the input list.

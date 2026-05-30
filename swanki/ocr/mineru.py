@@ -42,7 +42,7 @@ def _resolve_mineru_python(ocr_config: dict[str, Any]) -> str:
     ``~/miniconda3`` on gilahyper vs ``~/opt/miniconda3`` elsewhere -- without a
     per-run override.
     """
-    configured = os.path.expanduser(
+    configured: str = os.path.expanduser(
         ocr_config.get("python_bin", "~/opt/miniconda3/envs/swanki-mineru/bin/python")
     )
     if Path(configured).exists():

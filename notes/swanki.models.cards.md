@@ -85,9 +85,12 @@ Daily-pull design (not implemented):
 - For each hit, produce one bullet in a dated Dendron triage note (front + back + feedback + tags + citation key parsed from the `@<key>:` prefix).
 - For cards the user flags for escalation, call the `gh-issue` skill path to open a GitHub issue with the card content and feedback as the body. The triage report stays the source of truth; deletes/fixes are still hand-pulled, not auto-applied.
 
+## 2026.05.21 - definition_* card subtypes for glossary mode
+
+Extended the `PlainCard.card_subtype` Literal with `"definition_main"`, `"definition_example"`, and `"definition_elaboration"` for [[swanki.pipeline.glossary]]. Glossary mode stamps `definition_main` from the plan after the LLM call (same trust-the-plan pattern as problem-set subtypes). The `CardSubtype` alias in [[swanki.models.problem_set]] was extended in parallel for typing consistency. `definition_example`/`definition_elaboration` are reserved for the deferred encyclopedia elaboration work.
+
 ## 2026.05.29 - user_feedback marker on all three to_md branches (finalized)
 
 Finalized state of the review-time triage channel (extends the 2026.05.19 design above). `PlainCard.user_feedback: str = Field("", ...)` now emits its `<!-- user-feedback: {text} -->` marker — only when non-empty, immediately before the tag line — in ALL THREE `to_md()` branches: Basic, Cloze, and the image-card branch. Keeping the marker on the image branch matters so feedback authored on an image card also round-trips (the earlier pass only covered the text branches in practice).
 
 Distinct from `CardFeedback` (the LLM self-refine signal) — `user_feedback` is human-authored at review time. The matching extractor/strip and the `Feedback` field write live in [[swanki.processing.anki_processor]] (AnkiConnect path) and [[swanki.processing.apkg_exporter]] (.apkg path, field registered at ord 2 on both models); round-trip tests in [[tests.test_models_validation]] and [[tests.test_apkg_exporter]].
-

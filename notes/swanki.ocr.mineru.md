@@ -45,3 +45,13 @@ Verdict: differences are acceptable for the default flip given the local-image a
 ## 2026-05-21 — OCR promoted to its own Hydra group (per-run switch)
 
 Moved OCR config out of `models/*.yaml` into a dedicated `swanki/conf/ocr/` group (`mineru.yaml`, `mathpix.yaml`) wired into `config.yaml` defaults as `ocr: mineru`. Per-run selection is now `ocr=mineru` (default) or `ocr=mathpix` -- mirrors the `models=fish_speech` pattern and decouples OCR from the LLM/TTS model group. `pipeline.py` reads `self.config.get("ocr", {})` (was `config["models"]["models"]["ocr"]`); the in-code fallback stays `mathpix`. Verified via Hydra compose: `ocr=mathpix` and `ocr=mineru models=fish_speech` resolve correctly.
+
+## 2026-05-25 — `_resolve_mineru_python` for cross-machine env detection
+
+Cherry-picked from local-`main` commit `7b92a73` (concurrent agent's MinerU env fix). Added `_resolve_mineru_python(ocr_config)` that, when the configured `python_bin` doesn't exist on disk, derives the `swanki-mineru` sibling env from the running interpreter's `sys.executable` (walks up to the parent `envs/` dir and looks for `swanki-mineru/bin/python`). Fixes the gilahyper-vs-other-machines path drift where the shipped default is `~/opt/miniconda3/...` but gilahyper has `~/miniconda3/...`. No per-run `ocr.python_bin=` override needed; an explicit override still wins if it exists.
+
+Validated on gilahyper during the GRE page-1 live run: prior to the cherry-pick, the pipeline failed with `FileNotFoundError: ~/opt/miniconda3/envs/swanki-mineru/bin/python` and required `ocr.python_bin=...` to proceed; after the cherry-pick, `_resolve_mineru_python({})` returns `/home/michaelvolk/miniconda3/envs/swanki-mineru/bin/python` directly. Note that the concurrent agent's commit `7b92a73` also touches `scripts/zotero_paper_import.py` (out-of-scope for this PR); only the `swanki/ocr/mineru.py` hunk was cherry-picked.
+
+## 2026-05-25 — Type-annotate `configured` in `_resolve_mineru_python` for mypy
+
+Added `: str` annotation on `configured` so mypy stops flagging the two `return configured` paths as returning `Any` (the underlying `ocr_config.get(...)` returns `Any` from `dict[str, Any]`, which propagates through `os.path.expanduser`). Mirrors the existing `return str(sibling)` pattern. Trivial divergence from `7b92a73` -- a 5-char addition -- so the upstream PR conflict will be a clear "keep ours".

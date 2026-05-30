@@ -22,3 +22,7 @@ Reads optional `cfg.content_key` from Hydra and passes it into `Pipeline.process
 
 Added `solution_manual` to the documented `mode=` options and `solution_manual` / `problem_set` to the `pipeline=`, `prompts=`, and `output=` choice lists. Added an example showing the full invocation: `mode=solution_manual pipeline=solution_manual prompts=solution_manual output=problem_set`.
 
+
+## 2026.05.21 - glossary mode in CLI help
+
+Added `glossary` to the documented `mode=`, `pipeline=`, `prompts=`, and `output=` choice lists and a `mode=glossary pipeline=glossary prompts=glossary output=glossary` example invocation. Also added the `glossary` mode to the `conf/config.yaml` mode comment.

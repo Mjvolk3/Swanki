@@ -15,6 +15,10 @@ from ..models.cards import (
     LectureTranscriptFeedback,
 )
 from ..models.document import DocumentSummary
+from ..models.glossary import (
+    DefinitionCardBatchResponse,
+    GlossaryEnumerationResponse,
+)
 from ..models.problem_set import (
     CardPlanResponse,
     ProblemCardBatchResponse,
@@ -55,6 +59,14 @@ card_plan_classifier_agent: Agent[None, CardPlanResponse] = Agent(
 )
 problem_card_gen_agent: Agent[None, ProblemCardBatchResponse] = Agent(
     output_type=ProblemCardBatchResponse, retries=3
+)
+
+# ── Glossary mode agents ───────────────────────────────────────────────
+glossary_enumeration_agent: Agent[None, GlossaryEnumerationResponse] = Agent(
+    output_type=GlossaryEnumerationResponse, retries=3
+)
+definition_card_gen_agent: Agent[None, DefinitionCardBatchResponse] = Agent(
+    output_type=DefinitionCardBatchResponse, retries=3
 )
 
 # ── Raw-text agent (shared across all plain-text calls) ───────────────
