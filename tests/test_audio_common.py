@@ -28,6 +28,7 @@ from swanki.audio._common import (
     extract_acronyms,
     filter_metadata,
     generate_silence,
+    preprocess_for_tts,
     restitch_from_chunks,
     split_transcript_by_sections,
     strip_chapter_filename_slug,
@@ -406,6 +407,48 @@ def test_verbalize_bit_strings_empty():
     assert verbalize_bit_strings("no binary here at all") == (
         "no binary here at all"
     )
+
+
+# ---------------------------------------------------------------------------
+# preprocess_for_tts
+# ---------------------------------------------------------------------------
+
+
+_FISH = {"provider": "fish_speech", "preprocessor": {}}
+
+
+def test_preprocess_for_tts_add_pauses_injects_tags():
+    text = "First paragraph here.\n\nSecond paragraph here."
+    out = preprocess_for_tts(text, _FISH, add_pauses=True)
+    assert "[pause]" in out  # add_tts_pauses ran on the blank line
+
+
+def test_preprocess_for_tts_no_pauses_matches_card_behavior():
+    text = "First paragraph here.\n\nSecond paragraph here."
+    out = preprocess_for_tts(text, _FISH, add_pauses=False, clean_markdown=False)
+    assert "[pause]" not in out  # pause step skipped (card path)
+
+
+def test_preprocess_for_tts_runs_scrubbers():
+    # Bit-string verbalized (default-on), regardless of pauses.
+    out = preprocess_for_tts("code 110 here", _FISH, add_pauses=False)
+    assert "one-one-zero" in out and "110" not in out
+
+
+def test_preprocess_for_tts_fish_only_steps_noop_for_elevenlabs():
+    # No provider -> acronym + forbidden-tag steps are skipped; bit-string
+    # verbalize is provider-agnostic so it still runs.
+    el = {"preprocessor": {}}
+    out = preprocess_for_tts("SAR code 110", el, add_pauses=False)
+    assert "S-A-R" not in out  # acronym expansion is fish-only
+    assert "one-one-zero" in out  # verbalize is provider-agnostic
+
+
+def test_preprocess_for_tts_scrubber_idempotent_without_pauses():
+    text = "code 110 and SAR"
+    once = preprocess_for_tts(text, _FISH, add_pauses=False)
+    twice = preprocess_for_tts(once, _FISH, add_pauses=False)
+    assert once == twice
 
 
 # ---------------------------------------------------------------------------

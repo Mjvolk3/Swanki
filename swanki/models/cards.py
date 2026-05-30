@@ -1381,6 +1381,40 @@ class AudioTranscriptFeedback(BaseModel):
     )
 
 
+class ChunkEditResponse(BaseModel):
+    """Structured result of applying one reviewer comment to one audio chunk.
+
+    Produced by ``chunk_edit_agent`` (swanki/llm/agents.py) and consumed by
+    ``swanki.audio.comment_edit.edit_chunk``. ``edit_chunk`` only auto-applies
+    ``edit_text`` (re-TTS the rewritten prose) and ``speech_only`` (re-roll the
+    existing text); ``needs_section_regen`` and ``cannot_fix`` are terminal
+    escalations the dispatcher surfaces back to the human instead of acting on.
+    """
+
+    action: Literal[
+        "edit_text", "speech_only", "needs_section_regen", "cannot_fix"
+    ] = Field(
+        description=(
+            "edit_text: rewrite the chunk text per the comment and re-TTS. "
+            "speech_only: text is fine, delivery isn't -- re-roll the same "
+            "text. needs_section_regen: the comment is conceptual/structural "
+            "and cannot be fixed by a single-chunk edit. cannot_fix: the "
+            "comment is not actionable on this chunk."
+        )
+    )
+    revised_text: str | None = Field(
+        default=None,
+        description=(
+            "The rewritten chunk transcript, REQUIRED when action is "
+            "edit_text, otherwise null. Plain prose only -- no pause tags or "
+            "markdown; the preprocessor adds those."
+        ),
+    )
+    rationale: str = Field(
+        description="One sentence explaining the chosen action."
+    )
+
+
 class LectureTranscriptFeedback(BaseModel):
     r"""Feedback for lecture transcript quality.
 

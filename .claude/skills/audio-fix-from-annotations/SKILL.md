@@ -64,17 +64,29 @@ Exactly one approval prompt. **No re-TTS before approval.**
 
 ## Phase 5 - Apply (post-approval, unattended)
 
+The actual edit + re-TTS + restitch is swanki code, NOT a bespoke script:
+call `swanki.audio.comment_edit.edit_chunk` once per approved intervention.
+It runs the preprocessor on new prose (so an edit matches a fresh full-gen),
+re-TTSs only that chunk, restitches (rewriting `chunk_timeline.json`), and
+writes a `_edits/` audit trail (prior chunk mp3+text + manifest snapshot +
+`edits_log.jsonl`) automatically.
+
 1. Fish preflight: `swanki.audio.surgical.fish_speech_healthy(server_url)`;
    if down, retry with backoff a few times, then abort with a clear message.
-2. Capture sha256 of every chunk mp3 (to verify untouched ones later).
-3. Build ONE consolidated `chunk_edits` map; reference voice / `tts_kwargs`
-   read from the paper's model config / original manifest (never hardcoded;
-   books stay first-person).
-4. `swanki.audio.surgical.regenerate_and_restitch(manifest_path, chunk_edits,
-   audio_type=<asserted>, tts_kwargs=<reference voice>)` -- restitch also
-   rewrites the `chunk_timeline.json` sidecar.
-5. Verify every NOT-edited chunk mp3 is sha256-identical to its pre-run hash;
-   fail loudly if any untouched chunk changed.
+2. Read reference voice / `tts_kwargs` (incl. the `preprocessor` sub-tree) and
+   `speed` from the paper's model config / original manifest -- never hardcode;
+   books stay first-person. A Fish `tts_kwargs` with no `reference_id` makes
+   `edit_chunk` fail loud.
+3. For each approved row, call
+   `edit_chunk(manifest_path, idx, *, comment=<reviewer note> | new_text=<exact
+   words> | speech_only=True, tts_kwargs=<voice>, model=<llm string>,
+   speed=<paper speed>)`. The comment path is typical (the agent rewrites);
+   pass `new_text` only when you've decided the exact wording, `speech_only`
+   for a delivery re-roll. It returns the action taken and the edited chunk's
+   NEW `(start_ms, end_ms)` for ABS re-marking.
+4. If `edit_chunk` returns `needs_section_regen` or `cannot_fix`, do NOT
+   auto-apply -- surface the rationale to the user (conceptual/stylistic
+   comments are handled by editing `conf/prompts/*.yaml`, not here).
 
 ## Phase 6 - Publish (provenance-correct)
 
@@ -93,7 +105,9 @@ Exactly one approval prompt. **No re-TTS before approval.**
 
 - Default color orange; one review gate; never trust raw ABS bookmark time
   for chunk identity; assert `audio_type`; commit-before-sync; Fish preflight.
-- No `try/except` (fail fast); reuse `regenerate_and_restitch` /
-  `chunk_time_window` / `scripts/abs_bookmarks.py` -- do not reinvent.
+- No `try/except` (fail fast); reuse `swanki.audio.comment_edit.edit_chunk`
+  for the apply step (it owns the agent rewrite, preprocessor, re-TTS,
+  restitch, and `_edits/` audit) -- never hand-write a `fix_*.py` script and
+  never free-type the replacement transcript inline.
 - The long full-pipeline regeneration is NOT this skill -- this is the
   surgical, single-chunk path only.

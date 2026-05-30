@@ -12,6 +12,7 @@ from ..models.cards import (
     AudioTranscriptFeedback,
     CardFeedback,
     CardGenerationResponse,
+    ChunkEditResponse,
     LectureTranscriptFeedback,
 )
 from ..models.document import DocumentSummary
@@ -42,6 +43,9 @@ audio_feedback_agent: Agent[None, AudioTranscriptFeedback] = Agent(
 )
 lecture_critic_agent: Agent[None, LectureTranscriptFeedback] = Agent(
     output_type=LectureTranscriptFeedback, retries=3
+)
+chunk_edit_agent: Agent[None, ChunkEditResponse] = Agent(
+    output_type=ChunkEditResponse, retries=2
 )
 
 # ── Solution-manual mode agents ────────────────────────────────────────

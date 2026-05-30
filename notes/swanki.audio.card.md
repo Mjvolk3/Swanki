@@ -61,3 +61,12 @@ codewords -> hyphenated digit-words) immediately after acronym expansion and
 before pronunciation overrides. See [[swanki.audio._common]] (2026.05.29) for
 the function, regex, gating, and rationale. Plan:
 [[plan.bit-string-verbalizer-hamming-annotations.2026.05.29]].
+
+## 2026.05.30 - Delegate `_preprocess_for_tts` to shared `preprocess_for_tts`
+
+`_preprocess_for_tts` is now a thin wrapper over
+`swanki.audio._common.preprocess_for_tts(..., add_pauses=False,
+clean_markdown=False)` (cards skip markdown-clean and pause injection). No
+behavior change; removes the fourth inline copy of the scrubber chain. See
+[[swanki.audio._common]] (2026.05.30) and
+[[plan.swanki-comment-driven-chunk-edits.2026.05.30]].

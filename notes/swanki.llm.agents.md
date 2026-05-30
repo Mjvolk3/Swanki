@@ -35,3 +35,11 @@ Added `section_classifier_agent: Agent[None, ClassificationResult]` (retries=2).
 ## 2026.05.21 - Glossary mode agents
 
 Added two structured-output agents for [[swanki.pipeline.glossary]]: `glossary_enumeration_agent` (output `GlossaryEnumerationResponse`, retries=3) for LLM-assisted enumeration of definition units from OCR'd wordlist markdown, and `definition_card_gen_agent` (output `DefinitionCardBatchResponse`, retries=3) for batched per-term card generation. Both response types live in [[swanki.models.glossary]] so this module's imports don't cycle back through the pipeline package.
+
+## 2026.05.30 - Register `chunk_edit_agent`
+
+Added `chunk_edit_agent: Agent[None, ChunkEditResponse]` (retries=2) for
+comment-driven single-chunk audio edits, consumed by
+[[swanki.audio.comment_edit]] via `with_safety_retry`. `ChunkEditResponse`
+lives in [[swanki.models.cards]]. Plan:
+[[plan.swanki-comment-driven-chunk-edits.2026.05.30]].
