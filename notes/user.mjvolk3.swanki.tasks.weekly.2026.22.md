@@ -15,3 +15,7 @@ created: 1779864732867
 - [x] Add an Anki `Feedback` field round-tripped via `<!-- user-feedback: -->` markdown markers for review-time triage, with a one-shot AnkiConnect migration for existing collections [[swanki.processing.apkg_exporter]]
 - [x] Add solution-manual Stage 3 LLM content-pairing for Bishop-style separate-manual PDFs (statement/solution region split + content-match agent) [[swanki.pipeline.problem_set]]
 - [ ] Add a pipeline-wide `verbalize_bit_strings` TTS scrubber so binary codewords read digit-by-digit (not as cardinals), then run the Hamming ch1-10 annotation review (ch1-9 surgical, ch10 full regen) [[plan.bit-string-verbalizer-hamming-annotations.2026.05.29]]
+
+## 2026.05.30
+
+- [ ] Build swanki-native `comment_edit.py` so reviewer comments drive precise chunk re-TTS edits (agent rewrite / verbatim re-roll / explicit text) through the preprocessor, with a `_edits/` intervention audit trail [[plan.swanki-comment-driven-chunk-edits.2026.05.30]]
