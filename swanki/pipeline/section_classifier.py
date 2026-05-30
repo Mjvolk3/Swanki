@@ -283,6 +283,39 @@ def _llm_classify(
     return result.output
 
 
+# A page whose text ends with sentence-terminal punctuation (or a closing
+# bracket/quote following it) finished its sentence; the next page starts a
+# new one. Any other ending — a word, comma, em-dash, digit — is a sentence
+# continuing across the page break.
+_SENTENCE_TERMINAL_RE = re.compile(r"""[.!?:;)\]}"”’'](?:["”’')\]}]*)\s*$""")
+
+
+def join_pages(texts: list[str]) -> str:
+    """Concatenate page texts, gluing mid-sentence page breaks.
+
+    Pages are normally joined with a blank line so ``add_tts_pauses`` renders a
+    natural inter-page ``[pause]``. But ``clean-md-singles`` pages routinely end
+    mid-sentence (e.g. page 4 ends "...fields of knowledge when", page 5 opens
+    "they arise..."). A blank-line join there injects an audible ``[pause]``
+    in the middle of a sentence. When the preceding page does not end a
+    sentence, join with a single space instead so the sentence is spoken
+    continuously; the blank-line join (and its pause) is kept only between
+    pages that actually end a sentence.
+    """
+    out = ""
+    for text in texts:
+        text = text.strip()
+        if not text:
+            continue
+        if not out:
+            out = text
+        elif _SENTENCE_TERMINAL_RE.search(out):
+            out += "\n\n" + text
+        else:
+            out += " " + text
+    return out
+
+
 def merge_main_content(
     clean_md_files: list[Path], page_labels: list[PageLabel]
 ) -> str:
@@ -292,10 +325,12 @@ def merge_main_content(
     and audio source masking (so lecture/reading aren't built from review
     exercises).
     """
-    return "\n\n".join(
-        clean_md_files[p.page_idx].read_text()
-        for p in page_labels
-        if p.kind == "main_content"
+    return join_pages(
+        [
+            clean_md_files[p.page_idx].read_text()
+            for p in page_labels
+            if p.kind == "main_content"
+        ]
     )
 
 

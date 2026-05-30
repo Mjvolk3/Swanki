@@ -2202,10 +2202,12 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             logger.info("Generating reading audio...")
             # Filtered main_content (excludes review_exercises) when provided
             # by the classifier dispatch; otherwise fall back to all pages.
+            from .section_classifier import join_pages
+
             full_content = (
                 main_content_text
                 if main_content_text is not None
-                else "\n\n".join([f.read_text() for f in cleaned_files])
+                else join_pages([f.read_text() for f in cleaned_files])
             )
             reading_audio_path = (
                 self.output_base / f"{self.audio_prefix}-reading-audio.mp3"

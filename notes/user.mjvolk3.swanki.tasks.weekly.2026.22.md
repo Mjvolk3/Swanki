@@ -19,3 +19,4 @@ created: 1779864732867
 ## 2026.05.30
 
 - [ ] Build swanki-native `comment_edit.py` so reviewer comments drive precise chunk re-TTS edits (agent rewrite / verbatim re-roll / explicit text) through the preprocessor, with a `_edits/` intervention audit trail [[plan.swanki-comment-driven-chunk-edits.2026.05.30]]
+- [x] Fix mid-sentence page-seam pauses: `join_pages` glues pages that end without sentence-terminal punctuation instead of letting `add_tts_pauses` drop a `[pause]` mid-sentence (resolves the Hamming Ch1 p4→p5 orange ABS comment; 4 of 8 Ch1 pages were affected) [[swanki.pipeline.section_classifier]]
