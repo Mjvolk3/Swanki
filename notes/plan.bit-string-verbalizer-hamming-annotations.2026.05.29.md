@@ -105,25 +105,31 @@ These are an explicit mirror of the in-code defaults, NOT the activation gate (D
 
 **Notes.** Append a dated section to `notes/swanki.audio._common.md` recording the function, the regex rationale, and the placement/gating decisions (this is the codebase's decision log per CLAUDE.md).
 
-### Part B — Hamming annotation review + ch10 regen runbook (post-merge, from `main`)
+### Part B — Hamming comment runbook (post-merge, from `main`)
 
-This is a **documented plan of action to execute AFTER the verbalizer PR merges**, not code written in the worktree. The worktree PR ships ONLY Part A. Sequence:
+Documented plan of action to execute AFTER the verbalizer PR merges; the worktree PR ships ONLY Part A. The real comments are **13 ABS Lecture bookmarks** (`citation_key = hammingArtDoingScience2020`, item `3d4a9ce9-...`), created 2026-05-24 to 05-26 against the 2026-05-19 audio currently on ABS — NOT Zotero orange annotations. (Round 1: 45 bookmarks Apr 27 - May 20 were addressed by the 05-19 regen and archived in `notes/swanki.audio.hamming-bookmarks-archive.2026.05.21.md`; these 13 are Round 2, all unaddressed.) Fetch them with `scripts/abs_bookmarks.py` (the `note` field is the comment; `time` lags the issue by minutes, so map to chapter via the lecture-concat boundaries and content-match the chunk).
 
-1. **Land Part A first.** Merge the verbalizer PR to `main`. Ch10's full regen depends on the verbalizer being present so the regenerated audio reads codewords correctly; doing it before merge would just reproduce the bug.
+**Decision: ch10 = full regen; everything else = surgical.** The ch10 "100"-as-cardinal spam is pervasive (verbalizer fixes it wholesale) AND the ch10 notes ask for structural/conceptual changes a transcript regen handles — chunk surgery can't. The other chapters' comments are localized.
 
-2. **Extract orange annotations for chapters 1-10.** Use the `zotero-annotations` skill with `citation_key = hammingArtDoingScience2020`, color = orange. Also pull ABS bookmark notes (`fetch-bookmarks` skill) for the same key. Collect per-chapter annotation lists.
+1. **Land Part A first.** Merge the verbalizer PR. Ch10 regen depends on the verbalizer being active or it reproduces the bug.
 
-3. **Triage each annotation into one of two buckets:**
-   - **Surgical-edit** — a localized wording/pronunciation fix touching a bounded set of audio chunks. Most ch1-9 annotations.
-   - **Needs-regen** — pervasive corruption (the bit-string-as-cardinal problem) affecting many chunks, where re-running the whole chapter through the now-fixed pipeline is cheaper and cleaner than chunk surgery. This is ch10.
+2. **Chapter 10 — full audio regen (lecture + reading + summary + cards)** against `main`, gilahyper defaults (`audio=all anki=default models=fish_speech`, `confirm_before_generation=false`). This regen carries THREE coupled fixes, not just the verbalizer:
+   - **Codewords** (118.7m "111 repeated", 125.2m + 126.8m "100 spamming over 100 times"): the verbalizer renders `100`->"one-zero-zero", `111`->"one-one-one".
+   - **"zero" -> "Jairo" Fish mispronunciation** (120.0m): the verbalizer EMITS many "zero" tokens, so this quirk is amplified, not fixed, by Part A. Add a per-paper pronunciation override (phonetic respelling of "zero") under `preprocessor.pronunciations` in `fish_speech_hamming.yaml` BEFORE regenerating. This is the one Part-A-adjacent code change Part B introduces.
+   - **Conceptual strength / prosody** (128.0m "examples confusing, want concept points stronger", 127.4m question up-tone on "exact symbols I utter"): regenerate the ch10 lecture transcript and lean on the critic/refine pass to land a stronger conceptual takeaway after each worked example.
 
-4. **Chapters 1-9: surgical edits via the `audio-fix-from-annotations` skill.** For each orange annotation mapped to a chunk, run the skill (it maps annotation -> exact chunk via the chunk manifest/timeline, re-TTS's only that chunk, restitches, and republishes after a single human-review gate). Surgical edits do NOT touch ABS bookmarks — leave bookmarks alone. Run one chapter at a time, review the diff, then proceed.
+   Full regen produces new chunk timings, so ABS bookmarks do NOT auto-migrate: run `scripts/abs_clear_bookmarks.py` for the ch10 item, then re-mark by hand after the new audio lands. Do NOT build a timestamp-migration tool.
 
-5. **Chapter 10: full audio regen (lecture + reading + summary + cards).** Re-run the swanki audio pipeline for ch10 against `main` (verbalizer now active) using the gilahyper defaults (`audio=all anki=default models=fish_speech`, `confirm_before_generation=false`). Because a full regen produces new chunk timings, ABS bookmarks do NOT auto-migrate: per the ABS clear-and-remark rule, run `scripts/abs_clear_bookmarks.py` for the ch10 item to clear stale bookmarks, then re-mark by hand after the new audio is in ABS. Do NOT build a timestamp-migration tool.
+3. **All other chapters — surgical edits via `audio-fix-from-annotations`** (maps a bookmark to its exact chunk via the chunk_timeline, re-TTS's only that chunk, restitches, republishes after one review gate; does NOT touch ABS bookmarks). One chapter at a time, review, proceed:
+   - ch3 (29.1m) "light as a human dimension" — surgical transcript edit + re-TTS of that chunk.
+   - ch5 (62.7m) Jack Kane anecdotes split/disorganized — surgical transcript edit (or accept if it mirrors the source).
+   - ch9 (104.0m) "dimensional space" jammed together — surgical re-TTS (spacing).
+   - ch9 (112.3m) theory-vs-practice example needs more depth — surgical transcript edit + re-TTS.
+   - **Bookend pause/gap cluster** (53.6m larger pause after "this concludes the lecture"; 65.6m ~2s gap on bookend back-end for the autoplay break; 75.9m small gap before the bookend): these are NOT per-chunk re-TTS — they are a bookend/stitch pause-config change that applies to ALL lectures. Adjust the bookend trailing/leading pause in the postprocessor/stitch config and re-stitch the affected chapter boundaries (no re-TTS). Track as its own small task, not a per-chapter surgical edit.
 
-6. **Verify ch10 audio** by spot-listening the previously-corrupted chunks (8 lecture, 18 reading) to confirm codewords now read digit-by-digit. Tag the Zotero parent item with the fox emoji on successful re-upload (per the Zotero upload convention).
+4. **Verify** by spot-listening the ch10 codeword chunks (confirm digit-by-digit + no "Jairo") and each surgically-edited chunk. Tag the Zotero parent item with the fox emoji on successful re-upload.
 
-This runbook should be recorded in a dated dendron note (e.g. `notes/swanki.audio.hamming-ch10-regen-runbook.2026.05.29.md` or appended to the existing Hamming archive note) so it is executable from `main` independently of the worktree.
+Record this runbook in a dated dendron note (e.g. `notes/swanki.audio.hamming-comments-runbook.2026.05.29.md`) so it is executable from `main` independently of the worktree.
 
 ## Gotchas
 
