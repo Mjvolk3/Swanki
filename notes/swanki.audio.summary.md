@@ -81,3 +81,11 @@ codewords -> hyphenated digit-words) immediately after acronym expansion and
 before pronunciation overrides. See [[swanki.audio._common]] (2026.05.29) for
 the function, regex, gating, and rationale. Plan:
 [[plan.bit-string-verbalizer-hamming-annotations.2026.05.29]].
+
+## 2026.05.30 - Forward + persist asymmetric bookend pauses
+
+Reads `bookend_start/end/trailing_pause_ms` from `post_cfg` (fish defaults
+300/2000/1500; elevenlabs keeps the prior 500/500/0), forwards them to
+`combine_audio_with_section_pauses`, and records them in the manifest
+postprocessor so restitch reproduces them. See [[swanki.audio._common]]
+(2026.05.30). Plan: [[plan.audio-bookend-pauses-conceptual-prompt.2026.05.30]].

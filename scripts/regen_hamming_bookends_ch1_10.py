@@ -107,7 +107,17 @@ def regen_chapter(ch_num: str) -> Path:
             )
             print(f"   {at} {pos}: {target.name}")
         final = d / manifest["output_file"]
-        restitch_from_chunks(man_path, final)
+        # Apply + persist the asymmetric bookend pauses (fast front, ~2s break
+        # before the end bookend, trailing silence after). Passing the
+        # overrides writes them into each manifest's postprocessor so later
+        # surgical / comment_edit restitches inherit them.
+        restitch_from_chunks(
+            man_path,
+            final,
+            bookend_start_pause_ms=300,
+            bookend_end_pause_ms=2000,
+            bookend_trailing_pause_ms=1500,
+        )
         print(f"   restitched -> {final.name}")
     return d
 

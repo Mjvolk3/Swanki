@@ -341,6 +341,13 @@ prompts:
       9. CONCLUDE WITH SUMMARY:
          - End with 3-5 main takeaways
          - Wrap up the key concepts covered
+         - After a worked example, the takeaway must crystallize the single
+           most important conceptual idea the example illustrates -- state that
+           idea in plain words (e.g. "so the distance between codewords is what
+           buys you error correction"), not the mechanics you just walked
+           through. State the concept itself; never announce that it is deep,
+           important, or the "key point". Keep within the 3-5 takeaway count
+           and the target length below.
 
       10. TARGET LENGTH:
           - Aim for 50% of source content

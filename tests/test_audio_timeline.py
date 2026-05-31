@@ -63,7 +63,9 @@ def _manifest(tmp, *, tail_trim=0):
             "chunk_tail_trim_ms": tail_trim,
             "chunk_crossfade_ms": 0,
             "gain_match_target_dbfs": None,
-            "bookend_pause_ms": 500,
+            "bookend_start_pause_ms": 300,
+            "bookend_end_pause_ms": 2000,
+            "bookend_trailing_pause_ms": 1500,
         },
         "chunks": chunks,
     }
@@ -90,7 +92,7 @@ def test_sidecar_equals_independent_oracle(tmp_path):
     assert tl.bookend_start.offset_ms == 0
     assert tl.bookend_start.duration_ms == bs_len
     assert tl.bookend_start.end_ms == bs_len
-    pos = bs_len + 500  # bookend_pause
+    pos = bs_len + 300  # bookend_start_pause
     by_idx = {c.index: c for c in tl.chunks}
     for sec in (0, 1):
         sec_specs = [s for s in specs if s[1] == sec]
@@ -104,10 +106,11 @@ def test_sidecar_equals_independent_oracle(tmp_path):
             assert c.duration_ms == seg
             assert c.end_ms == pos + seg
             pos += seg
-    pos += 500  # bookend_pause before end bookend
+    pos += 2000  # bookend_end_pause before end bookend
     be_len = len(AudioSegment.from_mp3(str(ck / "be.mp3")))
     assert tl.bookend_end.offset_ms == pos
-    assert tl.total_duration_ms == pos + be_len
+    # Trailing silence after the end bookend extends the total.
+    assert tl.total_duration_ms == pos + be_len + 1500
 
 
 def test_total_matches_restitched_file(tmp_path):
@@ -191,3 +194,32 @@ def test_sidecar_missing_recompute_fallback(tmp_path):
     # No sidecar -> recompute via the SAME accumulator, persist, answer.
     assert chunk_time_window(ck, "lecture", 2) == ref
     assert (ck / TIMELINE_FILENAME).exists()
+
+
+def test_restitch_old_manifest_without_bookend_keys_uses_defaults(tmp_path):
+    """A manifest predating the asymmetric bookend keys must restitch without
+    crashing and resolve to the new global defaults (300/2000/1500)."""
+    ck = tmp_path / "lecture_chunks"
+    ck.mkdir(parents=True)
+    _mk(ck / "bs.mp3", 700)
+    _mk(ck / "be.mp3", 600)
+    _mk(ck / "c0.mp3", 1000)
+    manifest = {
+        "audio_type": "lecture",
+        "output_file": "paper-lecture-audio.mp3",
+        "bookend_start": "bs.mp3",
+        "bookend_end": "be.mp3",
+        # No bookend_*_pause_ms keys -- as written before this change.
+        "postprocessor": {"section_pause_ms": 5000, "chunk_pause_ms": 700},
+        "chunks": [
+            {"index": 0, "section": 0, "text": "t0", "file": "c0.mp3",
+             "boundary": "paragraph"},
+        ],
+    }
+    mp = ck / "chunk_manifest.json"
+    mp.write_text(json.dumps(manifest))
+    out = tmp_path / "paper-lecture-audio.mp3"
+    restitch_from_chunks(mp, out)  # must not raise
+    tl = ChunkTimeline.model_validate_json((ck / TIMELINE_FILENAME).read_text())
+    # 700 bs + 300 start + 1000 chunk + 2000 end + 600 be + 1500 trailing.
+    assert tl.total_duration_ms > 5500
