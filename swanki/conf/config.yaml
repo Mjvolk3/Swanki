@@ -9,6 +9,7 @@ defaults:
 - anki: default
 - refinement: default
 - zotero: default
+- card_correctness_gate: default
 pdf_path: null
 citation_key: null
 content_key: null
@@ -23,6 +24,7 @@ output: null
 anki: null
 refinement: null
 zotero: null
+card_correctness_gate: null
 hydra:
   run:
     dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}

@@ -104,3 +104,7 @@ str|None` (required for `edit_text`), `rationale`. Consumed by
 [[swanki.audio.comment_edit]]; only `edit_text`/`speech_only` are auto-applied,
 the other two escalate to the human. Plan:
 [[plan.swanki-comment-driven-chunk-edits.2026.05.30]].
+
+## 2026.06.01 - CardCorrectnessAssessment + CardAuditEntry for the correctness gate
+
+Two models for the post-generation correctness gate ([[swanki.pipeline.card_correctness]]). `CardCorrectnessAssessment` is the agent output: `verdict ∈ {pass, fixed, dropped}`, a `reason`, and nullable `corrected_front`/`corrected_back`; an `@model_validator` requires at least one corrected side when `verdict == "fixed"` (a bad LLM response triggers the pydantic-ai retry). `CardAuditEntry` is the audit record written per card to `correctness-assessment.yaml` — its `verdict` adds `assessment_failed` (assigned by the gate on a failed call, never by the agent) and it always carries the original front/back. Deliberately separate from `user_feedback`/`CardFeedback`: the gate never writes into a card field. Plan: [[plan.post-creation-llm-card-correctness-gate.2026.06.01]].
