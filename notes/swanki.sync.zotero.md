@@ -49,3 +49,11 @@ Runs AFTER upload, never before — guarantees we never leave an item with zero 
 
 One-off cleanup: ran the prune helper directly against `VPZK6ESQ` (keeping today's `2CBKWQH8`) — deleted 12 stale items (8 historical ZIPs + 3 legacy `_CH01-problem-set.apkg` + 1 even older 7a08fcb ZIP). Tests live in `tests/test_zotero_prune.py` covering chapter-base extraction, same-chapter replacement, other-chapter preservation, legacy apkg form, just-uploaded protection, and non-attachment skip.
 
+## 2026.06.01 - Sync-log note pagination bug (85 duplicate notes)
+
+`_find_or_create_sync_note` looked for the existing "Swanki Sync Log" note via `zot.children(parent_key)` — but bare `children()` returns only the FIRST PAGE (~25 items). Once a parent item accumulated enough children (attachments + the note itself), the existing log note fell off page 1, the find loop missed it, and every subsequent sync CREATED A NEW note. Observed on the Hamming book item (`DFL6A2YH`) after the 10-chapter CH regen: **85 "Swanki Sync Log" notes** instead of 1 — a self-reinforcing loop (more notes → note pushed further past page 1 → guaranteed miss).
+
+Fix: paginate with `zot.everything(zot.children(parent_key))` so the find scans ALL children. (`_prune_prior_attachments` was unaffected — it already passes `limit=200`, enough to cover current item sizes; bump to `everything()` if any item ever exceeds 200 children.)
+
+One-off cleanup: merged the 85 notes' unique log lines (196 entries) into the keeper note `99J7V2QC` and deleted the other 84; also deleted the 10 stale `_NN_slug` ZIPs left behind by the `_NN_`→`_CH##_` content_key rename (their `_chapter_base` differs from the new keys so prune never matched them). Item left clean: 1 sync note + 10 CH ZIPs + source PDF.
+

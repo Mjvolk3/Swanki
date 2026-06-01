@@ -181,7 +181,11 @@ def _find_or_create_sync_note(
     Returns:
         Tuple of (full_item_dict, existing_html_content).
     """
-    children = zot.children(parent_key)
+    # Paginate through ALL children: `children()` alone returns only the first
+    # page (~25), so once the item accumulates enough attachments/notes the
+    # existing "Swanki Sync Log" note falls off page 1, the find below misses
+    # it, and every sync creates a NEW note (observed: 85 duplicate notes).
+    children = zot.everything(zot.children(parent_key))
     for child in children:
         data = child["data"]
         if data["itemType"] == "note" and "Swanki Sync Log" in data.get("note", ""):
