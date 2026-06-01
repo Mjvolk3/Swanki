@@ -29,6 +29,13 @@ import logging
 import re
 from pathlib import Path
 
+from .landmarks import (
+    clean_caption,
+    figure_placeholder,
+    landmark_block,
+    table_placeholder,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -120,11 +127,8 @@ class MarkdownCleaner:
         "latex_textbf": (r"\\textbf{(.*?)}", r"**\1**"),
         "latex_textit": (r"\\textit{(.*?)}", r"*\1*"),
         "latex_emph": (r"\\emph{(.*?)}", r"*\1*"),
-        # Note: Figure blocks are handled by _convert_figure_blocks_to_markdown() method
-        "table_blocks": (
-            r"\\begin\{table\}[\s\S]*?\\end\{table\}",
-            "",
-        ),  # Remove table blocks
+        # Note: figure blocks -> _convert_figure_blocks_to_markdown();
+        # table/tabular blocks -> _convert_table_blocks_to_landmarks().
         "header_backslash": (
             r"^(#+\s+[\d.]+)\s+\\\\\s+",
             r"\1 ",
@@ -222,8 +226,8 @@ class MarkdownCleaner:
             # Read original content
             content = md_path.read_text(encoding="utf-8")
 
-            # Apply cleaning
-            cleaned_content = self._apply_cleaning(content)
+            # Apply cleaning (md_path.stem keys table-landmark placeholders)
+            cleaned_content = self._apply_cleaning(content, page_stem=md_path.stem)
 
             # Write cleaned content
             output_path = self.clean_md_singles_dir / md_path.name
@@ -260,7 +264,13 @@ class MarkdownCleaner:
         """
 
         def replace_figure_block(match: re.Match[str]) -> str:
-            """Replace a single figure block with markdown image."""
+            """Replace a figure block with an empty-alt image + Figure landmark.
+
+            The image keeps the URL (``![](url)``) so image-summary extraction
+            still finds it, but the alt is EMPTY so ``clean_markdown_for_tts``
+            (which speaks the alt) never double-reads the caption. The caption
+            is voiced exactly once, from the landmark.
+            """
             figure_content = match.group(0)
 
             # Extract image URL from \includegraphics
@@ -273,28 +283,19 @@ class MarkdownCleaner:
 
             image_url = img_match.group(1)
 
-            # Extract caption text if available
-            caption_pattern = r"\\caption\{(.*?)\}"
-            caption_match = re.search(caption_pattern, figure_content, re.DOTALL)
-
+            # Extract caption text if available (full caption, no truncation).
+            caption_match = re.search(
+                r"\\caption\{(.*?)\}", figure_content, re.DOTALL
+            )
             if caption_match:
-                # Clean up caption text: remove nested LaTeX commands
-                caption_text = caption_match.group(1)
-                # Remove \captionsetup and other LaTeX commands from caption
-                caption_text = re.sub(
-                    r"\\[a-zA-Z]+(\{[^}]*\}|\[[^\]]*\])*", "", caption_text
-                )
-                caption_text = caption_text.strip()
-                alt_text = (
-                    caption_text[:100] + "..."
-                    if len(caption_text) > 100
-                    else caption_text
-                )
+                caption_text = clean_caption(caption_match.group(1))
             else:
-                alt_text = "Image"
+                caption_text = ""
 
-            # Return markdown image
-            return f"![{alt_text}]({image_url})\n"
+            # Caption present -> read it verbatim. Absent -> placeholder filled
+            # later from the image summary (clamped to one sentence).
+            body = caption_text if caption_text else figure_placeholder(image_url)
+            return f"![]({image_url})\n{landmark_block('Figure', body)}"
 
         # Replace all figure blocks with markdown images
         figure_pattern = r"\\begin\{figure\}[\s\S]*?\\end\{figure\}"
@@ -302,13 +303,78 @@ class MarkdownCleaner:
 
         return content
 
-    def _apply_cleaning(self, content: str) -> str:
+    def _convert_table_blocks_to_landmarks(self, content: str, page_stem: str) -> str:
+        r"""Replace LaTeX table/tabular blocks with Table landmarks.
+
+        Handles both ``\begin{table}...\end{table}`` floats and bare
+        ``\begin{tabular}...\end{tabular}`` blocks (the latter is what the
+        Hamming book uses). The cell BODY is removed entirely -- it is never
+        voiced. A caption, if present, is read verbatim; otherwise a
+        placeholder is emitted for the table processor to fill with a
+        one-sentence summary later. Occurrences are numbered in page order.
+
+        Args:
+            content: Page markdown (after figure conversion).
+            page_stem: Source page stem (e.g. ``page-4``) for placeholder keys.
+
+        Returns:
+            Content with table/tabular blocks replaced by landmark blocks.
+
+        Notes:
+            Only LaTeX tables are handled; MinerU pipe tables do not occur in
+            practice (verified: 0 pipe tables across the corpus). A wrapped
+            ``table`` float and the ``tabular`` inside it must not double-count,
+            so wrapped floats are consumed first and their inner ``tabular`` is
+            already gone before the bare-``tabular`` pass runs.
+        """
+        counter = [0]
+        table_summaries_dir = self.output_base / "table-summaries"
+
+        def landmark_for(block: str) -> str:
+            caption_match = re.search(r"\\caption\{(.*?)\}", block, re.DOTALL)
+            caption_text = (
+                clean_caption(caption_match.group(1)) if caption_match else ""
+            )
+            if caption_text:
+                body = caption_text
+            else:
+                # Stash the raw block so the table processor can summarize it
+                # later (it runs after cleaning, keyed by page-stem + index).
+                idx = counter[0]
+                table_summaries_dir.mkdir(parents=True, exist_ok=True)
+                (table_summaries_dir / f"{page_stem}_{idx}.source.txt").write_text(
+                    block, encoding="utf-8"
+                )
+                body = table_placeholder(page_stem, idx)
+            counter[0] += 1
+            return landmark_block("Table", body)
+
+        # Wrapped table floats first (may contain a tabular + a \caption)...
+        content = re.sub(
+            r"\\begin\{table\}[\s\S]*?\\end\{table\}",
+            lambda m: landmark_for(m.group(0)),
+            content,
+            flags=re.DOTALL,
+        )
+        # ...then any remaining bare tabular blocks (no caption by nature).
+        content = re.sub(
+            r"\\begin\{tabular\}[\s\S]*?\\end\{tabular\}",
+            lambda m: landmark_for(m.group(0)),
+            content,
+            flags=re.DOTALL,
+        )
+        return content
+
+    def _apply_cleaning(self, content: str, page_stem: str = "") -> str:
         """Apply all cleaning operations to markdown content.
 
         Parameters
         ----------
         content : str
             Original markdown content
+        page_stem : str
+            Source page stem (e.g. ``page-4``), used to key table-landmark
+            placeholders back to their occurrence for later summary fill.
 
         Returns:
         -------
@@ -323,15 +389,14 @@ class MarkdownCleaner:
         - Multiple empty line reduction
         - Trailing whitespace removal
         """
-        # Convert figure blocks to markdown images BEFORE removing them
+        # Convert figure blocks to empty-alt images + Figure landmarks BEFORE
+        # removing them (must run before any tabular handling so a tabular
+        # nested in a figure float is not mistaken for a standalone table).
         content = self._convert_figure_blocks_to_markdown(content)
 
-        # Apply multiline patterns (tables, etc.) - figures already converted
-        multiline_patterns = ["table_blocks"]
-        for pattern_name in multiline_patterns:
-            if pattern_name in self.PATTERNS:
-                pattern, replacement = self.PATTERNS[pattern_name]
-                content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+        # Convert table/tabular blocks to Table landmarks (body removed; cells
+        # never voiced). Figures already converted above.
+        content = self._convert_table_blocks_to_landmarks(content, page_stem)
 
         # Split into lines for line-by-line processing
         lines = content.split("\n")

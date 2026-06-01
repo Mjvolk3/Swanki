@@ -527,35 +527,19 @@ def generate_lecture_audio(
         main_files = markdown_files
         si_files = []
 
-    # Prepare content with embedded image summaries
-    image_idx = 0
+    # Concatenate page content. Figures and tables are already rendered as
+    # 'Figure: <desc>' / 'Table: <desc>' landmarks (bracketed by
+    # ---SECTION_BREAK---) by the markdown cleaner + table processor, so the
+    # caption-or-summary is carried by the landmark itself. The leftover
+    # empty-alt image syntax (![](url)) is dropped by clean_markdown_for_tts
+    # downstream. This keeps lecture and reading identical for figures/tables;
+    # image_summaries is retained for backward-compatible signature/telemetry.
+    _ = image_summaries
 
     def _embed_images(files: list[Path]) -> str:
-        nonlocal image_idx
         result = ""
         for md_file in files:
-            content = md_file.read_text()
-            while "![" in content and image_idx < len(image_summaries):
-                img_start = content.find("![")
-                img_end = content.find(")", img_start)
-                if img_end > img_start:
-                    alt_start = content.find("[", img_start) + 1
-                    alt_end = content.find("]", alt_start)
-                    alt_text = content[alt_start:alt_end] if alt_end > alt_start else ""
-                    summary = image_summaries[image_idx]
-                    if alt_text:
-                        integrated_summary = f"Looking at {alt_text.lower()}, we can see {summary[0].lower()}{summary[1:]}"
-                    else:
-                        integrated_summary = (
-                            f"The visual here shows {summary[0].lower()}{summary[1:]}"
-                        )
-                    before = content[:img_start]
-                    after = content[img_end + 1 :]
-                    content = f"{before}{integrated_summary}{after}"
-                    image_idx += 1
-                else:
-                    break
-            result += content + "\n\n"
+            result += md_file.read_text() + "\n\n"
         return result
 
     main_content = _embed_images(main_files)

@@ -110,3 +110,13 @@ The fix makes the pipeline robust to both Mathpix output styles by explicitly co
 ## 2026.03.12 - Ruff formatting pass
 
 Applied ruff formatting: double quotes, import sorting, whitespace cleanup, Google-style docstring headers. No behavioral changes.
+
+## 2026.05.31 - Table/figure audio landmarks
+
+Figures and tables now become standardized audio "landmarks" -- a short spoken `Figure: <desc>` / `Table: <desc>` cue (no number) bracketed by `---SECTION_BREAK---` so the audio layer surrounds it with real silence. See [[plan.reading-table-figure-landmarks.2026.05.31]] and the shared [[swanki.processing.landmarks]] helpers.
+
+Changes here:
+- `_convert_figure_blocks_to_markdown`: the 100-char caption truncation is GONE -- the full caption is read verbatim. The image becomes `![](url)` (EMPTY alt) plus a `Figure:` landmark, so `clean_markdown_for_tts` (which speaks the alt) no longer double-reads the caption. Caption-less figures emit a `\x00FIGLMK:<url>\x00` placeholder filled later from the image summary (clamped to one sentence).
+- New `_convert_table_blocks_to_landmarks(content, page_stem)`: replaces the old delete-only `table_blocks` regex. Handles BOTH wrapped `\begin{table}` floats AND bare `\begin{tabular}` (what the Hamming book uses -- previously matched by nothing, so raw numeric rows leaked into the reading, e.g. Ch1 "2 17 3 27..."). Wrapped floats are consumed first so an inner `tabular` is not double-counted. The cell BODY is always removed (cells are never voiced); a caption is read verbatim, else a `\x00TBLLMK:<stem>:<idx>\x00` placeholder is emitted and the raw block stashed to `table-summaries/<stem>_<idx>.source.txt` for [[swanki.processing.table_processor]] to summarize.
+- `_apply_cleaning` gained a `page_stem` arg (keys table placeholders); `clean_single_file` passes `md_path.stem`.
+- Scope: LaTeX `table`/`tabular` only. MinerU pipe tables are NOT handled -- verified 0 pipe tables across the corpus (95 files have `tabular`, 132 have `table`), so this is a deferred follow-up, not a gap.

@@ -19,6 +19,10 @@ created: 1779864732867
 ## 2026.05.30
 
 - [x] Fix mid-sentence page-seam pauses: `join_pages` glues pages that end without sentence-terminal punctuation instead of letting `add_tts_pauses` drop a `[pause]` mid-sentence (resolves the Hamming Ch1 p4→p5 orange ABS comment; 4 of 8 Ch1 pages were affected) [[swanki.pipeline.section_classifier]]
+
+## 2026.05.31
+
+- [x] Standardized table/figure audio landmarks: `markdown_cleaner` now emits deterministic `Figure:`/`Table:` landmarks (no number, full caption verbatim or a stashed placeholder), bracketed by real `---SECTION_BREAK---` silence; new `landmarks` helpers + `table_processor` + `TableSummary` model fill caption-less tables via a text LLM and caption-less figures from image summaries; table cells are never voiced (fixes the Hamming Ch1 numeric-grid leak); lecture `_embed_images` prose retired for consistency [[plan.reading-table-figure-landmarks.2026.05.31]]
 - [x] Built swanki-native `comment_edit.py` (`edit_chunk` + `chunk_edit_agent` + extracted `preprocess_for_tts` + `_edits/` audit trail) so reviewer comments drive precise chunk re-TTS through the preprocessor; audio-fix skill now calls it [[plan.swanki-comment-driven-chunk-edits.2026.05.30]]
 - [x] Shipped `bash scripts/swanki_sync.sh` shorthand — runs `abs_refresh.sh` for audio and POSTs `importPackage` + final `sync` to AnkiConnect for the newest .apkg per fox-tagged Zotero item; both halves gated by per-projection `push_audio` / `push_anki` (default True) and share a new `_latest_artifact` helper [[plan.swanki-servers-sync-shortcut.2026.05.27]]
 - [x] Split the single bookend pause into asymmetric `bookend_start/end/trailing_pause_ms` global knobs (fast front, ~2s break + trailing silence; persisted to manifest on restitch) and refined the book_voice lecture prompt for a stronger post-example conceptual takeaway [[plan.audio-bookend-pauses-conceptual-prompt.2026.05.30]]

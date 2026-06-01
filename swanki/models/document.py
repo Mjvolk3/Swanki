@@ -84,6 +84,52 @@ class ImageSummary(BaseModel):
         return v
 
 
+class TableSummary(BaseModel):
+    """Structured summary and metadata for an extracted table.
+
+    A table is turned into an audio "landmark" (``Table: <desc>``). When the
+    source has a caption it is read verbatim and no summary is generated; when
+    it has none, a one-sentence summary describes what the table shows (never
+    its cell values).
+
+    Parameters
+    ----------
+    page_stem : str
+        Source page stem (e.g. ``page-4``), used to key the occurrence back to
+        its stashed source and cached summary.
+    occurrence_idx : int
+        Zero-based index of the table within the page, in page order.
+    caption : str, optional
+        Verbatim caption when the source table had one; ``None`` otherwise.
+    summary : str, optional
+        Generated one-sentence description; ``None`` when a caption was present.
+    source_block : str
+        Raw matched table block, kept for audit and idempotent re-fill.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    page_stem: str
+    occurrence_idx: int
+    caption: str | None = Field(None, description="Verbatim caption when present")
+    summary: str | None = Field(None, description="Generated one-sentence summary")
+    source_block: str = Field("", description="Raw matched table block")
+
+    @field_validator("summary")
+    def summary_one_sentence(cls, v):
+        """Keep the generated summary to a single short sentence.
+
+        The table landmark is a navigational cue, not a content read, so a
+        runaway multi-sentence summary is rejected.
+        """
+        if v is None:
+            return v
+        v = v.strip().split("\n")[0]
+        if len(v.split()) > 40:
+            raise ValueError(f"Table summary too long: {len(v.split())} words")
+        return v
+
+
 class DocumentSummary(BaseModel):
     """Comprehensive summary of a document with metadata.
 
