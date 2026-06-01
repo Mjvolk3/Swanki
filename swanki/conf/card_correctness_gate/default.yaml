@@ -2,8 +2,11 @@ card_correctness_gate:
   # Post-generation LLM correctness gate. When enabled, every generated card is
   # assessed by the configured model before markdown/.apkg export: correct cards
   # pass, clearly-fixable cards are repaired, unfixable cards are quarantined out
-  # of the deck. Disabled by default -- it adds one model call per card; enable
-  # per run with `card_correctness_gate.enabled=true`.
+  # of the deck. It screens for FACTUAL errors only (not style) with a very high
+  # acceptance rate -- the source is trusted, so it keeps borderline cards.
+  # Disabled by default -- it adds one model call per card. Enable per run with
+  # `card_correctness_gate.enabled=true` for factual textbooks (Schaum's/Alcamo);
+  # leave it off for stylistic/essayistic sources (e.g. Hamming).
   enabled: false
   # Optional model override (pydantic-ai string, e.g. "openai:gpt-5.5"). When
   # null the gate reuses models.llm so a deliberately-strong model can be pinned

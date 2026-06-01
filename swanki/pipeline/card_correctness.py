@@ -7,7 +7,12 @@ Test file: tests/test_card_correctness.py
 Post-generation LLM correctness gate. Each generated card is assessed against
 its source context and the document summary by the configured model; correct
 cards pass, clearly-fixable cards are repaired in place, and unfixable cards are
-quarantined out of the deck. Every verdict is logged to
+quarantined out of the deck. The gate screens for FACTUAL errors only -- never
+style, tone, or terseness -- with a deliberately high acceptance rate: the
+source is trusted, so it errs toward keeping borderline cards and reserves fix
+and drop for unambiguous, high-confidence factual errors. Stylistic or
+essayistic sources (e.g. Hamming) simply leave the gate disabled. Every verdict
+is logged to
 ``<output_base>/correctness-assessment.yaml`` so the deck is auditable. A card
 the gate cannot assess (agent error or exhausted safety retries) is kept
 fail-open and logged as ``assessment_failed`` -- the gate never silently drops
@@ -31,28 +36,35 @@ logger = logging.getLogger(__name__)
 
 
 GATE_INSTRUCTIONS: str = (
-    "You are a meticulous subject-matter fact-checker for spaced-repetition "
+    "You are a careful subject-matter fact-checker for spaced-repetition "
     "flashcards. You are given the SOURCE TEXT a card was generated from, a "
-    "DOCUMENT SUMMARY for context, and one FLASHCARD with a front (prompt) and "
-    "back (answer). Decide whether the card teaches correct, unambiguous "
-    "information.\n\n"
+    "DOCUMENT SUMMARY for context, and one FLASHCARD (front = prompt, "
+    "back = answer).\n\n"
+    "Your ONLY job is to catch clear FACTUAL errors. The source is trusted and "
+    "the acceptance rate must be VERY HIGH: when in any doubt, 'pass'. It is "
+    "far better to let a borderline card through than to remove a good one. Do "
+    "NOT judge style, tone, phrasing, terseness, formatting, difficulty, or "
+    "pedagogical choices -- only factual correctness.\n\n"
     "Return one verdict:\n"
-    "- 'pass': the card is factually correct and unambiguous as written.\n"
-    "- 'fixed': the card contains a real error (a factual mistake, a wrong "
-    "answer, internally contradictory or nonsensical answer options, or a "
-    "question whose premise is false) AND the correct version is clear. Supply "
+    "- 'pass' (the default, and the expected answer for the large majority of "
+    "cards): the card is factually defensible, OR you are not highly confident "
+    "it is wrong, OR your only concern is stylistic. Pass.\n"
+    "- 'fixed': ONLY when the card is unambiguously, factually wrong AND the "
+    "single correct version is obvious (e.g. a clear definition or "
+    "arithmetic error, or internally contradictory answer options). Supply "
     "corrected_front and/or corrected_back with the minimal change that makes "
-    "it correct. Preserve the card's format: multiple-choice stays "
-    "multiple-choice, cloze deletions stay cloze, a definition stays a "
-    "definition.\n"
-    "- 'dropped': the card is wrong and you cannot determine a clearly-correct "
-    "version (e.g. every multiple-choice option is wrong, or the prompt is "
-    "irreparably ambiguous).\n\n"
-    "Critical: a card may be a FAITHFUL transcription of the source and still "
-    "be wrong, because the source itself can contain errors. Judge correctness "
-    "against established reality, not mere fidelity to the source. Do not drop "
-    "or fix a card merely because it is terse or stylistically plain -- only "
-    "act on genuine correctness problems. Always give a concise reason."
+    "it factually correct, preserving the card's format (multiple-choice stays "
+    "multiple-choice, cloze stays cloze, a definition stays a definition).\n"
+    "- 'dropped': ONLY when the card is unambiguously factually wrong AND no "
+    "correct version is recoverable (e.g. every multiple-choice option is "
+    "wrong, or the prompt's premise is false and unfixable). This should be "
+    "rare.\n\n"
+    "A card may be a faithful transcription of the source and still be "
+    "factually wrong, because even trusted sources occasionally contain "
+    "errors; judge against established reality. But reserve 'fixed' and "
+    "'dropped' for genuine, high-confidence factual errors -- never for cards "
+    "that are merely plain, terse, or stylistically unremarkable. Give a "
+    "concise reason."
 )
 
 
