@@ -51,6 +51,7 @@ from ..processing import (
     ImageProcessor,
     MarkdownCleaner,
     PDFProcessor,
+    TableProcessor,
 )
 
 # Import content utilities
@@ -270,6 +271,13 @@ class Pipeline:
         # 4. Process images
         self.state.current_stage = "image_processing"
         image_summaries = self.process_images(cleaned_files)
+
+        # 4b. Fill table/figure landmark placeholders in clean-md-singles so
+        # the section classifier and audio generators read the finished
+        # landmarks. Must run after image summaries exist (figures fill from
+        # them) and before section classification (which reads the pages).
+        self.state.current_stage = "table_processing"
+        self.process_tables(image_summaries)
 
         # 5. Generate document summary (EARLY!)
         self.state.current_stage = "summary_generation"
@@ -779,6 +787,51 @@ class Pipeline:
             raise RuntimeError(error_msg)
 
         return image_summaries
+
+    def process_tables(self, image_summaries: list[ImageSummary]) -> None:
+        """Fill table and caption-less figure landmark placeholders.
+
+        The markdown cleaner left two kinds of placeholder in
+        ``clean-md-singles``: caption-less figures (filled here from the
+        already-generated image summaries, clamped to one sentence) and
+        caption-less tables (summarized by :class:`TableProcessor` via a text
+        LLM). Any placeholder that cannot be filled is stripped so a sentinel
+        never reaches TTS. Edits ``clean-md-singles`` in place.
+
+        Args:
+            image_summaries: Image summaries from :meth:`process_images`, used
+                to fill caption-less figure landmarks (matched by image URL).
+        """
+        from ..processing.landmarks import (
+            fill_figure_placeholders,
+            first_sentence,
+            strip_unfilled_placeholders,
+        )
+
+        summary_by_url = {
+            img.image_url: first_sentence(img.summary) for img in image_summaries
+        }
+
+        clean_dir = self.output_base / "clean-md-singles"
+        for md_file in sorted(clean_dir.glob("*.md")):
+            content = md_file.read_text(encoding="utf-8")
+            filled = fill_figure_placeholders(content, summary_by_url)
+            if filled != content:
+                md_file.write_text(filled, encoding="utf-8")
+
+        # Summarize caption-less tables (text LLM) and fill their placeholders.
+        models_config = self.config.get("models", {}).get("models", {})
+        model_string = get_model_string(models_config.get("llm", {}))
+        TableProcessor(self.output_base, model_string).process_all_tables()
+
+        # Safety net: drop any placeholder that survived (fill failure) so a
+        # NUL sentinel can never be voiced.
+        for md_file in sorted(clean_dir.glob("*.md")):
+            content = md_file.read_text(encoding="utf-8")
+            stripped = strip_unfilled_placeholders(content)
+            if stripped != content:
+                logger.warning(f"Stripped unfilled landmark(s) in {md_file.name}")
+                md_file.write_text(stripped, encoding="utf-8")
 
     def generate_document_summary(
         self, markdown_files: list[Path], image_summaries: list[ImageSummary]

@@ -183,3 +183,7 @@ Reads `bookend_start/end/trailing_pause_ms` from `post_cfg` (fish defaults
 `combine_audio_with_section_pauses`, and records them in the manifest
 postprocessor so restitch reproduces them. See [[swanki.audio._common]]
 (2026.05.30). Plan: [[plan.audio-bookend-pauses-conceptual-prompt.2026.05.30]].
+
+## 2026.05.31 - Retire `_embed_images` prose; figures/tables ride landmarks
+
+`_embed_images` previously rewrote `![alt](url)` into "Looking at {alt}, we can see {summary}" prose from the multi-sentence image summaries. That conflicts with the new deterministic `Figure:`/`Table:` landmarks (now injected upstream in [[swanki.processing.markdown_cleaner]]), and tables had no path at all (deleted). `_embed_images` now just concatenates page content: the landmark carries the figure caption-or-summary, and the leftover empty-alt `![](url)` is dropped by `clean_markdown_for_tts` downstream. The `image_summaries` argument is retained for signature stability but no longer embedded. This makes lecture and reading consistent for figures/tables. NOTE: the lecture path still REFORMULATES prose narratively (per-section regen + refine loop), so its landmarks are not byte-for-byte deterministic the way reading's are -- the reading path is the deterministic guarantee. Plan: [[plan.reading-table-figure-landmarks.2026.05.31]].

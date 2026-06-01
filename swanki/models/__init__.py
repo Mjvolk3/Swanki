@@ -20,7 +20,7 @@ from .cards import (
     PlainCard,
     RefinementHistory,
 )
-from .document import DocumentSummary, ImageSummary
+from .document import DocumentSummary, ImageSummary, TableSummary
 from .pipeline import ProcessingState
 from .problem_set import (
     CardPlan,
@@ -61,6 +61,7 @@ __all__ = [
     "CardIssue",
     "DocumentSummary",
     "ImageSummary",
+    "TableSummary",
     "AudioTranscript",
     "ProcessingState",
     # Problem-set models

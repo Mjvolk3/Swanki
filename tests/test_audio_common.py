@@ -1340,3 +1340,37 @@ def test_combine_audio_with_section_pauses_chunk_tail_trim_zero_no_op(tmp_path):
     )
     combined = AudioSegment.from_mp3(str(out))
     assert 1900 <= len(combined) <= 2100
+
+
+# Table/figure landmark survives the reading scrubber chain into its own
+# section, so combine_audio_with_section_pauses brackets it with real silence.
+
+
+def test_table_landmark_splits_into_own_section():
+    from swanki.audio._common import add_tts_pauses
+    from swanki.processing.landmarks import landmark_block
+
+    content = (
+        "Body before the table."
+        + landmark_block("Table", "A comparison of computers and humans.")
+        + "Body after."
+    )
+    cleaned = clean_markdown_for_tts(content)
+    with_pauses = add_tts_pauses(cleaned, "fish_speech")
+    sections = split_transcript_by_sections(with_pauses)
+    assert any(
+        s.startswith("Table: A comparison of computers and humans.") for s in sections
+    )
+    assert sum(1 for s in sections if "Body before" in s) == 1
+    assert sum(1 for s in sections if "Body after" in s) == 1
+
+
+def test_figure_landmark_caption_not_doubled_by_empty_alt():
+    # The cleaner emits ![](url): clean_markdown_for_tts must drop the empty
+    # alt + URL, leaving only the landmark's spoken caption (no double-read).
+    from swanki.processing.landmarks import landmark_block
+
+    content = "![](img/fig1.png)" + landmark_block("Figure", "A growth curve.")
+    cleaned = clean_markdown_for_tts(content)
+    assert "img/fig1.png" not in cleaned
+    assert cleaned.count("A growth curve.") == 1

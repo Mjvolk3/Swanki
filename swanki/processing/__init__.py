@@ -12,12 +12,14 @@ from .image_processor import ImageProcessor
 from .markdown_cleaner import MarkdownCleaner
 from .markdown_converter import MarkdownConverter
 from .pdf_processor import PDFProcessor
+from .table_processor import TableProcessor
 
 __all__ = [
     "PDFProcessor",
     "MarkdownConverter",
     "MarkdownCleaner",
     "ImageProcessor",
+    "TableProcessor",
     "AnkiProcessor",
     "ApkgExporter",
 ]

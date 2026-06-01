@@ -168,3 +168,7 @@ Reads `bookend_start/end/trailing_pause_ms` from `post_cfg` (fish defaults
 `combine_audio_with_section_pauses`, and records them in the manifest
 postprocessor so restitch reproduces them. See [[swanki.audio._common]]
 (2026.05.30). Plan: [[plan.audio-bookend-pauses-conceptual-prompt.2026.05.30]].
+
+## 2026.05.31 - Figure/table landmarks: Rule 3 preserves, no longer creates
+
+Figures and tables are now converted to deterministic `Figure: <desc>` / `Table: <desc>` landmarks upstream in [[swanki.processing.markdown_cleaner]] (bracketed by `---SECTION_BREAK---`). Pass-2's `system_prompt` Rule 3 changed from "say 'Figure N' / 'Table N' with the full number and emit your own SECTION_BREAKs" to "PRESERVE each landmark verbatim -- keep the `Figure:`/`Table:` prefix (NO number), keep the description, keep both markers." The landmark survives the deterministic scrubber chain (`clean_markdown_for_tts` -> ... -> `split_transcript_by_sections`) into its own section, so `combine_audio_with_section_pauses` brackets it with real silence (not a Fish `[pause]`). Plan: [[plan.reading-table-figure-landmarks.2026.05.31]].
