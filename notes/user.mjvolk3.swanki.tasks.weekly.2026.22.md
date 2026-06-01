@@ -26,3 +26,7 @@ created: 1779864732867
 - [x] Built swanki-native `comment_edit.py` (`edit_chunk` + `chunk_edit_agent` + extracted `preprocess_for_tts` + `_edits/` audit trail) so reviewer comments drive precise chunk re-TTS through the preprocessor; audio-fix skill now calls it [[plan.swanki-comment-driven-chunk-edits.2026.05.30]]
 - [x] Shipped `bash scripts/swanki_sync.sh` shorthand — runs `abs_refresh.sh` for audio and POSTs `importPackage` + final `sync` to AnkiConnect for the newest .apkg per fox-tagged Zotero item; both halves gated by per-projection `push_audio` / `push_anki` (default True) and share a new `_latest_artifact` helper [[plan.swanki-servers-sync-shortcut.2026.05.27]]
 - [x] Split the single bookend pause into asymmetric `bookend_start/end/trailing_pause_ms` global knobs (fast front, ~2s break + trailing silence; persisted to manifest on restitch) and refined the book_voice lecture prompt for a stronger post-example conceptual takeaway [[plan.audio-bookend-pauses-conceptual-prompt.2026.05.30]]
+
+## 2026.06.01
+
+- [ ] Add a post-card-creation LLM correctness gate that assesses every generated card with the configured model at the `generate_outputs` chokepoint, keeps/fixes/quarantines each card, and logs every verdict + reason to `correctness-assessment.yaml` so learners can trust the deck [[plan.post-creation-llm-card-correctness-gate.2026.06.01]]
