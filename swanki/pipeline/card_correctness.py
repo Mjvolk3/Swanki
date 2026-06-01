@@ -10,9 +10,10 @@ cards pass, clearly-fixable cards are repaired in place, and unfixable cards are
 quarantined out of the deck. The gate screens for FACTUAL errors only -- never
 style, tone, or terseness -- with a deliberately high acceptance rate: the
 source is trusted, so it errs toward keeping borderline cards and reserves fix
-and drop for unambiguous, high-confidence factual errors. Stylistic or
-essayistic sources (e.g. Hamming) simply leave the gate disabled. Every verdict
-is logged to
+and drop for unambiguous, high-confidence factual errors. It is ON by default;
+it stays safe on stylistic sources because style is out of bounds. Every card's
+verdict -- and for dropped cards the reason and full original text, so a
+rejection report can be produced -- is logged to
 ``<output_base>/correctness-assessment.yaml`` so the deck is auditable. A card
 the gate cannot assess (agent error or exhausted safety retries) is kept
 fail-open and logged as ``assessment_failed`` -- the gate never silently drops
@@ -252,6 +253,21 @@ def run_correctness_gate(
         audit.append(entry)
         if kept_card is not None:
             kept.append(kept_card)
+        if entry.verdict == "dropped":
+            logger.warning(
+                "correctness gate DROPPED %s [%s]: %s | front=%r",
+                entry.card_id,
+                entry.card_subtype,
+                entry.reason,
+                entry.original_front[:160],
+            )
+        elif entry.verdict == "fixed":
+            logger.info(
+                "correctness gate FIXED %s [%s]: %s",
+                entry.card_id,
+                entry.card_subtype,
+                entry.reason,
+            )
 
     counts = {
         "total": len(audit),

@@ -1927,7 +1927,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         gate_cfg = self.config.get("card_correctness_gate", {}).get(
             "card_correctness_gate", {}
         )
-        if not gate_cfg.get("enabled", False):
+        if not gate_cfg.get("enabled", False) or not cards:
             return cards
 
         from .card_correctness import run_correctness_gate, write_audit

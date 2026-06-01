@@ -10,6 +10,8 @@ tested deterministically.
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 import yaml
 
@@ -232,3 +234,52 @@ def test_write_audit_atomic_with_summary(monkeypatch, summary, tmp_path):
     assert loaded["summary"]["passed"] == 1
     assert loaded["summary"]["dropped"] == 1
     assert len(loaded["cards"]) == 2
+
+
+def test_dropped_reason_and_original_text_logged_for_report(
+    monkeypatch, summary, tmp_path
+):
+    """A rejection report needs the reason AND the original card text on disk."""
+    monkeypatch.setattr(
+        card_correctness,
+        "_assess_card",
+        _verdict_by_front(
+            {
+                "wrong q": CardCorrectnessAssessment(
+                    verdict="dropped", reason="every option is chemically wrong"
+                )
+            }
+        ),
+    )
+    _, audit = run_correctness_gate(
+        [_card("wrong q", "wrong a")], summary, "src", "m"
+    )
+    out = tmp_path / "correctness-assessment.yaml"
+    write_audit(audit, out)
+
+    loaded = yaml.safe_load(out.read_text())
+    dropped = [c for c in loaded["cards"] if c["verdict"] == "dropped"]
+    assert len(dropped) == 1
+    assert dropped[0]["reason"] == "every option is chemically wrong"
+    assert dropped[0]["original_front"] == "wrong q"
+    assert dropped[0]["original_back"] == "wrong a"
+
+
+def test_dropped_card_emits_warning_with_reason(monkeypatch, summary, caplog):
+    monkeypatch.setattr(
+        card_correctness,
+        "_assess_card",
+        _verdict_by_front(
+            {
+                "bad": CardCorrectnessAssessment(
+                    verdict="dropped", reason="contradicts established chemistry"
+                )
+            }
+        ),
+    )
+    with caplog.at_level(logging.WARNING, logger="swanki.pipeline.card_correctness"):
+        run_correctness_gate([_card("bad")], summary, "src", "m")
+    assert any(
+        "DROPPED" in r.message and "contradicts established chemistry" in r.getMessage()
+        for r in caplog.records
+    )
