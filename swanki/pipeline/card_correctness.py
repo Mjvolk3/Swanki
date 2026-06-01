@@ -14,7 +14,7 @@ and drop for unambiguous, high-confidence factual errors. It is ON by default;
 it stays safe on stylistic sources because style is out of bounds. Every card's
 verdict -- and for dropped cards the reason and full original text, so a
 rejection report can be produced -- is logged to
-``<output_base>/correctness-assessment.yaml`` so the deck is auditable. A card
+``<output_base>/correctness-assessment.json`` so the deck is auditable. A card
 the gate cannot assess (agent error or exhausted safety retries) is kept
 fail-open and logged as ``assessment_failed`` -- the gate never silently drops
 an unjudged card.
@@ -22,11 +22,10 @@ an unjudged card.
 
 from __future__ import annotations
 
+import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-
-import yaml
 
 from ..llm.agents import card_correctness_agent
 from ..llm.safety import with_safety_retry
@@ -293,10 +292,12 @@ def run_correctness_gate(
 
 
 def write_audit(audit: list[CardAuditEntry], path: Path) -> None:
-    """Write gate decisions to ``path`` atomically (temp file then rename).
+    """Write gate decisions to ``path`` as JSON, atomically (temp then rename).
 
-    The payload is a ``summary`` count block plus one ``cards`` entry per
-    assessed card. A crashed run never leaves a half-written audit.
+    JSON because the audit is emitted machine output (project convention:
+    YAML for hand-edited config, JSON for emitted output). The payload is a
+    ``summary`` count block plus one ``cards`` entry per assessed card; a
+    crashed run never leaves a half-written audit.
     """
     payload = {
         "summary": {
@@ -312,5 +313,5 @@ def write_audit(audit: list[CardAuditEntry], path: Path) -> None:
     }
     tmp = path.with_suffix(path.suffix + ".tmp")
     with open(tmp, "w") as f:
-        yaml.safe_dump(payload, f, sort_keys=False, allow_unicode=True)
+        json.dump(payload, f, indent=2, ensure_ascii=False)
     tmp.rename(path)

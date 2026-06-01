@@ -1942,7 +1942,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             model_string,
             max_workers=gate_cfg.get("max_workers", 8),
         )
-        write_audit(audit, output_dir / "correctness-assessment.yaml")
+        write_audit(audit, output_dir / "correctness-assessment.json")
         if not kept:
             logger.warning(
                 "correctness gate dropped every card; the deck will be empty"

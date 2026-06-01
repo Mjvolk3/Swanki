@@ -10,10 +10,10 @@ tested deterministically.
 
 from __future__ import annotations
 
+import json
 import logging
 
 import pytest
-import yaml
 
 from swanki.models.cards import (
     CardContent,
@@ -224,12 +224,12 @@ def test_write_audit_atomic_with_summary(monkeypatch, summary, tmp_path):
         ),
     )
     _, audit = run_correctness_gate([_card("p"), _card("d")], summary, "src", "m")
-    out = tmp_path / "correctness-assessment.yaml"
+    out = tmp_path / "correctness-assessment.json"
     write_audit(audit, out)
 
     assert out.exists()
-    assert not (tmp_path / "correctness-assessment.yaml.tmp").exists()
-    loaded = yaml.safe_load(out.read_text())
+    assert not (tmp_path / "correctness-assessment.json.tmp").exists()
+    loaded = json.loads(out.read_text())
     assert loaded["summary"]["total"] == 2
     assert loaded["summary"]["passed"] == 1
     assert loaded["summary"]["dropped"] == 1
@@ -254,10 +254,10 @@ def test_dropped_reason_and_original_text_logged_for_report(
     _, audit = run_correctness_gate(
         [_card("wrong q", "wrong a")], summary, "src", "m"
     )
-    out = tmp_path / "correctness-assessment.yaml"
+    out = tmp_path / "correctness-assessment.json"
     write_audit(audit, out)
 
-    loaded = yaml.safe_load(out.read_text())
+    loaded = json.loads(out.read_text())
     dropped = [c for c in loaded["cards"] if c["verdict"] == "dropped"]
     assert len(dropped) == 1
     assert dropped[0]["reason"] == "every option is chemically wrong"

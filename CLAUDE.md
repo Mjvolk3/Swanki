@@ -37,6 +37,12 @@ Use **Google-style docstrings** for functions and classes (`Args:`, `Returns:`, 
 
 - Tests should go in `tests/`
 
+## Data Formats (YAML vs JSON)
+
+- **YAML for hand-edited config** — Hydra config groups (`swanki/conf/**`) and anything a human authors/tunes by hand.
+- **JSON for emitted output** — machine-written artifacts the pipeline produces (audit logs, run records, structured results). Use `json.dump(payload, f, indent=2, ensure_ascii=False)` so prose and unicode stay readable.
+- Some legacy emitted artifacts (`problem-pairings.yaml`, `section-classification.yaml`, `cards-debug.yaml`, `provenance.yaml`) predate this rule and are still YAML; migrate them to JSON opportunistically, not in unrelated PRs.
+
 ## Code Execution
 
 - ~/opt/miniconda3/envs/swanki/bin/Swanki python script.py
