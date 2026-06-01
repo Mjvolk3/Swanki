@@ -207,3 +207,7 @@ call site (the file already has plenty of top-level imports).
 ## 2026.05.21 - mode=glossary dispatch branch
 
 Added an `elif mode == "glossary":` branch in `process_full`, parallel to `solution_manual`: bypasses the section classifier, calls `run_glossary_override(self, cleaned_files, doc_summary)` from [[swanki.pipeline.glossary]], then runs `generate_outputs`. Downstream audio/apkg/zotero blocks are card-format-agnostic and unchanged. See [[plan.glossary-definition-cards-gre-wordlist.2026.05.21]].
+
+## 2026.06.01 - Correctness gate at the generate_outputs chokepoint
+
+`generate_outputs` now calls `self._apply_correctness_gate(cards, summary, output_dir)` as its first step, before any markdown/.apkg is written, so the filtered kept-list drives every downstream writer. `_apply_correctness_gate` is a no-op unless `card_correctness_gate.enabled`; when on, it resolves the model (`card_correctness_gate.model` or `models.llm`), reads source context via the new `_read_source_context` (joins `clean-md-singles/*.md`), calls `run_correctness_gate` ([[swanki.pipeline.card_correctness]]), writes `correctness-assessment.yaml`, and warns if every card was dropped. Single chokepoint covers all three card-producing branches (`solution_manual`/`glossary`/`full`). Plan: [[plan.post-creation-llm-card-correctness-gate.2026.06.01]].

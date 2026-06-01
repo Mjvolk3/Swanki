@@ -1282,6 +1282,69 @@ class CardGenerationResponse(BaseModel):
         return v
 
 
+class CardCorrectnessAssessment(BaseModel):
+    """LLM verdict on whether one generated card is factually correct.
+
+    Returned by ``card_correctness_agent`` for a single card assessed against
+    its source context and the document summary. ``verdict`` drives the gate:
+    ``pass`` keeps the card unchanged, ``fixed`` replaces its front/back with
+    the corrected text, ``dropped`` removes it from the deck. The gate itself
+    assigns ``assessment_failed`` (see :class:`CardAuditEntry`) when the agent
+    call errors and the card is kept fail-open; the agent never returns it.
+    """
+
+    verdict: Literal["pass", "fixed", "dropped"] = Field(
+        description=(
+            "pass = card is correct as-is; fixed = card was wrong but the "
+            "correct version is clear (supply corrected_front/back); dropped = "
+            "card is wrong and the fix is unclear, do not add it to the deck"
+        )
+    )
+    reason: str = Field(
+        description=(
+            "One or two sentences justifying the verdict, naming the specific "
+            "error for fixed and dropped cards"
+        )
+    )
+    corrected_front: str | None = Field(
+        None, description="Corrected front text; supply when verdict is 'fixed'"
+    )
+    corrected_back: str | None = Field(
+        None, description="Corrected back text; supply when verdict is 'fixed'"
+    )
+
+    @model_validator(mode="after")
+    def require_correction_when_fixed(self):
+        """A 'fixed' verdict must supply at least one corrected side."""
+        if self.verdict == "fixed" and not (
+            self.corrected_front or self.corrected_back
+        ):
+            raise ValueError(
+                "verdict 'fixed' requires corrected_front and/or corrected_back"
+            )
+        return self
+
+
+class CardAuditEntry(BaseModel):
+    """One card's correctness-gate outcome, serialized to the audit YAML.
+
+    Written for EVERY card the gate sees -- kept (``pass``), repaired
+    (``fixed``), quarantined (``dropped``), or kept-unjudged
+    (``assessment_failed``) -- so the deck is fully auditable. The original
+    front/back are always recorded; corrected text is present only for
+    ``fixed`` cards.
+    """
+
+    card_id: str
+    card_subtype: str
+    verdict: Literal["pass", "fixed", "dropped", "assessment_failed"]
+    reason: str
+    original_front: str
+    original_back: str
+    corrected_front: str | None = None
+    corrected_back: str | None = None
+
+
 class CardFeedback(BaseModel):
     """Structured feedback for card quality issues.
 

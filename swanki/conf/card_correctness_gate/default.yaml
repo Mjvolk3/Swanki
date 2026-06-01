@@ -1,0 +1,13 @@
+card_correctness_gate:
+  # Post-generation LLM correctness gate. When enabled, every generated card is
+  # assessed by the configured model before markdown/.apkg export: correct cards
+  # pass, clearly-fixable cards are repaired, unfixable cards are quarantined out
+  # of the deck. Disabled by default -- it adds one model call per card; enable
+  # per run with `card_correctness_gate.enabled=true`.
+  enabled: false
+  # Optional model override (pydantic-ai string, e.g. "openai:gpt-5.5"). When
+  # null the gate reuses models.llm so a deliberately-strong model can be pinned
+  # for the gate even if a run downgrades the main model for cost.
+  model: null
+  # Concurrency bound for per-card assessment calls.
+  max_workers: 8

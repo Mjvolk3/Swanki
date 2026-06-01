@@ -43,3 +43,7 @@ comment-driven single-chunk audio edits, consumed by
 [[swanki.audio.comment_edit]] via `with_safety_retry`. `ChunkEditResponse`
 lives in [[swanki.models.cards]]. Plan:
 [[plan.swanki-comment-driven-chunk-edits.2026.05.30]].
+
+## 2026.06.01 - card_correctness_agent
+
+`card_correctness_agent: Agent[None, CardCorrectnessAssessment]` (`retries=3`), used by the post-generation correctness gate ([[swanki.pipeline.card_correctness]]) one call per card through `with_safety_retry`. Model resolved per-call via `get_model_string` (reuses `models.llm` = `gpt-5.5`, or a nullable `card_correctness_gate.model` override). `CardCorrectnessAssessment` lives in [[swanki.models.cards]]. Plan: [[plan.post-creation-llm-card-correctness-gate.2026.06.01]].

@@ -10,6 +10,7 @@ from pydantic_ai import Agent
 
 from ..models.cards import (
     AudioTranscriptFeedback,
+    CardCorrectnessAssessment,
     CardFeedback,
     CardGenerationResponse,
     ChunkEditResponse,
@@ -46,6 +47,9 @@ lecture_critic_agent: Agent[None, LectureTranscriptFeedback] = Agent(
 )
 chunk_edit_agent: Agent[None, ChunkEditResponse] = Agent(
     output_type=ChunkEditResponse, retries=2
+)
+card_correctness_agent: Agent[None, CardCorrectnessAssessment] = Agent(
+    output_type=CardCorrectnessAssessment, retries=3
 )
 
 # ── Solution-manual mode agents ────────────────────────────────────────

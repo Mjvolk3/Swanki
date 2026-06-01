@@ -1901,6 +1901,54 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
         return total_estimated
 
+    def _read_source_context(self) -> str:
+        """Concatenate the cleaned source markdown for correctness assessment.
+
+        Returns:
+            All ``clean-md-singles/*.md`` page text joined in page order. This
+            is the source the cards were generated from; the gate judges each
+            card against it plus the document summary.
+        """
+        clean_dir = self.output_base / "clean-md-singles"
+        pages = sorted(clean_dir.glob("*.md"))
+        return "\n\n".join(p.read_text() for p in pages)
+
+    def _apply_correctness_gate(
+        self, cards: list[PlainCard], summary: DocumentSummary, output_dir: Path
+    ) -> list[PlainCard]:
+        """Run the opt-in LLM correctness gate, returning the kept cards.
+
+        No-op (returns ``cards`` unchanged) unless
+        ``card_correctness_gate.enabled`` is set. When enabled, writes the
+        per-card audit to ``correctness-assessment.yaml`` and returns the
+        filtered kept-list; fixed cards carry corrected text, dropped cards are
+        excluded, unassessable cards are kept fail-open.
+        """
+        gate_cfg = self.config.get("card_correctness_gate", {}).get(
+            "card_correctness_gate", {}
+        )
+        if not gate_cfg.get("enabled", False):
+            return cards
+
+        from .card_correctness import run_correctness_gate, write_audit
+
+        llm_config = self.config.get("models", {}).get("models", {}).get("llm", {})
+        model_string = gate_cfg.get("model") or get_model_string(llm_config)
+        source_context = self._read_source_context()
+        kept, audit = run_correctness_gate(
+            cards,
+            summary,
+            source_context,
+            model_string,
+            max_workers=gate_cfg.get("max_workers", 8),
+        )
+        write_audit(audit, output_dir / "correctness-assessment.yaml")
+        if not kept:
+            logger.warning(
+                "correctness gate dropped every card; the deck will be empty"
+            )
+        return kept
+
     def generate_outputs(
         self, cards: list[PlainCard], summary: DocumentSummary, output_dir: Path
     ) -> dict[str, Path]:
@@ -1932,6 +1980,11 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         generation is enabled in configuration.
         """
         outputs = {}
+
+        # Correctness gate (opt-in): assess every card before any markdown/.apkg
+        # is written, so the filtered kept-list drives every downstream writer
+        # and the position-keyed artifacts stay consistent.
+        cards = self._apply_correctness_gate(cards, summary, output_dir)
 
         # Get output config
         output_config = self.config.get("output", {}).get("output", {})
