@@ -129,9 +129,13 @@ _TF_SECTION = re.compile(r"^True/False\.\s+\S", re.MULTILINE)
 _COMPLETION_SECTION = re.compile(r"^Completion\.\s+\S", re.MULTILINE)
 # Combined boundary for terminating a section span (any other divider OR back
 # of book).
+# The back-of-book anchors (`Answers`, `Chapter N`) carry the same Mathpix-`##`
+# vs MinerU-`#` header-level split as the `_BACK_*` partition patterns, so they
+# accept `#{1,3}`. The bare-text in-chapter dividers (`Multiple Choice.` etc.)
+# are OCR-agnostic and untouched.
 _SECTION_OR_BACK_OF_BOOK = re.compile(
     r"^(?:Multiple Choice\.\s+\S|Matching\.\s+\S|True/False\.\s+\S|"
-    r"Completion\.\s+\S|##\s+Answers|##\s+Chapter\s+\d)",
+    r"Completion\.\s+\S|#{1,3}\s+Answers|#{1,3}\s+Chapter\s+\d)",
     re.MULTILINE,
 )
 
@@ -162,10 +166,15 @@ _COMPLETION_ITEM = re.compile(
 # Column B option lines: `(letter) text`.
 _COLUMN_B_OPTION = re.compile(r"^\(([a-z])\)\s+(.+)$", re.MULTILINE)
 
-# Back-of-book partition.
-_BACK_CHAPTER_HEADER = re.compile(r"^##\s+Chapter\s+(\d+)\s*$", re.MULTILINE)
+# Back-of-book partition. The header anchor is `#{1,3}` because Mathpix emits
+# the back-of-book titles as H2 (`## Chapter 1`) while MinerU emits them as H1
+# (`# Chapter 1`); H3 is cheap defensive headroom. A real header anchor is
+# required — the section words also appear as in-chapter dividers
+# (`Multiple Choice.` with a period) and inside answer-body prose — so bare-text
+# matching is deliberately rejected.
+_BACK_CHAPTER_HEADER = re.compile(r"^#{1,3}\s+Chapter\s+(\d+)\s*$", re.MULTILINE)
 _BACK_SECTION_HEADER = re.compile(
-    r"^##\s+(Multiple Choice|Matching|True/False|Completion)\s*$",
+    r"^#{1,3}\s+(Multiple Choice|Matching|True/False|Completion)\s*$",
     re.MULTILINE,
 )
 
@@ -208,45 +217,103 @@ def _detect_chapter(full_text: str, chapter_id: str | None) -> str:
     return "unknown"
 
 
-def _section_span(
+def _section_spans(
     full_text: str, start_pattern: re.Pattern[str]
-) -> tuple[int, int] | None:
-    """Locate one in-chapter review-section's char span.
+) -> list[tuple[int, int]]:
+    """Locate EVERY in-chapter occurrence of a review-section's char span.
 
-    Returns ``(start, end)`` for the first match of ``start_pattern``. The end
-    is the start of the next review-section divider OR the back-of-book block,
-    whichever comes first. Returns ``None`` if the section is absent.
+    A chapter can carry the same section type more than once (e.g. two Matching
+    sets each numbered 1-10). Returns one ``(start, end)`` per occurrence of
+    ``start_pattern``; each span ends at the next review-section divider OR the
+    back-of-book block, whichever comes first. Returns ``[]`` when absent.
     """
-    m = start_pattern.search(full_text)
-    if m is None:
-        return None
-    nxt = _SECTION_OR_BACK_OF_BOOK.search(full_text, m.end())
-    end = nxt.start() if nxt is not None else len(full_text)
-    return (m.start(), end)
+    spans: list[tuple[int, int]] = []
+    for m in start_pattern.finditer(full_text):
+        nxt = _SECTION_OR_BACK_OF_BOOK.search(full_text, m.end())
+        end = nxt.start() if nxt is not None else len(full_text)
+        spans.append((m.start(), end))
+    return spans
+
+
+def _problem_id(prefix: str, chapter: str, occ: int, n_occ: int, item: str) -> str:
+    """Build an occurrence-aware problem ID.
+
+    When a section type appears exactly once in a chapter (``n_occ == 1``) the
+    occurrence segment is suppressed so the ID stays ``MAT-CH3-7`` — zero
+    regression for every chapter that already worked. When it appears more than
+    once, the 1-based occurrence index is inserted: ``MAT-CH3-2-7``.
+    """
+    if n_occ <= 1:
+        return f"{prefix}-CH{chapter}-{item}"
+    return f"{prefix}-CH{chapter}-{occ}-{item}"
+
+
+def _candidate_ids(
+    prefix: str, chapter: str, occ: int, n_occ: int, item: str
+) -> list[str]:
+    """Back-of-book candidate IDs for the k-th section's k-th body.
+
+    Tries, in order:
+      1. the occurrence-aware ID (``MAT-CH3-2-7``) — the forward shape when the
+         section repeats in the chapter;
+      2. the bare chapter ID (``MAT-CH3-7``) — the forward shape when the
+         section appears once;
+      3. the legacy no-chapter fallback (``MAT-7``).
+
+    Both the occurrence and bare chapter forms are emitted regardless of
+    ``n_occ`` because the forward enumeration's occurrence count can diverge
+    from the back-of-book's: the answer key may print one Matching set while the
+    chapter poses two (real Alcamo CH03). The k-th body must still pair with the
+    k-th forward set. The form natural to *this* body's occurrence count is
+    tried first so it also becomes the label of an unpaired entry.
+    """
+    natural = _problem_id(prefix, chapter, occ, n_occ, item)
+    occurrence = f"{prefix}-CH{chapter}-{occ}-{item}"
+    bare_chapter = f"{prefix}-CH{chapter}-{item}"
+    ordered = [natural, occurrence, bare_chapter, f"{prefix}-{item}"]
+    seen: set[str] = set()
+    return [c for c in ordered if not (c in seen or seen.add(c))]
+
+
+def _set_label(occ: int, n_occ: int) -> str:
+    """Visible-label disambiguator for a repeated same-type section.
+
+    Returns ``" (set 2)"`` for the 2nd occurrence of a section type, ``""`` when
+    the type appears once (the common case). The printed item number is kept
+    separately, so the rendered front reads e.g. ``Matching (set 2) 7:``.
+    """
+    return "" if n_occ <= 1 else f" (set {occ})"
 
 
 def _enumerate_multiple_choice(full_text: str, chapter: str) -> list[ProblemUnit]:
-    """Enumerate Multiple Choice items in the chapter's MC section."""
-    span = _section_span(full_text, _MC_SECTION)
-    if span is None:
-        return []
-    section_text = full_text[span[0] : span[1]]
+    """Enumerate Multiple Choice items across ALL of the chapter's MC sections."""
+    spans = _section_spans(full_text, _MC_SECTION)
+    n_occ = len(spans)
     out: list[ProblemUnit] = []
-    for m in _MC_ITEM.finditer(section_text):
-        item_num = m.group(1)
-        stem = m.group(2).strip()
-        choices_block = m.group(3).rstrip()
-        statement = f"{item_num}. {stem}\n{choices_block}".strip()
-        out.append(
-            ProblemUnit(
-                problem_id=f"MC-CH{chapter}-{item_num}",
-                subtype="multiple_choice",
-                chapter=chapter,
-                statement=statement,
-                solution=None,
-                char_count=len(statement),
+    for occ, (start, end) in enumerate(spans, start=1):
+        section_text = full_text[start:end]
+        set_label = _set_label(occ, n_occ)
+        for m in _MC_ITEM.finditer(section_text):
+            item_num = m.group(1)
+            stem = m.group(2).strip()
+            choices_block = m.group(3).rstrip()
+            statement = (
+                f"{item_num}.{set_label} {stem}\n{choices_block}".strip()
+                if set_label
+                else f"{item_num}. {stem}\n{choices_block}".strip()
             )
-        )
+            out.append(
+                ProblemUnit(
+                    problem_id=_problem_id(
+                        "MC", chapter, occ, n_occ, item_num
+                    ),
+                    subtype="multiple_choice",
+                    chapter=chapter,
+                    statement=statement,
+                    solution=None,
+                    char_count=len(statement),
+                )
+            )
     return out
 
 
@@ -254,39 +321,42 @@ def _enumerate_matching(full_text: str, chapter: str) -> list[ProblemUnit]:
     """Enumerate Matching Column-A items, embedding the full Column B options
     list in each statement so cards are self-contained.
     """
-    span = _section_span(full_text, _MATCHING_SECTION)
-    if span is None:
-        return []
-    section_text = full_text[span[0] : span[1]]
+    spans = _section_spans(full_text, _MATCHING_SECTION)
+    n_occ = len(spans)
     column_b = _extract_column_b(full_text, chapter)
     options_text = "\n".join(f"({letter}) {text}" for letter, text in column_b.items())
 
     out: list[ProblemUnit] = []
-    for m in _MATCHING_ITEM.finditer(section_text):
-        item_num = m.group(1)
-        stmt_body = m.group(2).strip()
-        # Filter: skip the column-B option lines (they match `\(letter\) text`,
-        # not `\d+. text`, so they wouldn't be captured by _MATCHING_ITEM
-        # anyway) and any item whose body starts with `## Column` (defensive
-        # guard against the section header bleeding into a previous item's
-        # body — the lookahead already prevents this, but cheap to assert).
-        if stmt_body.startswith("## Column"):
-            continue
-        statement = (
-            f"{item_num}. {stmt_body}\n\nOptions:\n{options_text}"
-            if options_text
-            else f"{item_num}. {stmt_body}"
-        )
-        out.append(
-            ProblemUnit(
-                problem_id=f"MAT-CH{chapter}-{item_num}",
-                subtype="matching",
-                chapter=chapter,
-                statement=statement,
-                solution=None,
-                char_count=len(statement),
+    for occ, (start, end) in enumerate(spans, start=1):
+        section_text = full_text[start:end]
+        set_label = _set_label(occ, n_occ)
+        for m in _MATCHING_ITEM.finditer(section_text):
+            item_num = m.group(1)
+            stmt_body = m.group(2).strip()
+            # Filter: skip the column-B option lines (they match
+            # `\(letter\) text`, not `\d+. text`) and any item whose body
+            # starts with a `Column` header (defensive guard against the
+            # section header bleeding into a previous item's body).
+            if re.match(r"^#{1,3}\s+Column", stmt_body):
+                continue
+            label = f"{item_num}.{set_label}"
+            statement = (
+                f"{label} {stmt_body}\n\nOptions:\n{options_text}"
+                if options_text
+                else f"{label} {stmt_body}"
             )
-        )
+            out.append(
+                ProblemUnit(
+                    problem_id=_problem_id(
+                        "MAT", chapter, occ, n_occ, item_num
+                    ),
+                    subtype="matching",
+                    chapter=chapter,
+                    statement=statement,
+                    solution=None,
+                    char_count=len(statement),
+                )
+            )
     return out
 
 
@@ -298,25 +368,28 @@ def _enumerate_true_false(full_text: str, chapter: str) -> list[ProblemUnit]:
     no front-of-card "originally underlined" framing because Mathpix drops the
     underline markup.
     """
-    span = _section_span(full_text, _TF_SECTION)
-    if span is None:
-        return []
-    section_text = full_text[span[0] : span[1]]
+    spans = _section_spans(full_text, _TF_SECTION)
+    n_occ = len(spans)
     out: list[ProblemUnit] = []
-    for m in _TF_ITEM.finditer(section_text):
-        item_num = m.group(1)
-        stmt_body = m.group(2).strip()
-        statement = f"{item_num}. True or false: {stmt_body}"
-        out.append(
-            ProblemUnit(
-                problem_id=f"TF-CH{chapter}-{item_num}",
-                subtype="true_false",
-                chapter=chapter,
-                statement=statement,
-                solution=None,
-                char_count=len(statement),
+    for occ, (start, end) in enumerate(spans, start=1):
+        section_text = full_text[start:end]
+        set_label = _set_label(occ, n_occ)
+        for m in _TF_ITEM.finditer(section_text):
+            item_num = m.group(1)
+            stmt_body = m.group(2).strip()
+            statement = f"{item_num}.{set_label} True or false: {stmt_body}"
+            out.append(
+                ProblemUnit(
+                    problem_id=_problem_id(
+                        "TF", chapter, occ, n_occ, item_num
+                    ),
+                    subtype="true_false",
+                    chapter=chapter,
+                    statement=statement,
+                    solution=None,
+                    char_count=len(statement),
+                )
             )
-        )
     return out
 
 
@@ -324,26 +397,29 @@ def _enumerate_completion(full_text: str, chapter: str) -> list[ProblemUnit]:
     r"""Enumerate Completion fill-in-blank items. Items must contain a
     ``$\_\_\_\_$`` blank token (Mathpix rendering) to be enumerated.
     """
-    span = _section_span(full_text, _COMPLETION_SECTION)
-    if span is None:
-        return []
-    section_text = full_text[span[0] : span[1]]
+    spans = _section_spans(full_text, _COMPLETION_SECTION)
+    n_occ = len(spans)
     out: list[ProblemUnit] = []
-    for m in _COMPLETION_ITEM.finditer(section_text):
-        item_num = m.group(1)
-        body = m.group(2).strip()
-        readable = body.replace("$\\_\\_\\_\\_$", _COMPLETION_BLANK)
-        statement = f"{item_num}. Fill in the blank: {readable}"
-        out.append(
-            ProblemUnit(
-                problem_id=f"CMP-CH{chapter}-{item_num}",
-                subtype="completion",
-                chapter=chapter,
-                statement=statement,
-                solution=None,
-                char_count=len(statement),
+    for occ, (start, end) in enumerate(spans, start=1):
+        section_text = full_text[start:end]
+        set_label = _set_label(occ, n_occ)
+        for m in _COMPLETION_ITEM.finditer(section_text):
+            item_num = m.group(1)
+            body = m.group(2).strip()
+            readable = body.replace("$\\_\\_\\_\\_$", _COMPLETION_BLANK)
+            statement = f"{item_num}.{set_label} Fill in the blank: {readable}"
+            out.append(
+                ProblemUnit(
+                    problem_id=_problem_id(
+                        "CMP", chapter, occ, n_occ, item_num
+                    ),
+                    subtype="completion",
+                    chapter=chapter,
+                    statement=statement,
+                    solution=None,
+                    char_count=len(statement),
+                )
             )
-        )
     return out
 
 
@@ -375,7 +451,7 @@ def _extract_column_b(full_text: str, chapter: str) -> dict[str, str]:
         if nxt is not None:
             chapter_end = nxt.start()
 
-    column_b_re = re.compile(r"^##\s+Column B\s*$", re.MULTILINE)
+    column_b_re = re.compile(r"^#{1,3}\s+Column B\s*$", re.MULTILINE)
     cb = column_b_re.search(full_text, chapter_start, chapter_end)
     if cb is None:
         return {}
@@ -387,27 +463,77 @@ def _extract_column_b(full_text: str, chapter: str) -> dict[str, str]:
     return options
 
 
-def _partition_back_of_book(full_text: str) -> dict[str, dict[str, str]]:
-    """Walk the back-of-book block and return ``{chapter_num: {section: body}}``.
+# A standalone line inside an answer body that is purely a page number or a
+# residual header. MinerU can spill a section's answer run across a page break,
+# injecting a bare page-number line or a running-header line mid-run (O1). Such
+# lines are stripped before the per-subtype answer tokenizers run so the body
+# reads as one contiguous answer sequence.
+_BODY_NOISE_LINE = re.compile(
+    r"^(?:\d+|#{1,6}\s+.*|Answers to Review Questions)\s*$",
+    re.MULTILINE,
+)
 
-    Pass 1: locate every ``^## Chapter N$`` boundary and record start indexes.
-    Pass 2: within each chapter span, scan ``^## (Multiple Choice|Matching|...)``
-    boundaries and capture each section's body (text from the section header
-    line's end to the next section header OR chapter header OR end-of-text).
+
+def _strip_body_noise(body: str) -> str:
+    """Remove standalone page-number / header-only lines from a section body.
+
+    A section's answer run can be split mid-sequence by an injected page-number
+    token or a running-header line (the O1 page-spill artifact). The answer
+    tokenizers assume a contiguous run, so drop those standalone noise lines and
+    rejoin the surviving answer fragments with single spaces.
+    """
+    kept = [
+        line.strip()
+        for line in body.splitlines()
+        if line.strip() and not _BODY_NOISE_LINE.fullmatch(line.strip())
+    ]
+    return " ".join(kept)
+
+
+def _merge_consecutive_chapters(
+    matches: list[re.Match[str]],
+) -> list[tuple[str, int, int]]:
+    """Collapse consecutive same-number chapter headers into one span (O2).
+
+    MinerU may stamp ``# Chapter N`` as a running header atop every page in a
+    chapter's answer region, so ``_BACK_CHAPTER_HEADER`` matches the same number
+    repeatedly. Merge a run of identical-numbered headers into a single span
+    spanning from the first header's body start to the next *different* chapter.
+
+    Returns:
+        ``(chapter_num, body_start, header_start)`` tuples — ``body_start`` is
+        where the first header's body begins; ``header_start`` is the char index
+        of the first header (used to compute the previous span's end).
+    """
+    merged: list[tuple[str, int, int]] = []
+    for m in matches:
+        chapter_num = m.group(1)
+        if merged and merged[-1][0] == chapter_num:
+            continue
+        merged.append((chapter_num, m.end(), m.start()))
+    return merged
+
+
+def _partition_back_of_book(full_text: str) -> dict[str, dict[str, list[str]]]:
+    """Walk the back-of-book block, returning ``{chapter: {section: [body]}}``.
+
+    Pass 1: locate every ``#{1,3} Chapter N`` boundary, merging consecutive
+    same-number matches into one span (MinerU running-header dup, O2).
+    Pass 2: within each chapter span, scan ``#{1,3} (Multiple Choice|...)``
+    boundaries; each section type maps to a LIST of bodies, one per occurrence,
+    so a chapter with two Matching sets keeps both (the k-th forward section
+    pairs with the k-th body). Each body has page-spill noise stripped (O1).
     """
     chapter_matches = list(_BACK_CHAPTER_HEADER.finditer(full_text))
     if not chapter_matches:
         return {}
-    out: dict[str, dict[str, str]] = {}
-    for i, cm in enumerate(chapter_matches):
-        chapter_num = cm.group(1)
-        chapter_start = cm.end()
+    merged = _merge_consecutive_chapters(chapter_matches)
+    out: dict[str, dict[str, list[str]]] = {}
+    for i, (chapter_num, chapter_start, _header_start) in enumerate(merged):
         chapter_end = (
-            chapter_matches[i + 1].start()
-            if i + 1 < len(chapter_matches)
-            else len(full_text)
+            merged[i + 1][2] if i + 1 < len(merged) else len(full_text)
         )
-        sections: dict[str, str] = {}
+        sections: dict[str, list[str]] = {}
         section_matches = list(
             _BACK_SECTION_HEADER.finditer(full_text, chapter_start, chapter_end)
         )
@@ -419,8 +545,8 @@ def _partition_back_of_book(full_text: str) -> dict[str, dict[str, str]]:
                 if j + 1 < len(section_matches)
                 else chapter_end
             )
-            body = full_text[body_start:body_end].strip()
-            sections[section_name] = body
+            body = _strip_body_noise(full_text[body_start:body_end])
+            sections.setdefault(section_name, []).append(body)
         if sections:
             out[chapter_num] = sections
     return out
@@ -649,85 +775,83 @@ def pair_problems_across_pages(
     # sit between them).
     back_of_book = _partition_back_of_book(full_text)
     for chapter_num, sections in back_of_book.items():
-        for section_name, body in sections.items():
-            if section_name == "Multiple Choice":
-                for m in _MC_ANSWER_PAIR.finditer(body):
-                    mc_num, letter = m.group(1), m.group(2)
-                    if _try_pair_or_unpaired(
-                        pairings_by_id,
-                        unpaired_solutions,
-                        candidate_ids=[
-                            f"MC-CH{chapter_num}-{mc_num}",
-                            f"MC-{mc_num}",
-                        ],
-                        text=f"({letter})",
-                        role="solution",
-                        page_idx=0,
-                    ):
-                        used_regex = True
-            elif section_name == "Matching":
-                column_b = _extract_column_b(full_text, chapter_num)
-                for m in _MC_ANSWER_PAIR.finditer(body):
-                    mat_num, letter = m.group(1), m.group(2)
-                    option_text = column_b.get(letter)
-                    text = (
-                        f"({letter}) {option_text}"
-                        if option_text
-                        else f"({letter})"
-                    )
-                    if _try_pair_or_unpaired(
-                        pairings_by_id,
-                        unpaired_solutions,
-                        candidate_ids=[
-                            f"MAT-CH{chapter_num}-{mat_num}",
-                            f"MAT-{mat_num}",
-                        ],
-                        text=text,
-                        role="solution",
-                        page_idx=0,
-                    ):
-                        used_regex = True
-            elif section_name == "True/False":
-                for m in _TF_ANSWER_SPLIT.finditer(body):
-                    tf_num = m.group(1)
-                    raw_answer = m.group(2).strip()
-                    if raw_answer == "T":
-                        text = "True."
-                    elif raw_answer == "F":
-                        text = "False."
-                    else:
+        for section_name, bodies in sections.items():
+            n_occ = len(bodies)
+            for occ, body in enumerate(bodies, start=1):
+                if section_name == "Multiple Choice":
+                    for m in _MC_ANSWER_PAIR.finditer(body):
+                        mc_num, letter = m.group(1), m.group(2)
+                        if _try_pair_or_unpaired(
+                            pairings_by_id,
+                            unpaired_solutions,
+                            candidate_ids=_candidate_ids(
+                                "MC", chapter_num, occ, n_occ, mc_num
+                            ),
+                            text=f"({letter})",
+                            role="solution",
+                            page_idx=0,
+                        ):
+                            used_regex = True
+                elif section_name == "Matching":
+                    column_b = _extract_column_b(full_text, chapter_num)
+                    for m in _MC_ANSWER_PAIR.finditer(body):
+                        mat_num, letter = m.group(1), m.group(2)
+                        option_text = column_b.get(letter)
                         text = (
-                            "False — replace underlined word with: "
-                            f"{raw_answer}"
+                            f"({letter}) {option_text}"
+                            if option_text
+                            else f"({letter})"
                         )
-                    if _try_pair_or_unpaired(
-                        pairings_by_id,
-                        unpaired_solutions,
-                        candidate_ids=[
-                            f"TF-CH{chapter_num}-{tf_num}",
-                            f"TF-{tf_num}",
-                        ],
-                        text=text,
-                        role="solution",
-                        page_idx=0,
-                    ):
-                        used_regex = True
-            elif section_name == "Completion":
-                for m in _CMP_ANSWER_SPLIT.finditer(body):
-                    cmp_num = m.group(1)
-                    answer = m.group(2).strip()
-                    if _try_pair_or_unpaired(
-                        pairings_by_id,
-                        unpaired_solutions,
-                        candidate_ids=[
-                            f"CMP-CH{chapter_num}-{cmp_num}",
-                            f"CMP-{cmp_num}",
-                        ],
-                        text=answer,
-                        role="solution",
-                        page_idx=0,
-                    ):
-                        used_regex = True
+                        if _try_pair_or_unpaired(
+                            pairings_by_id,
+                            unpaired_solutions,
+                            candidate_ids=_candidate_ids(
+                                "MAT", chapter_num, occ, n_occ, mat_num
+                            ),
+                            text=text,
+                            role="solution",
+                            page_idx=0,
+                        ):
+                            used_regex = True
+                elif section_name == "True/False":
+                    for m in _TF_ANSWER_SPLIT.finditer(body):
+                        tf_num = m.group(1)
+                        raw_answer = m.group(2).strip()
+                        if raw_answer == "T":
+                            text = "True."
+                        elif raw_answer == "F":
+                            text = "False."
+                        else:
+                            text = (
+                                "False — replace underlined word with: "
+                                f"{raw_answer}"
+                            )
+                        if _try_pair_or_unpaired(
+                            pairings_by_id,
+                            unpaired_solutions,
+                            candidate_ids=_candidate_ids(
+                                "TF", chapter_num, occ, n_occ, tf_num
+                            ),
+                            text=text,
+                            role="solution",
+                            page_idx=0,
+                        ):
+                            used_regex = True
+                elif section_name == "Completion":
+                    for m in _CMP_ANSWER_SPLIT.finditer(body):
+                        cmp_num = m.group(1)
+                        answer = m.group(2).strip()
+                        if _try_pair_or_unpaired(
+                            pairings_by_id,
+                            unpaired_solutions,
+                            candidate_ids=_candidate_ids(
+                                "CMP", chapter_num, occ, n_occ, cmp_num
+                            ),
+                            text=answer,
+                            role="solution",
+                            page_idx=0,
+                        ):
+                            used_regex = True
 
     # Stage 3: LLM content-pairing for problems still without a solution.
     # Bishop-style separate solution manuals carry no `Solution N.M` markers,

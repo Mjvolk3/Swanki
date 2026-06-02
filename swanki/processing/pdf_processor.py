@@ -11,7 +11,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +140,7 @@ class PDFProcessor:
             return output_files
 
         except Exception as e:
-            logger.warning(f"PyPDF2 failed: {e}. Falling back to qpdf.")
+            logger.warning(f"pypdf failed: {e}. Falling back to qpdf.")
             return self._split_pdf_qpdf(pdf_path)
 
     def _split_pdf_qpdf(self, pdf_path: Path) -> list[Path]:

@@ -67,6 +67,18 @@ class TestLongFormLabels:
             "CMP-CH2-9: Fill in the blank."
         ) == "Completion 9: Fill in the blank."
 
+    def test_occurrence_indexed_matching_form(self) -> None:
+        # Repeated same-type section: the middle occurrence segment expands to
+        # a spoken "set N" so Fish Speech doesn't garble "MAT-CH3-2-7".
+        assert humanize_card_text_for_tts(
+            "MAT-CH3-2-7: Match the description."
+        ) == "Matching set 2 7: Match the description."
+
+    def test_occurrence_indexed_mc_form(self) -> None:
+        assert humanize_card_text_for_tts(
+            "MC-CH3-1-15: The condenser controls light."
+        ) == "Multiple choice set 1 15: The condenser controls light."
+
 
 class TestChapterSectionAbbreviations:
     def test_chapter_with_period_abbrev(self) -> None:

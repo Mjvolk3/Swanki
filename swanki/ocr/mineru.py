@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 
 from swanki.processing.markdown_cleaner import _natural_sort_key
 

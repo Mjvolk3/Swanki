@@ -168,8 +168,13 @@ class ProblemPairingResponse(BaseModel):
     solutions: list[ProblemLocation]
 
 
+# Problem-id forms accepted in a tag:
+#   theory          1.7
+#   subtype         MC-7 / MC-CH1-7
+#   occurrence      MAT-CH3-2-7  (the middle `-2-` is the section occurrence,
+#                   emitted only when a section type appears twice in a chapter)
 _PROBLEM_TAG_RE = re.compile(
-    r"^([^.]+)\.problem\.([0-9]+\.[0-9]+|[A-Z]+(?:-CH\d+)?-\d+)$"
+    r"^([^.]+)\.problem\.([0-9]+\.[0-9]+|[A-Z]+(?:-CH\d+)?(?:-\d+)?-\d+)$"
 )
 
 
