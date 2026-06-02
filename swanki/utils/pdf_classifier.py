@@ -10,7 +10,7 @@ import warnings
 from pathlib import Path
 
 from pydantic import BaseModel
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 
 
 class PageLabel(BaseModel):

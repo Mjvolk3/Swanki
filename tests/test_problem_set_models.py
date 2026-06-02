@@ -62,6 +62,24 @@ class TestProblemTagRoundTrip:
             assert parsed is not None, f"failed to parse bare form {pid}"
             assert parsed.problem_id == pid
 
+    def test_occurrence_indexed_round_trip(self) -> None:
+        """A repeated same-type section emits an occurrence-segment ID
+        (``MAT-CH3-2-7``); the tag regex must round-trip it.
+        """
+        for pid in ("MAT-CH3-2-7", "MC-CH3-1-15", "TF-CH5-2-3", "CMP-CH2-2-9"):
+            rendered = f"alcamo2010.problem.{pid}"
+            parsed = ProblemTag.parse(rendered, "alcamo2010")
+            assert parsed is not None, f"failed to parse occurrence form {pid}"
+            assert parsed.problem_id == pid
+
+    def test_bare_form_not_confused_for_occurrence(self) -> None:
+        """The single-section form (``MAT-CH3-7``) must still parse — the
+        occurrence segment is optional, so suppression is zero-regression.
+        """
+        parsed = ProblemTag.parse("alcamo2010.problem.MAT-CH3-7", "alcamo2010")
+        assert parsed is not None
+        assert parsed.problem_id == "MAT-CH3-7"
+
     def test_parse_rejects_lowercase_prefix(self) -> None:
         assert ProblemTag.parse(
             "alcamo2010.problem.mc-CH1-7", "alcamo2010"

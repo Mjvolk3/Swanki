@@ -457,7 +457,7 @@ def humanize_chapter_slug_spoken(slug: str) -> str:
 # regressions that emit the canonical problem_id ("MC-CH1-13:",
 # "TF-CH1-12:", "MAT-CH1-3:", "CMP-CH2-9:"). The long form is matched first.
 _PROBLEM_LABEL_LONG = re.compile(
-    r"(?m)(?:^|(?<=[:\s]))(MC|TF|MAT|CMP)-CH\d+-(\d+(?:\.\d+)?)\s*:"
+    r"(?m)(?:^|(?<=[:\s]))(MC|TF|MAT|CMP)-CH\d+(?:-(\d+))?-(\d+(?:\.\d+)?)\s*:"
 )
 _PROBLEM_LABEL_SHORT = re.compile(
     r"(?m)(?:^|(?<=[:\s]))(MC|T/F)\s+(\d+(?:\.\d+)?)\s*:"
@@ -545,11 +545,18 @@ _CHOICE_PAUSE_ELEVENLABS = '<break time="0.3s" />'
 
 def _expand_problem_label(match: re.Match[str]) -> str:
     label = match.group(1)
-    num = match.group(2)
     expanded = _LABEL_EXPANSION.get(label)
     if expanded is None:
         return match.group(0)
-    return f"{expanded} {num}:"
+    # The long form has three groups (label, optional occurrence, item); the
+    # short form has two (label, item) and no occurrence group.
+    groups = match.groups()
+    if len(groups) == 3:
+        occ, num = groups[1], groups[2]
+        if occ is not None:
+            return f"{expanded} set {occ} {num}:"
+        return f"{expanded} {num}:"
+    return f"{expanded} {groups[1]}:"
 
 
 def humanize_card_text_for_tts(text: str, provider: str = "fish_speech") -> str:

@@ -13,7 +13,7 @@ import tempfile
 import warnings
 from pathlib import Path
 
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 
 def repair_pdf_with_qpdf(input_path: Path) -> Path:
@@ -75,7 +75,7 @@ def cut_pdf(start: int, end: int, input_path: Path, output_path: Path) -> None:
 
 def _do_cut_pdf(start: int, end: int, input_path: Path, output_path: Path) -> None:
     """Internal function to perform the actual PDF cutting."""
-    # Suppress PyPDF2 warnings about malformed PDFs
+    # Suppress pypdf warnings about malformed PDFs
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
         reader = PdfReader(input_path, strict=False)

@@ -23,7 +23,7 @@ dependencies = [
     "langchain",
     "openai",
     "tiktoken",
-    "PyPDF2",
+    "pypdf>=4",
     "hydra-core",
     "omegaconf",
     "pydantic>=2.0",
@@ -137,7 +137,7 @@ disallow_untyped_calls = false
 disallow_untyped_decorators = false
 
 [[tool.mypy.overrides]]
-module = ["pydub", "pydub.*", "tiktoken", "tiktoken.*", "elevenlabs", "elevenlabs.*", "pydantic_ai", "pydantic_ai.*", "PyPDF2", "PyPDF2.*", "PIL", "PIL.*"]
+module = ["pydub", "pydub.*", "tiktoken", "tiktoken.*", "elevenlabs", "elevenlabs.*", "pydantic_ai", "pydantic_ai.*", "pypdf", "pypdf.*", "PIL", "PIL.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

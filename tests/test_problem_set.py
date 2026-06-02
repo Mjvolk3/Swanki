@@ -29,6 +29,7 @@ from swanki.pipeline.problem_set import (
     _enumerate_matching,
     _enumerate_multiple_choice,
     _enumerate_true_false,
+    _partition_back_of_book,
     audit_coverage,
     enumerate_problems,
     generate_cards_for_problem,
@@ -222,6 +223,103 @@ class TestPairingCompletionMultiWord:
         assert cmp3.solutions[0].text == "organic compounds"
         cmp9 = next(p for p in result.pairings if p.problem_id == "CMP-CH2-9")
         assert cmp9.solutions[0].text == "dehydration synthesis"
+
+
+# ── OCR-agnostic back-of-book partition (MinerU `#` vs Mathpix `##`) ─────
+
+
+class TestPartitionOcrAgnostic:
+    def test_mineru_hash_partitions(self) -> None:
+        """MinerU emits the back-of-book titles as H1 (`# Chapter 1`); the
+        loosened `#{1,3}` anchor must partition it just like Mathpix `##`.
+        """
+        text = (FIXTURE_DIR / "schaum_mineru_back_of_book.md").read_text()
+        part = _partition_back_of_book(text)
+        assert part["1"]["Multiple Choice"][0].startswith("1. c 2. c 3. a")
+        assert part["1"]["Matching"][0] == "1. c 2. d 3. e 4. c 5. b 6. a 7. b 8. e 9. c 10. a"
+        assert part["2"]["Completion"][0].startswith("1. elements 2. nitrogen")
+
+    def test_mineru_and_mathpix_produce_same_bodies(self) -> None:
+        """The CH01 Matching answer body is identical whether the headers came
+        from MinerU (`#`) or Mathpix (`##`) — only the anchor differs.
+        """
+        mineru = _partition_back_of_book(
+            (FIXTURE_DIR / "schaum_mineru_back_of_book.md").read_text()
+        )
+        mathpix = _partition_back_of_book(
+            (FIXTURE_DIR / "schaum_ch01_back_of_book.md").read_text()
+        )
+        assert mineru["1"]["Matching"][0] == mathpix["1"]["Matching"][0]
+        assert (
+            mineru["1"]["Multiple Choice"][0]
+            == mathpix["1"]["Multiple Choice"][0]
+        )
+
+
+class TestTwoMatchingSections:
+    FIXTURE = FIXTURE_DIR / "schaum_two_matching.md"
+
+    def test_enumerates_both_sets(self) -> None:
+        problems = enumerate_problems([self.FIXTURE], "alcamo2010_CH03")
+        mat = [p for p in problems if p.subtype == "matching"]
+        assert len(mat) == 20
+        assert [p.problem_id for p in mat] == (
+            [f"MAT-CH3-1-{n}" for n in range(1, 11)]
+            + [f"MAT-CH3-2-{n}" for n in range(1, 11)]
+        )
+
+    def test_partition_holds_two_bodies(self) -> None:
+        part = _partition_back_of_book(self.FIXTURE.read_text())
+        assert len(part["3"]["Matching"]) == 2
+
+    def test_kth_set_pairs_with_kth_body(self) -> None:
+        problems = enumerate_problems([self.FIXTURE], "alcamo2010_CH03")
+        result = pair_problems_across_pages(problems, [self.FIXTURE], {})
+        # Set 1 body: 1->c (Viruses); set 2 body: 1->e (Cyanobacteria).
+        s1 = next(p for p in result.pairings if p.problem_id == "MAT-CH3-1-1")
+        s2 = next(p for p in result.pairings if p.problem_id == "MAT-CH3-2-1")
+        assert s1.solutions[0].text == "(c) Viruses"
+        assert s2.solutions[0].text == "(e) Cyanobacteria"
+        assert not result.unpaired_solutions
+
+    def test_set_two_label_disambiguates_but_keeps_item_number(self) -> None:
+        problems = enumerate_problems([self.FIXTURE], "alcamo2010_CH03")
+        s2_7 = next(p for p in problems if p.problem_id == "MAT-CH3-2-7")
+        head = s2_7.statement.splitlines()[0]
+        assert head.startswith("7. (set 2)")
+
+
+class TestPageSpillBody:
+    def test_spill_body_tokenizes_full_run(self) -> None:
+        """A Completion answer run split by a stray page-number line AND a
+        MinerU running-header `# Chapter 2` dup must still tokenize 1-15.
+        """
+        fixture = FIXTURE_DIR / "schaum_page_spill.md"
+        part = _partition_back_of_book(fixture.read_text())
+        # O2: the duplicated `# Chapter 2` header collapses into one span.
+        assert list(part.keys()) == ["2"]
+        body = part["2"]["Completion"][0]
+        # O1: the stray `328` page number and residual header are stripped, so
+        # the body is one contiguous run carrying both halves of the split.
+        assert "10. amino acids" in body
+        assert "11. peptide bond" in body
+        assert "15. uracil" in body
+        assert "328" not in body
+        assert "Chapter" not in body
+
+    def test_spill_pairs_all_fifteen(self) -> None:
+        fixture = FIXTURE_DIR / "schaum_page_spill.md"
+        # Synthesize a matching forward Completion section so the back-of-book
+        # answers have problems to pair against.
+        problems = enumerate_problems([fixture], "alcamo2010_CH02")
+        result = pair_problems_across_pages(problems, [fixture], {})
+        # The 15 answers must not silently vanish: they pair OR go unpaired.
+        cmp_unpaired = [
+            u.problem_id
+            for u in result.unpaired_solutions
+            if u.problem_id.startswith("CMP-")
+        ]
+        assert len(cmp_unpaired) == 15
 
 
 # ── Audit tests ─────────────────────────────────────────────────────────
