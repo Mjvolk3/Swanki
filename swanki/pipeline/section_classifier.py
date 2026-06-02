@@ -47,8 +47,11 @@ _REVIEW_INLINE = re.compile(
     r"^(Multiple Choice|Matching|True/False|Completion)\.\s+(?:[A-Z]|For each|Pick|Select|Match|Fill|Write)",
     re.MULTILINE,
 )
+# Anchored to a markdown heading so a prose mention ("a preface to the topic")
+# never trips the front-matter flip — only a real section title does.
 _FRONT_MATTER = re.compile(
-    r"\b(Preface|Table of Contents|Copyright|Dedication)\b", re.IGNORECASE
+    r"^#{1,6}\s+(Preface|Table of Contents|Copyright|Dedication)\b",
+    re.IGNORECASE | re.MULTILINE,
 )
 _CHAPTER_HEADER = re.compile(
     r"^#\s+(?:CHAPTER|Chapter)\s+\d+", re.MULTILINE
@@ -59,8 +62,15 @@ _BACK_OF_BOOK_BLOCK = re.compile(
     r"^Chapter\s+(\d+)\s*\n+\s*(Multiple Choice|Matching|True/False|Completion)",
     re.MULTILINE,
 )
+# Anchored to a markdown heading: the bare `\b...\b` form matched these words
+# mid-prose (e.g. "index registers", "original references"), flipping a content
+# page to back_matter and — because the kind is sticky — cascading the drop
+# across the rest of the chapter. Real back-matter is always a promoted heading
+# ("## References", "# Bibliography"). A positional guard in _heading_classify
+# additionally requires the match to fall in the document tail.
 _BACK_MATTER = re.compile(
-    r"\b(Index|Glossary|Bibliography|References)\b", re.IGNORECASE
+    r"^#{1,6}\s+(Index|Glossary|Bibliography|References)\b",
+    re.IGNORECASE | re.MULTILINE,
 )
 
 # Per-page problem-shape density: count `^N.M ` starters and `^(a)/(b)/...` MC
@@ -121,6 +131,7 @@ def _heading_classify(clean_md_files: list[Path]) -> ClassificationResult:
     """Pure heading-driven classification. One PageLabel per page."""
     page_labels: list[PageLabel] = []
     texts = [f.read_text() for f in clean_md_files]
+    total = len(texts)
     current_kind: SectionKind = "main_content"
     current_anchor: str | None = None
 
@@ -152,15 +163,18 @@ def _heading_classify(clean_md_files: list[Path]) -> ClassificationResult:
             current_anchor = f"## {review_match.group(1)}"
             anchor_changed = True
 
-        # Back-matter heuristic: only flip to back_matter if the page has the
-        # cue AND no other content cues. The pairing pass below will flip
-        # answer-key pages back to review_exercises.
+        # Back-matter heuristic: flip to back_matter only when the page has a
+        # back-matter heading, no other content cues, AND sits in the document
+        # tail (last ~20% of pages). The tail guard stops a stray real heading
+        # mid-document from starting a back_matter run; the pairing pass below
+        # still flips genuine answer-key pages back to review_exercises, and a
+        # true tail heading still cascades through a multi-page back-matter run.
         if (
             _BACK_MATTER.search(text)
             and not review_match
             and not _CHAPTER_HEADER.search(text)
+            and i >= int(total * 0.8)
         ):
-            # Lower confidence — back_matter detection is fragile.
             current_kind = "back_matter"
             current_anchor = "back_matter (heuristic)"
             anchor_changed = True
