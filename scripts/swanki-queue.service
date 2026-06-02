@@ -1,0 +1,32 @@
+# swanki-queue.service — systemd --user unit for the swanki generation queue.
+#
+# Install (machine-level; references the main repo's scripts path):
+#   mkdir -p ~/.config/systemd/user
+#   ln -sf ~/Documents/projects/Swanki/scripts/swanki-queue.service \
+#          ~/.config/systemd/user/swanki-queue.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now swanki-queue.service
+#   loginctl enable-linger "$USER"   # run without an active login (already on)
+#
+# Inspect:  systemctl --user status swanki-queue
+#           journalctl --user -u swanki-queue -f
+#           tail -f ~/.swanki-queue/queue.log
+#
+# Bump concurrency / switch executor later (dual-purpose era) via a drop-in:
+#   systemctl --user edit swanki-queue   # set Environment=SWANKI_QUEUE_CONCURRENCY=N
+
+[Unit]
+Description=Swanki generation drain queue
+After=default.target
+
+[Service]
+Type=simple
+Environment=SWANKI_QUEUE_CONCURRENCY=1
+Environment=SWANKI_QUEUE_EXECUTOR=local
+Environment=SWANKI_REPO=%h/Documents/projects/Swanki
+ExecStart=/usr/bin/env bash %h/Documents/projects/Swanki/scripts/swanki_queue.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
