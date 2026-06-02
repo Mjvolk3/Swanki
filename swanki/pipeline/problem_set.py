@@ -114,6 +114,11 @@ _CMP_ANSWER_SPLIT = re.compile(
     re.DOTALL,
 )
 
+# Visible fill-in-the-blank rendered on Completion card fronts. Mathpix's blank
+# token (`$\_\_\_\_$`) is normalized to this run of underscores; bump the length
+# here to make the blank larger on every Completion card.
+_COMPLETION_BLANK = "________"
+
 # In-chapter review-section dividers. Schaum's writes them inline as
 # "Multiple Choice. Select ...", "Matching. Match ...", "True/False. For each
 # ...", "Completion. Fill in the blanks ...". Drop the verb requirement —
@@ -327,7 +332,7 @@ def _enumerate_completion(full_text: str, chapter: str) -> list[ProblemUnit]:
     for m in _COMPLETION_ITEM.finditer(section_text):
         item_num = m.group(1)
         body = m.group(2).strip()
-        readable = body.replace("$\\_\\_\\_\\_$", "____")
+        readable = body.replace("$\\_\\_\\_\\_$", _COMPLETION_BLANK)
         statement = f"{item_num}. Fill in the blank: {readable}"
         out.append(
             ProblemUnit(
