@@ -68,6 +68,18 @@ swanki pdf_path=... citation_key=... +output_dir=... \
 
 Other workstations (laptops without the Fish server / with Anki installed) should not inherit these — they're gilahyper-specific.
 
+## Generation Queue
+
+To run **many sources without babysitting blocking**, use the fire-and-forget serial queue instead of hand-writing a one-off batch script. Drop jobs and forget them — they drain one at a time.
+
+- **Enqueue:** `scripts/swanki_enqueue.sh --pdf PATH --key CITATION_KEY [--content-key <key>_CH##_<slug>] [--voice fish_speech] [--author "Name"] [--extra "hydra.override=x"]`. Papers need just `--pdf --key`; book chapters add `--content-key` (output_dir is derived as `<key>/<content_key>`). Voice defaults to the `fish_speech` british-prof seminar; pass a clone (`fish_speech_bechtel`, `fish_speech_hamming`, …) for author-voiced books.
+- **Drainer:** `scripts/swanki_queue.sh`, run by the `swanki-queue.service` systemd --user unit (enabled, survives reboot). Jobs land in `~/.swanki-queue/pending/` and move to `done/`/`failed/` with per-job logs in `logs/`.
+- **Watch:** `tail -f ~/.swanki-queue/queue.log`, `journalctl --user -u swanki-queue -f`, `ls ~/.swanki-queue/pending` (depth), `systemctl --user status swanki-queue`.
+
+**Why serial:** the single shared Fish TTS server is the bottleneck — one swanki run saturates all its workers — so `SWANKI_QUEUE_CONCURRENCY` (default 1) keys off **Fish capacity, not GPU count**. SLURM is overkill for one box + one Fish service. `SWANKI_QUEUE_EXECUTOR` (`local` | `noop` dry-run | `slurm` stub) is the forward-compat hook for the dual-purpose era. Each job runs the gilahyper default invocation (`audio=all anki=default ocr=mineru models=<voice> zotero=sync …`).
+
+**Important:** the queue only serializes jobs **submitted through it** — a swanki run launched by hand stays outside it and will contend for Fish. Once the queue is in use, run everything through it. Full design/rationale: `notes/scripts.swanki_queue.md` ([[scripts.swanki_queue]]).
+
 ## Sync Terminology
 
 When the user says any of these, they mean push the latest artifacts to the **self-hosted endpoints** (the user's ABS server + the headless Anki on gilahyper). The pipeline is finished; this is the delivery step.
