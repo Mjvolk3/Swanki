@@ -78,3 +78,7 @@ Bishop-style packed PDFs concatenate a chapter's `# Exercises` (problem statemen
 - `pair_problems_across_pages` gains Stage 3: for problems still unpaired after the regex stages, when `config.pipeline.solution_manual.stage3_enabled` (default True) and a solutions region exists, it builds an excerpt block of unpaired problems + the solutions region and calls `problem_pairing_agent.run_sync` with the solution_manual `problem_pairing` system prompt. Matched `ProblemLocation`s are appended to the right pairing by `problem_id`.
 - `method` is now `"mixed"` (regex + llm), `"llm"`, or `"regex"` accordingly. Unmatchable problems are omitted per the prompt contract; `audit_coverage` + `allow_unsolved` enforce the resulting gap.
 
+
+## 2026.06.01 - Larger Completion fill-in-the-blank
+
+The visible blank on Completion card fronts is now a longer underscore run via the `_COMPLETION_BLANK` constant (8 underscores, was a hard-coded `____` of 4). `_enumerate_completion` normalizes Mathpix's `$\_\_\_\_$` token to this constant, and the `problem_card_gen_completion` prompt examples + instruction were updated to show `________` and to forbid shortening it (the LLM copies the blank verbatim, so prompt and enumeration must agree). The blank is literal card text, not a render-time width — bump the constant to tune size. The `"____" in p.statement` enumeration test still holds (substring).

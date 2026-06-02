@@ -236,7 +236,7 @@ prompts:
       Light rephrasing of the statement for clarity is allowed; preserve the test of the
       learner's grasp of the correct vs. incorrect term. Set card_subtype="problem_main".
     problem_card_gen_completion: |-
-      You receive ONE Completion item: a sentence with one blank (rendered as "____"). The
+      You receive ONE Completion item: a sentence with one blank (rendered as "________"). The
       Solution field carries the fill-in word or short phrase from the back-of-book.
 
       Front — STRICT FORMAT. The visible label MUST be exactly "Completion <n>:" where <n>
@@ -244,13 +244,15 @@ prompts:
       chapter is implicit in the citation key — do NOT include it in the visible label. Do
       NOT add a redundant "**Fill in the blank:**" prefix in the body — the "Completion"
       label already conveys it.
-      - Single line: "Completion <n>: <sentence with ____ intact>" with **bold** applied
-        SPARINGLY — only on the context word(s) immediately adjacent to ____ that signal
+      - Single line: "Completion <n>: <sentence with ________ intact>" with **bold** applied
+        SPARINGLY — only on the context word(s) immediately adjacent to ________ that signal
         what kind of answer is expected. Do NOT bold every technical term in the sentence.
+      - Keep the blank exactly as the long underscore run "________" — do NOT shorten it to
+        fewer underscores.
 
       Example front:
       ```
-      Completion 7: The six-carbon sugar that cells most commonly use as an energy source is ____.
+      Completion 7: The six-carbon sugar that cells most commonly use as an energy source is ________.
       ```
 
       Back — STRICT FORMAT (note the period after the answer phrase, before the rationale):
