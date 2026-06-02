@@ -446,3 +446,9 @@ restitches don't crash (regression test:
 `_accumulate_timeline` caller (the `_ensure_timeline` recompute fallback) was
 updated in lockstep. Globals live in `fish_speech.yaml` postprocessor; all
 three audio types (lecture/reading/summary) read+forward+persist them.
+
+## 2026.06.02 - Roman-numeral guard in expand_acronyms_for_tts
+
+Fish read "World War II" as "one one". Root cause was NOT `verbalize_bit_strings` (matches `[01]` digits only — Hamming codewords stay safe) but `expand_acronyms_for_tts`: its `_STANDALONE_ACRONYM_RE = [A-Z]{2,6}` letter-spells any uppercase run, so `II` -> `I-I` exactly like `MIT` -> `M-I-T`. Confirmed in Hamming ch1/ch3 lecture cleaned markdown ("World War I-I").
+
+Fix: a `_ROMAN_NUMERAL_WORDS` map (`II`->"two", `III`->"three", `VII`..`XX`); `_sub` returns the cardinal word for those tokens instead of letter-spelling. The keys are I/V/X-only, so real initialisms needing letter-spelling (`MD`, `CV`, `DC`, `MC`, `CI`, `MM`, ...) are absent and unchanged. `IV` (intravenous) and `VI` (the vi editor) are deliberately EXCLUDED — they collide with initialisms and keep letter-spelling, so there is NO regression for them. Single-letter `I`/`V`/`X` never reach the expander (its floor is 2 letters). Catches "World War II/III", "Part VII", "Henry VIII", "Chapter IX", "Section XV" pipeline-wide. Distinct from `humanize_chapter_slug_spoken` (`swanki.utils.formatting`), which only handles trailing Roman tokens in chapter-slug bookends, not body prose. Tests in `tests/test_audio_common.py` (`test_expand_acronyms_for_tts_roman_numerals_become_words` + ambiguous/acronym/codeword guards). Plan: [[plan.verbalizer-roman-numeral-guard.2026.06.02]].
