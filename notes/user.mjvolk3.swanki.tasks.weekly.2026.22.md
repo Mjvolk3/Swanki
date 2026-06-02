@@ -30,4 +30,4 @@ created: 1779864732867
 ## 2026.06.01
 
 - [x] Shipped the post-card-creation LLM correctness gate (factual-only, high-acceptance, on by default; keep/fix/quarantine with per-card JSON audit + reasons) at the `generate_outputs` chokepoint; merged PR #24 [[plan.post-creation-llm-card-correctness-gate.2026.06.01]]
-- [ ] Fix CI package break: declare `audioop-lts` so `pydub` imports on Python 3.13 (stdlib `audioop` removed by PEP 594) and install `ffmpeg` on the test runner; suite now collects (0 -> 484 items) instead of erroring at import [[PR #26]]
+- [x] Fixed CI package break: declared `audioop-lts` so `pydub` imports on Python 3.13 (stdlib `audioop` removed by PEP 594) and installed `ffmpeg` on the test runner; suite now collects and runs (0 -> 484 items, 262 passing) instead of erroring at import; merged PR #26 [[PR #26]]
