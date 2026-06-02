@@ -421,6 +421,21 @@ def strip_forbidden_fish_tags(text: str) -> str:
 # mangled into letter spellings.
 _STANDALONE_ACRONYM_RE = re.compile(r"(?<![A-Za-z])([A-Z]{2,6})(?![A-Za-z])")
 
+# Uppercase Roman numerals (>=2 letters) the acronym expander would otherwise
+# letter-spell ("World War II" -> "World War I-I" -> Fish reads "one one"). Map
+# the UNAMBIGUOUS ones to a cardinal word instead. The letters here are I/V/X
+# only, so real initialisms that genuinely need letter-spelling (MD, CV, DC,
+# MC, CI, MM, ...) are absent and keep their default expansion. IV (intravenous)
+# and VI (the vi editor) collide with real initialisms and are deliberately
+# EXCLUDED, so they behave exactly as before (no regression). Single-letter
+# I/V/X never reach the expander (its floor is 2 letters).
+_ROMAN_NUMERAL_WORDS = {
+    "II": "two", "III": "three", "VII": "seven", "VIII": "eight", "IX": "nine",
+    "XI": "eleven", "XII": "twelve", "XIII": "thirteen", "XIV": "fourteen",
+    "XV": "fifteen", "XVI": "sixteen", "XVII": "seventeen", "XVIII": "eighteen",
+    "XIX": "nineteen", "XX": "twenty",
+}
+
 # Opaque mask for the section-break sentinel during acronym expansion.
 # `SECTION_BREAK_MARKER` is "---SECTION_BREAK---"; the "_" before BREAK
 # satisfies the regex lookbehind and "BREAK" is a 5-letter run, so without
@@ -439,6 +454,11 @@ def expand_acronyms_for_tts(
     Fish reads ``S-A-R`` cleanly as letters (per the existing
     `_FISH_SPEECH_PUNCT_MAP` design) but reads bare ``SAR`` as ``"say R"``.
 
+    Unambiguous uppercase Roman numerals (``_ROMAN_NUMERAL_WORDS``: ``II``,
+    ``III``, ``VII``..``XX``) are mapped to their cardinal word instead of
+    being letter-spelled, so ``World War II`` reads "World War two" rather than
+    "I-I" / "one one". ``IV``/``VI`` are excluded (initialism collisions).
+
     Args:
         text: Transcript bound for TTS.
         allowlist: Tokens to skip (already pronounceable, e.g. ``USA``,
@@ -453,6 +473,8 @@ def expand_acronyms_for_tts(
         tok = m.group(1)
         if tok in skip:
             return tok
+        if tok in _ROMAN_NUMERAL_WORDS:
+            return _ROMAN_NUMERAL_WORDS[tok]
         return "-".join(tok)
 
     # Protect the section-break sentinel: mask before expansion, restore

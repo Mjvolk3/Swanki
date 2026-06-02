@@ -1021,6 +1021,41 @@ def test_expand_acronyms_for_tts_skips_single_letter():
     assert expand_acronyms_for_tts("the X factor and A team") == "the X factor and A team"
 
 
+def test_expand_acronyms_for_tts_roman_numerals_become_words():
+    # Regression: the acronym expander letter-spelled "II" -> "I-I", which Fish
+    # read as "one one". Unambiguous Roman numerals now map to a cardinal word.
+    assert expand_acronyms_for_tts("World War II size") == "World War two size"
+    assert expand_acronyms_for_tts("World War III") == "World War three"
+    assert expand_acronyms_for_tts("Part VII") == "Part seven"
+    assert expand_acronyms_for_tts("Henry VIII") == "Henry eight"
+    assert expand_acronyms_for_tts("Chapter IX") == "Chapter nine"
+    assert expand_acronyms_for_tts("Section XV") == "Section fifteen"
+
+
+def test_expand_acronyms_for_tts_ambiguous_roman_left_as_acronym():
+    # IV (intravenous) and VI (the vi editor) collide with real initialisms, so
+    # they keep letter-spelling — exactly as before the Roman-numeral guard.
+    assert expand_acronyms_for_tts("the IV bag") == "the I-V bag"
+    assert expand_acronyms_for_tts("open it in VI") == "open it in V-I"
+
+
+def test_expand_acronyms_for_tts_real_acronyms_unaffected():
+    # C/D/M-letter initialisms are absent from the Roman map -> still spelled.
+    assert expand_acronyms_for_tts("the SAR system") == "the S-A-R system"
+    assert expand_acronyms_for_tts("MIT") == "M-I-T"
+    assert expand_acronyms_for_tts("an MD and a CV") == "an M-D and a C-V"
+    assert expand_acronyms_for_tts("USA and SAR", allowlist={"USA"}) == "USA and S-A-R"
+
+
+def test_roman_guard_does_not_touch_bit_string_codewords():
+    # Codewords are digits ([01]+), handled by a separate rule; the Roman guard
+    # (letters only) must not interfere with digit-by-digit verbalization.
+    assert expand_acronyms_for_tts("the codeword 111") == "the codeword 111"
+    assert verbalize_bit_strings("the codeword 111 and 1011") == (
+        "the codeword one-one-one and one-zero-one-one"
+    )
+
+
 # ---------------------------------------------------------------------------
 # RC1: section-break sentinel must survive acronym expansion verbatim
 # ---------------------------------------------------------------------------
