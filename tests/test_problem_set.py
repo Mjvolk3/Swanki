@@ -322,6 +322,63 @@ class TestPageSpillBody:
         assert len(cmp_unpaired) == 15
 
 
+class TestOrphanPreFirstChapterSpill:
+    """A prior chapter's answer-key tail spills onto the top of the target
+    chapter's answer page as headerless `# Completion` / `# Matching` blocks
+    BEFORE the first `# Chapter N` header (real Alcamo CH05, book page 329).
+
+    The forward section span must terminate at that orphan boundary so the
+    orphan `N.` answer lines are NOT mis-enumerated as forward Matching items,
+    and the back-of-book partition must discard the orphan (it precedes
+    `# Chapter 4`). Target chapter 5 carries TWO Matching sets; the real
+    `MAT-CH5-2-1` must pair to `(d)`, not be stolen by the orphan.
+    """
+
+    FIXTURE = FIXTURE_DIR / "schaum_orphan_spill.md"
+
+    def test_orphan_discarded_from_partition(self) -> None:
+        part = _partition_back_of_book(self.FIXTURE.read_text())
+        # Only real chapter headers; the orphan pre-Chapter-4 spill is dropped.
+        assert sorted(part.keys()) == ["4", "5", "6"]
+
+    def test_no_duplicate_matching_ids(self) -> None:
+        problems = enumerate_problems([self.FIXTURE], "alcamo2010_CH05")
+        mat_ids = [p.problem_id for p in problems if p.subtype == "matching"]
+        # Exactly the two clean sets, 1-10 each, no orphan-injected dups.
+        assert mat_ids == (
+            [f"MAT-CH5-1-{n}" for n in range(1, 11)]
+            + [f"MAT-CH5-2-{n}" for n in range(1, 11)]
+        )
+        assert len(mat_ids) == len(set(mat_ids))
+
+    def test_set_two_item_one_pairs_to_d(self) -> None:
+        problems = enumerate_problems([self.FIXTURE], "alcamo2010_CH05")
+        result = pair_problems_across_pages(problems, [self.FIXTURE], {})
+        s2_1 = [
+            p for p in result.pairings if p.problem_id == "MAT-CH5-2-1"
+        ]
+        assert len(s2_1) == 1
+        assert len(s2_1[0].solutions) == 1
+        assert s2_1[0].solutions[0].text == "(d) Thermophile"
+
+    def test_every_matching_item_single_solution(self) -> None:
+        problems = enumerate_problems([self.FIXTURE], "alcamo2010_CH05")
+        result = pair_problems_across_pages(problems, [self.FIXTURE], {})
+        mat = [
+            p for p in result.pairings if p.problem_id.startswith("MAT-CH5")
+        ]
+        assert len(mat) == 20
+        assert all(len(p.solutions) == 1 for p in mat)
+
+    def test_orphan_completion_answers_not_enumerated(self) -> None:
+        # The orphan Ch3 `# Completion` line (nanometer, mycoplasmas, …) must
+        # never reach a Chapter-5 Matching statement.
+        problems = enumerate_problems([self.FIXTURE], "alcamo2010_CH05")
+        assert not any(
+            "nanometer" in p.statement for p in problems
+        )
+
+
 # ── Audit tests ─────────────────────────────────────────────────────────
 
 
