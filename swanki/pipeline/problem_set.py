@@ -133,9 +133,20 @@ _COMPLETION_SECTION = re.compile(r"^Completion\.\s+\S", re.MULTILINE)
 # vs MinerU-`#` header-level split as the `_BACK_*` partition patterns, so they
 # accept `#{1,3}`. The bare-text in-chapter dividers (`Multiple Choice.` etc.)
 # are OCR-agnostic and untouched.
+#
+# The back-of-book *section* headers (`#{1,3} Multiple Choice|Matching|...`)
+# are also terminators. A prior chapter's answer-key tail can spill onto the
+# top of the target chapter's answer page as headerless `# Completion` /
+# `# Matching` blocks BEFORE the first `# Chapter N` header (orphan spill). A
+# forward section span otherwise runs past the chapter's real items, through
+# that orphan, until the first `# Chapter N`, and the orphan's `N.` answer
+# lines get mis-enumerated as forward items (real Alcamo CH05). The in-chapter
+# dividers are bare-text (`Matching.` with a period), never `#` headers, so a
+# real `#{1,3} Section` header always marks the back-of-book boundary.
 _SECTION_OR_BACK_OF_BOOK = re.compile(
     r"^(?:Multiple Choice\.\s+\S|Matching\.\s+\S|True/False\.\s+\S|"
-    r"Completion\.\s+\S|#{1,3}\s+Answers|#{1,3}\s+Chapter\s+\d)",
+    r"Completion\.\s+\S|#{1,3}\s+Answers|#{1,3}\s+Chapter\s+\d|"
+    r"#{1,3}\s+(?:Multiple Choice|Matching|True/False|Completion)\s*$)",
     re.MULTILINE,
 )
 
