@@ -8,6 +8,13 @@
 # tight schedule (cron/systemd timer). A flock keeps overlapping runs from
 # clobbering each other when a prior run is still mid-download.
 #
+# Lock modes:
+#   default   non-blocking (-n): skip if a run is already in progress. Right
+#             for the cron/timer path — the next tick covers what was skipped.
+#   --wait    block until the lock frees. Right for the delivery path
+#             (`python -m swanki.delivery finalize-abs`) so a contended drain
+#             never silently no-ops its ABS step.
+#
 # Pipeline:
 #   1. swanki_abs_sync.py            — pull new mp3s from Zotero zips
 #   2. abs_sync_zotero_collections.py — mirror Zotero collections → ABS collections
@@ -18,11 +25,23 @@
 
 set -euo pipefail
 
+WAIT=false
+for arg in "$@"; do
+    case "$arg" in
+        --wait) WAIT=true ;;
+    esac
+done
+
 LOCKFILE=/tmp/abs-refresh.lock
 exec 200>"$LOCKFILE"
-if ! flock -n 200; then
-    echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] another abs_refresh in progress — skipping" >&2
-    exit 0
+if [ "$WAIT" = true ]; then
+    # Block until the lock frees so delivery-driven refreshes always run.
+    flock 200
+else
+    if ! flock -n 200; then
+        echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] another abs_refresh in progress — skipping" >&2
+        exit 0
+    fi
 fi
 
 export ABS_API_TOKEN_FILE="${ABS_API_TOKEN_FILE:-$HOME/Documents/projects/infra/abs/.api-token}"

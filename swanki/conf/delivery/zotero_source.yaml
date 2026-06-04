@@ -1,0 +1,9 @@
+delivery:
+  # Read artifacts from Zotero instead of on-disk output -- for hosts without
+  # the pipeline's local Swanki_Data tree. Slower and exposed to Zotero API
+  # flakiness, so not the gilahyper default.
+  source: zotero
+  targets:
+    zotero: true
+    anki: true
+    abs: true

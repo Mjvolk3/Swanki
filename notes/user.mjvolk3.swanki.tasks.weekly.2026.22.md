@@ -39,4 +39,4 @@ created: 1779864732867
 
 ## 2026.06.04
 
-- [ ] Build a configurable delivery subsystem (`swanki/delivery/`): SyncSource (`local`|`zotero`, default local) x SyncTarget (`anki`, `abs`, plus Zotero backup) driven by a Hydra `delivery` config group; rework queue DONE to mean delivered in order Zotero->Anki->ABS with per-target `.delivery.json` markers, per-item Anki push, and ABS refresh debounced once at drain-end; harden the flaky Zotero client (explicit httpx timeout + 5xx/timeout retry, lands first); existing sync scripts become thin shims [[plan.delivery-subsystem-source-target-sync.2026.06.04]]
+- [x] Shipped the configurable delivery subsystem `swanki/delivery/` (SyncSource local|zotero crossed with SyncTarget zotero/anki/abs, Hydra `delivery` group), a hardened Zotero client (lifted pyzotero per-call read timeout + 5xx/timeout retry with 404-skip), and a queue rework where DONE means delivered Zotero->Anki->ABS with per-target `.delivery.json` markers, per-item Anki push, and an ABS refresh debounced once at drain-end. [[plan.delivery-subsystem-source-target-sync.2026.06.04]]
