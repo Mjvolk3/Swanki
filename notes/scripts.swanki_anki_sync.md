@@ -37,3 +37,13 @@ Prereqs (out of scope; documented in [[anki.headless-sync]]):
 - Minimum AnkiConnect API version: 6.
 
 Tests: `tests/test_swanki_anki_sync.py` covers `_latest_artifact` grouping (zips and apkgs), `ankiconnect_call` response shape + error path, `verify_ankiconnect` min-version check, `push_projection` skip / dry-run / real-run / stale-attachment paths. 16 tests, all mocked (pyzotero MagicMock + `requests.post` patch).
+
+## 2026.06.04 - Shim over swanki.delivery AnkiConnect primitives
+
+[[swanki.delivery]]. The AnkiConnect client (`ankiconnect_call`,
+`verify_ankiconnect`, the request/response + importPackage models) moved to the
+canonical `swanki/delivery/targets/anki.py` (`AnkiTarget`). This script keeps
+its walk-all manual "push to anki" command (Sync Terminology) but imports those
+primitives so the queue's per-item delivery and this command share one
+implementation. AnkiConnect-primitive tests moved to `tests/test_delivery_anki.py`;
+the push-projection tests here now patch `swanki.delivery.targets.anki.requests`.

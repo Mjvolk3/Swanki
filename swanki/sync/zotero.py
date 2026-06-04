@@ -9,7 +9,6 @@ Upload Swanki outputs (apkg, audio) to Zotero as timestamped attachments.
 import logging
 import os
 import re
-import shutil
 import subprocess
 import tempfile
 from datetime import datetime
@@ -18,6 +17,8 @@ from typing import Any
 
 import httpx
 from pyzotero import zotero
+
+from .zotero_client import make_zotero_client, with_zotero_retry
 
 logger = logging.getLogger(__name__)
 
@@ -222,10 +223,13 @@ def sync_to_zotero(
     assert api_key, "ZOTERO_API_KEY not set"
     assert library_id, "ZOTERO_LIBRARY_ID not set"
 
-    zot = zotero.Zotero(library_id, library_type, api_key)
+    # Hardened client: lifts pyzotero's 30s per-call read timeout (it overrides
+    # any client-level timeout) so item-find pagination on a slow/flaky API has
+    # headroom. Transient 5xx/timeouts are retried at the call site below.
+    zot = make_zotero_client(library_id, library_type, api_key)
 
     # Find the parent item
-    item_key = _find_zotero_item(zot, citation_key)
+    item_key = with_zotero_retry(lambda: _find_zotero_item(zot, citation_key))
     assert item_key, f"Could not find Zotero item for citation key: {citation_key}"
     logger.info(f"Found Zotero item {item_key} for {citation_key}")
 

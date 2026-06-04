@@ -3,16 +3,16 @@ tests/test_swanki_anki_sync.py
 [[tests.test_swanki_anki_sync]]
 https://github.com/Mjvolk3/Swanki/tree/main/tests/test_swanki_anki_sync.py
 
-Unit tests for ``scripts/_swanki_zotero_artifacts.py`` and
-``scripts/swanki_anki_sync.py``. Mocks pyzotero clients + ``requests.post``;
-no live network.
+Unit tests for the artifact helper (now ``swanki/delivery/artifacts.py``, re-
+exported through ``scripts/_swanki_zotero_artifacts.py``) and the walk-all
+``scripts/swanki_anki_sync.py`` manual command. AnkiConnect-primitive tests
+live in ``tests/test_delivery_anki.py`` (the canonical home). Mocks pyzotero +
+``requests.post``; no live network.
 """
 
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 # scripts/ isn't a package; add it to sys.path before importing modules
 # under test. Mirrors how the scripts are invoked from the repo root.
@@ -86,84 +86,40 @@ class TestLatestArtifact:
 
     def test_apkg_wrapper(self) -> None:
         zot = MagicMock()
-        zot.children.return_value = [
-            _att("X", "ProblemSet-20260201T1200-abc.apkg")
-        ]
+        zot.children.return_value = [_att("X", "ProblemSet-20260201T1200-abc.apkg")]
         assert [a["key"] for a in latest_apkgs(zot, "I")] == ["X"]
 
     def test_zip_wrapper(self) -> None:
         zot = MagicMock()
-        zot.children.return_value = [
-            _att("X", "Paper-20260201T1200-abc.zip")
-        ]
+        zot.children.return_value = [_att("X", "Paper-20260201T1200-abc.zip")]
         assert [a["key"] for a in latest_zips(zot, "I")] == ["X"]
 
 
-# Import the swanki_anki_sync module lazily so the pyzotero timeout mutation
-# at module load only runs once across tests.
+# Import the walk-all manual command lazily.
 import swanki_anki_sync as sas  # noqa: E402
 
-
-class TestAnkiConnectCall:
-    def test_returns_result_field(self) -> None:
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"result": True, "error": None}
-        with patch("swanki_anki_sync.requests.post", return_value=mock_resp):
-            assert sas.ankiconnect_call("http://x", "importPackage", {"path": "a"}) is True
-
-    def test_raises_on_action_error(self) -> None:
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"result": None, "error": "deck missing"}
-        with patch("swanki_anki_sync.requests.post", return_value=mock_resp):
-            with pytest.raises(RuntimeError, match="deck missing"):
-                sas.ankiconnect_call("http://x", "importPackage", {"path": "a"})
-
-    def test_posts_correct_body_shape(self) -> None:
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"result": None, "error": None}
-        with patch("swanki_anki_sync.requests.post", return_value=mock_resp) as post:
-            sas.ankiconnect_call("http://x", "sync")
-        call = post.call_args
-        body = call.kwargs["json"]
-        assert body == {"action": "sync", "version": 6, "params": {}}
-
-
-class TestVerifyAnkiConnect:
-    def test_accepts_min_version(self) -> None:
-        with patch("swanki_anki_sync.ankiconnect_call", return_value=6):
-            assert sas.verify_ankiconnect("http://x") == 6
-
-    def test_rejects_below_min_version(self) -> None:
-        with patch("swanki_anki_sync.ankiconnect_call", return_value=5):
-            with pytest.raises(AssertionError, match="below minimum"):
-                sas.verify_ankiconnect("http://x")
+# push_projection calls the canonical ankiconnect_call, which posts via the
+# target module's ``requests`` -- patch there, not on the shim.
+_TARGET_POST = "swanki.delivery.targets.anki.requests.post"
 
 
 class TestPushProjection:
     def test_skips_when_push_anki_false(self, tmp_path: Path) -> None:
-        cfg = {
-            "zotero": {"library_id": "1", "tag": "🦊"},
-            "push_anki": False,
-        }
-        n = sas.push_projection(
-            "p", cfg, "key", "http://x", tmp_path, dry_run=False
-        )
+        cfg = {"zotero": {"library_id": "1", "tag": "fox"}, "push_anki": False}
+        n = sas.push_projection("p", cfg, "key", "http://x", tmp_path, dry_run=False)
         assert n == 0
 
     def test_dry_run_does_not_post(self, tmp_path: Path) -> None:
-        cfg = {
-            "zotero": {"library_id": "1", "tag": "🦊"},
-            "push_anki": True,
-        }
+        cfg = {"zotero": {"library_id": "1", "tag": "fox"}, "push_anki": True}
         fake_item = {"key": "ITEM", "data": {"citationKey": "bishop2024"}}
         fake_att = _att("ATT", "bishop2024-20260201T1200-abc123.apkg")
-        zot_cls = MagicMock()
         zot_inst = MagicMock()
         zot_inst.items.return_value = [fake_item]
         zot_inst.children.return_value = [fake_att]
-        zot_cls.return_value = zot_inst
-        with patch("swanki_anki_sync.zotero.Zotero", zot_cls), \
-             patch("swanki_anki_sync.requests.post") as post:
+        with (
+            patch("swanki_anki_sync.zotero.Zotero", return_value=zot_inst),
+            patch(_TARGET_POST) as post,
+        ):
             n = sas.push_projection(
                 "p", cfg, "key", "http://x", tmp_path, dry_run=True
             )
@@ -172,50 +128,42 @@ class TestPushProjection:
         assert zot_inst.file.call_count == 0
 
     def test_real_run_imports_each_apkg(self, tmp_path: Path) -> None:
-        cfg = {
-            "zotero": {"library_id": "1", "tag": "🦊"},
-            "push_anki": True,
-        }
+        cfg = {"zotero": {"library_id": "1", "tag": "fox"}, "push_anki": True}
         fake_item = {"key": "ITEM", "data": {"citationKey": "bishop2024"}}
         fake_att = _att("ATT", "bishop2024-20260201T1200-abc123.apkg")
-        zot_cls = MagicMock()
         zot_inst = MagicMock()
         zot_inst.items.return_value = [fake_item]
         zot_inst.children.return_value = [fake_att]
         zot_inst.file.return_value = b"fake apkg bytes"
-        zot_cls.return_value = zot_inst
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"result": True, "error": None}
-        with patch("swanki_anki_sync.zotero.Zotero", zot_cls), \
-             patch("swanki_anki_sync.requests.post", return_value=mock_resp) as post:
+        with (
+            patch("swanki_anki_sync.zotero.Zotero", return_value=zot_inst),
+            patch(_TARGET_POST, return_value=mock_resp) as post,
+        ):
             n = sas.push_projection(
                 "p", cfg, "key", "http://x", tmp_path, dry_run=False
             )
         assert n == 1
-        # apkg landed in stage dir
         staged = tmp_path / "p" / "bishop2024-20260201T1200-abc123.apkg"
         assert staged.exists()
         assert staged.read_bytes() == b"fake apkg bytes"
-        # one importPackage POST
         body = post.call_args.kwargs["json"]
         assert body["action"] == "importPackage"
         assert body["params"]["path"] == str(staged.resolve())
 
     def test_skip_and_report_on_stale_attachment(self, tmp_path: Path) -> None:
-        cfg = {
-            "zotero": {"library_id": "1", "tag": "🦊"},
-            "push_anki": True,
-        }
+        cfg = {"zotero": {"library_id": "1", "tag": "fox"}, "push_anki": True}
         fake_item = {"key": "ITEM", "data": {"citationKey": "bishop2024"}}
         fake_att = _att("ATT", "bishop2024-20260201T1200-abc123.apkg")
-        zot_cls = MagicMock()
         zot_inst = MagicMock()
         zot_inst.items.return_value = [fake_item]
         zot_inst.children.return_value = [fake_att]
         zot_inst.file.side_effect = RuntimeError("attachment missing")
-        zot_cls.return_value = zot_inst
-        with patch("swanki_anki_sync.zotero.Zotero", zot_cls), \
-             patch("swanki_anki_sync.requests.post") as post:
+        with (
+            patch("swanki_anki_sync.zotero.Zotero", return_value=zot_inst),
+            patch(_TARGET_POST) as post,
+        ):
             n = sas.push_projection(
                 "p", cfg, "key", "http://x", tmp_path, dry_run=False
             )

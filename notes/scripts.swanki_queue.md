@@ -76,3 +76,23 @@ Fish, without a job holding a GPU idle during the long TTS wait — would need
 the pipeline split into per-phase jobs (OCR/card job releases its GPU; a
 GPU-less TTS job streams Fish). That refactor is deferred; the spec-file
 interface survives it.
+
+## 2026.06.04 - DONE = delivered (Zotero -> Anki -> ABS)
+
+[[plan.delivery-subsystem-source-target-sync.2026.06.04]], [[swanki.delivery]].
+Closes the gap flagged in [[feedback_queue_done_means_delivered]]: jobs used to
+move to `done/` on swanki exit 0 (Zotero upload only). Now, after a clean
+generation, the drainer runs `python -m swanki.delivery deliver` for the job,
+which delivers Zotero backup -> Anki (per item) and writes `.delivery.json`
+markers. A spec moves to `done/` only when that succeeds.
+
+- Job invocation changed `zotero=sync` -> `zotero=default`: the delivery step
+  owns the Zotero upload now, so the pipeline must not also upload.
+- New outcome `undelivered/` (generation ok, delivery failed) keeps artifacts +
+  markers on disk for a resumeable re-run — distinct from `failed/` (generation
+  failed) so a delivery flake never forces a regenerate.
+- ABS is debounced: each delivered job touches `$SWANKI_QUEUE_DIR/abs-dirty`;
+  the drainer fires ONE `finalize-abs` (blocking `--wait` lock) on the
+  busy->idle edge, then clears the flag.
+- `SWANKI_QUEUE_DELIVER=0` opts out of delivery (generation-only). Delivery only
+  runs under `EXECUTOR=local`.

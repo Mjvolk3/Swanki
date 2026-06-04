@@ -36,3 +36,7 @@ created: 1779864732867
 - [ ] Fix verbalizer misreading Roman numerals: `expand_acronyms_for_tts` letter-spelled `II`->`I-I` (Fish "one one") like an acronym; map unambiguous uppercase Roman numerals (II, III, VII…XX) to their cardinal word, excluding IV/VI (intravenous / vi-editor collisions → no regression). Fixes "World War II/III", "Part VII", etc. pipeline-wide [[plan.verbalizer-roman-numeral-guard.2026.06.02]]
 - [x] Made Completion fill-in-the-blank cards' blank larger via a tunable `_COMPLETION_BLANK` constant (4 -> 8 underscores) in `problem_set.py` + matching prompt examples [[swanki.pipeline.problem_set]]
 - [ ] Make Schaum's solution-manual parsing OCR-agnostic (loosen 3 `^##`-hardcoded back-of-book regexes to `^#{1,3}` so MinerU `#` headers parse — fixes the CoverageError on all 5 Alcamo chapters), repeated-same-named-section-aware (list-valued partition + occurrence-indexed IDs), and page-spill-tolerant; plus move PDF chop+concat into `swanki/pdf_prep.py` (pure-Python pypdf) [[plan.solution-manual-robust-parsing-pdf-prep.2026.06.02]]
+
+## 2026.06.04
+
+- [x] Shipped the configurable delivery subsystem `swanki/delivery/` (SyncSource local|zotero crossed with SyncTarget zotero/anki/abs, Hydra `delivery` group), a hardened Zotero client (lifted pyzotero per-call read timeout + 5xx/timeout retry with 404-skip), and a queue rework where DONE means delivered Zotero->Anki->ABS with per-target `.delivery.json` markers, per-item Anki push, and an ABS refresh debounced once at drain-end. [[plan.delivery-subsystem-source-target-sync.2026.06.04]]

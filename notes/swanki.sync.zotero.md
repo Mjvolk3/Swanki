@@ -49,3 +49,13 @@ Runs AFTER upload, never before — guarantees we never leave an item with zero 
 
 One-off cleanup: ran the prune helper directly against `VPZK6ESQ` (keeping today's `2CBKWQH8`) — deleted 12 stale items (8 historical ZIPs + 3 legacy `_CH01-problem-set.apkg` + 1 even older 7a08fcb ZIP). Tests live in `tests/test_zotero_prune.py` covering chapter-base extraction, same-chapter replacement, other-chapter preservation, legacy apkg form, just-uploaded protection, and non-attachment skip.
 
+
+## 2026.06.04 - Hardened client for flaky Zotero API
+
+Part of [[swanki.delivery]] ([[plan.delivery-subsystem-source-target-sync.2026.06.04]]).
+`sync_to_zotero` now builds its client via `make_zotero_client` (lifts the
+pyzotero per-call read timeout) and wraps the item-find pagination in
+`with_zotero_retry` (retry 5xx/timeouts, skip 404). See [[swanki.sync.zotero_client]]
+for why the module-global timeout lever is the effective one. Still the sole
+writer of the fox tag and the git-commit-hash provenance. Unchanged: the 600s
+`httpx.post` upload patch, chapter-base pruning, the sync-log note.

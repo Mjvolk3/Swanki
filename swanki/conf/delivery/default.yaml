@@ -1,0 +1,9 @@
+delivery:
+  # Ground truth for delivery: local on-disk pipeline output (no network
+  # round-trip; the gilahyper default) or zotero (download newest attachments).
+  source: local
+  # Per-server target toggles. Order is fixed at zotero -> anki -> abs.
+  targets:
+    zotero: true
+    anki: true
+    abs: true
