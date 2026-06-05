@@ -45,10 +45,13 @@ class AnkiConnectResponse(BaseModel):
 
 
 class ImportPackageParams(BaseModel):
-    """Params block for AnkiConnect's ``importPackage`` action."""
+    """Params block for AnkiConnect's ``importPackage`` action.
+
+    Only ``path`` is sent: the headless Anki build's ``importPackage`` rejects a
+    ``deleteExisting`` kwarg (import merges by note GUID regardless).
+    """
 
     path: str
-    deleteExisting: bool = False  # noqa: N815 -- wire field name
 
 
 def ankiconnect_call(
