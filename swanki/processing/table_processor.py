@@ -112,7 +112,7 @@ class TableProcessor:
             text_agent,
             _TABLE_SUMMARY_PROMPT.format(body=body),
             model=self.model,
-            model_settings={"max_tokens": 256, "temperature": 0.3},
+            model_settings={"max_tokens": 4000, "temperature": 0.3},
             label="table summary",
         )
         summary = first_sentence(result.output.strip())
