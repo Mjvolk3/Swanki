@@ -275,7 +275,7 @@ Keep the summary concise but informative (2-4 sentences)."""
             text_agent,
             [prompt, image_content],
             model=self.model,
-            model_settings={"max_tokens": 1024, "temperature": 0.3},
+            model_settings={"max_tokens": 8000, "temperature": 0.3},
             label="image summary",
         )
         summary: str = result.output.strip()
