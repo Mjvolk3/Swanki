@@ -59,3 +59,23 @@ pyzotero per-call read timeout) and wraps the item-find pagination in
 for why the module-global timeout lever is the effective one. Still the sole
 writer of the fox tag and the git-commit-hash provenance. Unchanged: the 600s
 `httpx.post` upload patch, chapter-base pruning, the sync-log note.
+
+## 2026.06.05 - Paginate the sync-log note lookup (kill duplicate-note explosion)
+
+`_find_or_create_sync_note` looked up the existing "Swanki Sync Log" note with a
+bare `zot.children(parent_key)`, which returns only the FIRST page (~25 items).
+Once a parent item accumulated enough attachments/notes, the sync-log note fell
+off page 1, the find-loop missed it, and every subsequent sync created a brand
+new note — observed as 85 duplicate "Swanki Sync Log" notes on a single item.
+
+Fixed by wrapping the call in pyzotero's `zot.everything(zot.children(parent_key))`,
+which follows all pages. This is the same class of bug `#34` hardened on the
+attachment-find path (it added `limit=200` to `_prune_prior_attachments`'s
+`children()` call at line 158) but left the sync-note path here untouched.
+
+Originally filed as PR #25 (2026.06.01); `#34`'s zotero-client refactor landed
+first and made that branch conflict, and the un-paginated call was live on main
+again. Re-applied here on current main with a regression test
+(`tests/test_zotero_sync_note.py`) that mocks a sync-log note off page 1 and
+asserts `everything()` surfaces it instead of creating a duplicate. PR #25 closed
+as superseded.

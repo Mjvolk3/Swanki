@@ -65,3 +65,30 @@ refinement). Post-merge runbook to land them on ABS:
 Then the precise per-chunk fixes (ch3 29.1m, ch9 104.0m/112.3m) via
 [[swanki.audio.comment_edit]] `edit_chunk` -- each re-stitches its chapter and
 inherits the persisted bookend pauses from the manifest.
+
+## 2026.06.02 - Precise ch1-3 edits landed + Roman-numeral root-cause fix (PR #31)
+
+Six precise per-chunk edits across ch1-3, applied via
+[[swanki.audio.comment_edit]] `edit_chunk` (re-TTS + per-chapter re-stitch),
+published to Zotero and ABS as version `20260602T1434-ef69683`:
+
+- **CH01 c8 + CH03 c3** — "World War II" was read "World War one-one" (the
+  acronym expander letter-spelled `II` -> `I`-`I`). Patched the chunk text to
+  "World War Two".
+- **CH01 c21, CH02 c4** — flat/falling terminal prosody re-rolled (up-tone).
+- **CH02 c9** — Fish skipped the word "physically"; re-rolled the chunk.
+- **CH01 c25** — Socrates ending trailed off; rewritten to land conclusively.
+
+**Root cause -> PR #31 (merged `2c6392d`).** The "World War one-one" defect was
+not chunk-local: the verbalizer's acronym expander letter-spelled any all-caps
+token, so unambiguous Roman numerals (`II`, `III`, `VII`, ...) were spoken as
+letters pipeline-wide. PR #31 adds a Roman-numeral guard that maps them to words
+("two", "three", "seven") before acronym handling. 29 tests pass; future audio
+reads Roman numerals correctly without per-chunk patching, so the c8/c3 text
+patches above are belt-and-suspenders, not the fix.
+
+**Bookmarks.** ch1-3 lecture durations changed with these edits, so ABS
+bookmarks for those chapters are misaligned (still pinned to old offsets). Clear
++ re-mark before the next listen pass (the ch1-9 comment task list survives on
+content-match, not offsets). Old ch1-3 ABS lectures were removed; the Lecture
+item carries one clean track per chapter (10 chapters total).
