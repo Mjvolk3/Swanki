@@ -21,7 +21,11 @@ models:
         [USA, UK, NASA, DNA, RNA, PCR, CPU, GPU, API, HTTP, JSON, HTML, XML,
          SQL, PDF, MP3, WAV, TTS, LLM, AI, ML, NLP]
     chunking:
-      max_chars: 700
+      # Balanced chunker: hard cap 650, soft target 500, never-single-sentence.
+      # See swanki.audio._common note 2026.06.06 for the Hamming sweep.
+      max_chars: 650
+      soft_max_chars: 500
+      min_sentences_per_chunk: 2
       paragraph_priority: true
     postprocessor:
       gain_match_target_dbfs: -25.0
@@ -31,5 +35,7 @@ models:
         sentence: 500
       chunk_tail_trim_ms: 250
       chunk_crossfade_ms: 50
+      # Conservative per-chunk leading-edge fade (~1102 samples @ 44.1kHz). 0=off.
+      chunk_onset_fade_ms: 25
       section_pause_ms: 5000
 # OCR backend is its own Hydra group now (ocr=mineru | ocr=mathpix); see swanki/conf/ocr/.

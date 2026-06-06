@@ -49,4 +49,4 @@ created: 1779864732867
 
 ## 2026.06.06
 
-- [ ] Smarter lecture TTS chunking (balanced even-split + min-2-sentence invariant, soft 500 / hard cap 650) plus a conservative per-chunk onset fade, fish-only and opt-in; offline sweep over Hamming CH01-10 moves mean 493->423 / stdev 158->95 and single-sentence chunks 20->1 [[plan.smarter-lecture-tts-chunking.2026.06.06]]
+- [x] Shipped smarter lecture TTS chunking: `chunk_text_paragraphs` gains a fish-opt-in balanced path (`soft_max_chars`/`min_sentences_per_chunk`) that even-splits over-soft paragraphs and merges lone single-sentence chunks, plus a config-gated per-chunk onset fade in `_load`; non-fish stays byte-identical and shipped-code A/B over Hamming CH01-10 hits mean 515->423 / stdev 146->95 / single-sentence 13->1 (CH04 5->0) [[plan.smarter-lecture-tts-chunking.2026.06.06]]
