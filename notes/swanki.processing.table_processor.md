@@ -20,3 +20,7 @@ Fill caption-less table landmarks with a one-sentence summary. Mirrors [[swanki.
 ## Pipeline wiring
 
 `Pipeline.process_tables(image_summaries)` runs right after `process_images` and before section classification: it (1) fills caption-less FIGURE placeholders from the already-generated image summaries (clamped to one sentence, matched by URL), (2) runs `TableProcessor.process_all_tables()` for tables, then (3) strips any unfilled placeholder. All three edit `clean-md-singles` in place so both reading and lecture read the finished landmarks.
+
+## 2026.06.05 - Bump table-summary max_tokens 256 -> 4000 for reasoning models
+
+Defensive companion to the [[swanki.processing.image_processor]] fix. The table-summary `with_safety_retry` call capped `max_tokens` at 256 -- fine for a non-reasoning text model writing one sentence, but a reasoning model (`gpt-5.5`) spends hidden reasoning tokens against the same budget and would crash with `Model token limit (256) exceeded before any response was generated` the moment a table routed through it. The fail-soft path only covers a missing source stash or an LLM error, not this token-exhaustion crash, so the cap was raised to 4000 pre-emptively rather than waiting for a chapter with a caption-less table to trip it.

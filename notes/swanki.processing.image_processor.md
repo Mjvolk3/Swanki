@@ -33,3 +33,7 @@ Bumped `max_tokens` from 300 to 1024 for image summary API calls. The pydantic-a
 ## 2026.04.17 - Model parameter required; remove hardcoded gpt-4o default
 
 Removed the `model: str = "openai:gpt-4o"` default from `ImageProcessor.__init__`. Pipeline already passes the config-resolved LLM (`gpt-5.2` / `gpt-5.4` for this project) via `pipeline.py:591`, so the default was never reached in production but acted as a footgun for direct callers. Constructor now requires `model`, matching the same discipline applied across `swanki.audio.*` in this session: config is the single source of truth for the LLM identifier.
+
+## 2026.06.05 - Bump image-summary max_tokens 1024 -> 8000 for reasoning models
+
+The 1024 cap set on 2026.03.12 became insufficient once the project moved to a reasoning model (`gpt-5.5`): hidden reasoning tokens count against `max_tokens`, so the model can exhaust the entire 1024-token budget while thinking and emit no visible output, raising `Model token limit (1024) exceeded before any response was generated`. This was a hard pipeline crash at `process_images` (Kuchel Schaum's Biochemistry CH05 enzyme-kinetics figure). Bumped to 8000 to match `swanki.audio.reading`, giving ample room for reasoning plus a one-sentence figure caption. Same root cause and same fix were applied to the table-summary call in [[swanki.processing.table_processor]] (256 -> 4000).

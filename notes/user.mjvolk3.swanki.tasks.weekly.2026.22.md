@@ -40,3 +40,7 @@ created: 1779864732867
 ## 2026.06.04
 
 - [x] Shipped the configurable delivery subsystem `swanki/delivery/` (SyncSource local|zotero crossed with SyncTarget zotero/anki/abs, Hydra `delivery` group), a hardened Zotero client (lifted pyzotero per-call read timeout + 5xx/timeout retry with 404-skip), and a queue rework where DONE means delivered Zotero->Anki->ABS with per-target `.delivery.json` markers, per-item Anki push, and an ABS refresh debounced once at drain-end. [[plan.delivery-subsystem-source-target-sync.2026.06.04]]
+
+## 2026.06.05
+
+- [x] Fixed reasoning-model token-exhaustion crashes: bumped image-summary `max_tokens` 1024->8000 (hard crash at `process_images` on Kuchel CH05) and table-summary 256->4000 defensively, since `gpt-5.5` reasoning tokens count against `max_tokens` and exhaust tiny budgets before any visible output (commit 2b40e42) [[swanki.processing.image_processor]]
