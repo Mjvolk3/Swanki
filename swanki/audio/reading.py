@@ -245,10 +245,10 @@ def generate_reading_audio(
         "literally in this chunk's input. Do NOT assume earlier chunks already covered "
         "anything — you cannot see them. If the input contains it, render it; deduplication "
         "across the document is handled elsewhere.\n\n"
-        "10. BINARY CODEWORDS — when a binary codeword or bit string appears (e.g. 0, 10, "
+        "10. BINARY CODEWORDS — when a binary codeword or bit string appears (e.g. 0, "
         "110, 1011), read each digit separately as a word, never as a single number: "
-        "'one-one-zero', not '110' or 'one hundred ten'. Lengths, counts, and ordinary "
-        "quantities stay as numerals.\n"
+        "'one-one-zero', not '110' or 'one hundred ten'. Ordinary quantities like 10, "
+        "100, 1000 stay as numerals — they are NOT codewords.\n"
         + acronym_instruction
     )
 
@@ -341,7 +341,8 @@ def generate_reading_audio(
     if is_fish_for_prep and prep_cfg.get("acronym_letter_by_letter", True):
         allowlist = set(prep_cfg.get("acronym_allowlist", []))
         cleaned = expand_acronyms_for_tts(cleaned, allowlist=allowlist)
-    if prep_cfg.get("verbalize_bit_strings", True):
+    # Opt-in (default off); see preprocess_for_tts in _common.py for rationale.
+    if prep_cfg.get("verbalize_bit_strings", False):
         cleaned = verbalize_bit_strings(
             cleaned, max_len=int(prep_cfg.get("bit_strings_max_len", 32))
         )

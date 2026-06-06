@@ -836,7 +836,8 @@ def generate_lecture_audio(
     if is_fish_for_prep and prep_cfg.get("acronym_letter_by_letter", True):
         allowlist = set(prep_cfg.get("acronym_allowlist", []))
         cleaned = expand_acronyms_for_tts(cleaned, allowlist=allowlist)
-    if prep_cfg.get("verbalize_bit_strings", True):
+    # Opt-in (default off); see preprocess_for_tts in _common.py for rationale.
+    if prep_cfg.get("verbalize_bit_strings", False):
         cleaned = verbalize_bit_strings(
             cleaned, max_len=int(prep_cfg.get("bit_strings_max_len", 32))
         )

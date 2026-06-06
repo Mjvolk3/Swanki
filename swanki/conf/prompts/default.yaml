@@ -384,10 +384,11 @@ prompts:
           When in doubt, follow the source.
 
       17. BINARY CODEWORDS AND BIT STRINGS. When you mention a binary codeword or bit string
-          (e.g. 0, 10, 110, 1011), read each digit separately as a word, never as a single
+          (e.g. 0, 110, 1011), read each digit separately as a word, never as a single
           number: write "one-one-zero", not "110" or "one hundred ten"; write "the codeword
-          zero-zero-one-one", not "0011". Lengths, counts, and ordinary quantities stay as
-          numerals ("a block of four bits", "lengths one, two, three").
+          zero-zero-one-one", not "0011". Ordinary quantities like 10, 100, 1000 stay as
+          numerals -- they are NOT codewords ("a block of four bits", "lengths one, two,
+          three", "divide by 10", "about 100 samples").
     lecture_generation: |-
       Begin your lecture on: {citation_key}
 

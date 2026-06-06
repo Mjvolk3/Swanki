@@ -172,3 +172,12 @@ postprocessor so restitch reproduces them. See [[swanki.audio._common]]
 ## 2026.05.31 - Figure/table landmarks: Rule 3 preserves, no longer creates
 
 Figures and tables are now converted to deterministic `Figure: <desc>` / `Table: <desc>` landmarks upstream in [[swanki.processing.markdown_cleaner]] (bracketed by `---SECTION_BREAK---`). Pass-2's `system_prompt` Rule 3 changed from "say 'Figure N' / 'Table N' with the full number and emit your own SECTION_BREAKs" to "PRESERVE each landmark verbatim -- keep the `Figure:`/`Table:` prefix (NO number), keep the description, keep both markers." The landmark survives the deterministic scrubber chain (`clean_markdown_for_tts` -> ... -> `split_transcript_by_sections`) into its own section, so `combine_audio_with_section_pauses` brackets it with real silence (not a Fish `[pause]`). Plan: [[plan.reading-table-figure-landmarks.2026.05.31]].
+
+## 2026.06.06 - Bit-string scrubber opt-in; fix rule 10 codeword example
+
+Flipped the reading call-site `verbalize_bit_strings` default (`:344`) to `False` (opt-in)
+and repaired the hardcoded reading rule 10 (`:248`): the example list `(e.g. 0, 10, 110,
+1011)` listed the decimal `10` as a codeword one clause before "ordinary quantities stay as
+numerals," licensing the LLM to digit-spell ordinary tens. Trimmed `10` from the example
+and named `10/100/1000` in the carve-out. Full rationale + CH10 evidence in
+[[swanki.audio._common]] (same date) and [[plan.scope-binary-codeword-tts.2026.06.06]].

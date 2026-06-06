@@ -31,12 +31,15 @@ models:
          SQL, PDF, MP3, WAV, TTS, LLM, AI, ML, NLP]
       # Rewrite isolated binary tokens ("110") as digit-words ("one-one-zero")
       # so TTS reads codewords digit-by-digit, not as cardinals ("one hundred
-      # ten"). Provider-agnostic and default-on pipeline-wide -- these keys
-      # mirror the in-code defaults (the audio modules default the toggle to
-      # True even when this block is absent, e.g. for elevenlabs). The cap
-      # leaves long numeric IDs alone; set verbalize_bit_strings: false in a
-      # fish_speech_<paper>.yaml to disable for a specific paper.
-      verbalize_bit_strings: true
+      # ten"). OPT-IN (default off) pipeline-wide -- these keys mirror the
+      # in-code defaults (the audio modules default the toggle to False when
+      # this block is absent). It is off because the prompt rule already makes
+      # the LLM emit word-form codewords, while an always-on scrubber cannot
+      # tell a codeword from a 0/1-only decimal (10, 100, 1000) and mangles
+      # ordinary numbers. Set verbalize_bit_strings: true in a
+      # fish_speech_<paper>.yaml for a dense-codeword source (e.g. Hamming
+      # coding-theory). The cap leaves long numeric IDs alone.
+      verbalize_bit_strings: false
       bit_strings_max_len: 32
     chunking:
       # Hard cap -- no chunk ever exceeds this. Fish quality decays past ~700

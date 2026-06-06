@@ -203,3 +203,12 @@ unchanged. See [[swanki.audio._common]] (2026.06.06) for the chunker algorithm,
 the boundary-typing rule, and the Hamming CH01-10 A/B (mean 515->423, stdev
 146->95, single-sentence 13->1). Plan:
 [[plan.smarter-lecture-tts-chunking.2026.06.06]].
+
+## 2026.06.06 - Bit-string scrubber opt-in (lecture call site)
+
+Flipped the lecture call-site `verbalize_bit_strings` default (`:839`) to `False` (opt-in),
+part of demoting the context-blind scrubber that mangled 0/1-only decimals. The lecture
+codeword prompt rule (rule 17) lives in `swanki/conf/prompts/default.yaml` and
+`book_voice.yaml` — both had their `(e.g. 0, 10, ...)` example trimmed (and book_voice,
+which had no rule, gained the scoped one). Rationale + CH10 evidence in
+[[swanki.audio._common]] (same date) and [[plan.scope-binary-codeword-tts.2026.06.06]].

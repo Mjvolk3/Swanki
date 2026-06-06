@@ -89,3 +89,12 @@ Reads `bookend_start/end/trailing_pause_ms` from `post_cfg` (fish defaults
 `combine_audio_with_section_pauses`, and records them in the manifest
 postprocessor so restitch reproduces them. See [[swanki.audio._common]]
 (2026.05.30). Plan: [[plan.audio-bookend-pauses-conceptual-prompt.2026.05.30]].
+
+## 2026.06.06 - Bit-string scrubber opt-in; add scoped codeword rule
+
+Flipped the summary call-site `verbalize_bit_strings` default (`:159`) to `False` (opt-in).
+Summary previously had NO binary-codeword prompt rule at all (relied solely on the now-off
+scrubber), so added a scoped rule 10 to the hardcoded system prompt: digit-spell genuine
+codewords (`e.g. 0, 110, 1011`) but keep ordinary quantities like `10, 100, 1000` as
+numerals. Rationale + CH10 evidence in [[swanki.audio._common]] (same date) and
+[[plan.scope-binary-codeword-tts.2026.06.06]].
