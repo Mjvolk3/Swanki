@@ -105,6 +105,10 @@ def generate_summary_audio(
         "Below the floor feels thin; above the ceiling stops being a summary. "
         "Cover every major point from the source at appropriate depth — "
         "concision is not brevity at the cost of coverage.\n"
+        "10. BINARY CODEWORDS — when a binary codeword or bit string appears (e.g. 0, "
+        "110, 1011), read each digit separately as a word, never as a single number: "
+        "'one-one-zero', not '110' or 'one hundred ten'. Ordinary quantities like 10, "
+        "100, 1000 stay as numerals — they are NOT codewords.\n"
         + acronym_instruction
     )
 
@@ -156,7 +160,8 @@ def generate_summary_audio(
     if is_fish_for_prep and prep_cfg.get("acronym_letter_by_letter", True):
         allowlist = set(prep_cfg.get("acronym_allowlist", []))
         cleaned = expand_acronyms_for_tts(cleaned, allowlist=allowlist)
-    if prep_cfg.get("verbalize_bit_strings", True):
+    # Opt-in (default off); see preprocess_for_tts in _common.py for rationale.
+    if prep_cfg.get("verbalize_bit_strings", False):
         cleaned = verbalize_bit_strings(
             cleaned, max_len=int(prep_cfg.get("bit_strings_max_len", 32))
         )

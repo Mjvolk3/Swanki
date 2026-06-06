@@ -513,3 +513,23 @@ probes only that one server -- no probing of the legacy 8080-8083 fleet. The job
 waits on `/v1/health` before any TTS, so the single server is up by first call.
 Covered by `tests/test_audio_fish_port_resolution.py`. Part of
 [[plan.slurm-native-serverless-fish.2026.06.06]].
+
+## 2026.06.06 - Demote `verbalize_bit_strings` to per-paper opt-in (default off)
+
+ABS bookmarks on Kuchel ch01 and non-coding Hamming chapters surfaced the scrubber
+mangling ordinary decimals: "10 and 100" garbled, "100" digit-spelled and spammed. Root
+cause is structural — the `[01]{2,32}` pattern cannot tell a binary codeword from a
+decimal made only of 0/1 digits (`10`, `100`, `1000`, `11`), and it ran as an unbounded
+global `re.sub` **default-on** at all four call sites (`prep_cfg.get(..., True)`).
+
+Flipped the `preprocess_for_tts` call-site default (`:144`) and the lecture/reading/summary
+call sites to `False`. The function body and regex are unchanged; the key stays live so a
+dense-codeword source re-enables it via `verbalize_bit_strings: true` in a
+`fish_speech_<paper>.yaml`. Decisive evidence: a byte diff of Hamming CH10 (`coding-theory-i`)
+raw LLM transcript vs the post-scrubber transcript is identical with zero bare `[01]{2,}`
+tokens — the LLM already emits word-form codewords from the prompt rule alone, so the
+scrubber was a no-op on the one chapter it exists for. Default-off therefore carries zero
+demonstrated CH10 regression while stopping the false positives everywhere else. Rejected
+cue-gating (window brittleness, test churn, no-op on CH10 anyway). See
+[[plan.scope-binary-codeword-tts.2026.06.06]]; scrubber origin was `#18`
+([[plan.bit-string-verbalizer-hamming-annotations.2026.05.29]]).

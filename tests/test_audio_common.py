@@ -478,19 +478,29 @@ def test_preprocess_for_tts_no_pauses_matches_card_behavior():
     assert "[pause]" not in out  # pause step skipped (card path)
 
 
-def test_preprocess_for_tts_runs_scrubbers():
-    # Bit-string verbalized (default-on), regardless of pauses.
+def test_preprocess_for_tts_bit_strings_opt_in():
+    # Bit-string verbalize is OPT-IN (default off): a 0/1-only token survives
+    # untouched so ordinary decimals are not mangled...
     out = preprocess_for_tts("code 110 here", _FISH, add_pauses=False)
-    assert "one-one-zero" in out and "110" not in out
+    assert "110" in out and "one-one-zero" not in out
+    # ...and the per-paper opt-in (verbalize_bit_strings: true) re-enables it.
+    fish_on = {"provider": "fish_speech",
+               "preprocessor": {"verbalize_bit_strings": True}}
+    out_on = preprocess_for_tts("code 110 here", fish_on, add_pauses=False)
+    assert "one-one-zero" in out_on and "110" not in out_on
 
 
 def test_preprocess_for_tts_fish_only_steps_noop_for_elevenlabs():
-    # No provider -> acronym + forbidden-tag steps are skipped; bit-string
-    # verbalize is provider-agnostic so it still runs.
+    # No provider -> acronym + forbidden-tag steps are skipped. Bit-string
+    # verbalize is opt-in (default off), so 110 survives here too.
     el = {"preprocessor": {}}
     out = preprocess_for_tts("SAR code 110", el, add_pauses=False)
     assert "S-A-R" not in out  # acronym expansion is fish-only
-    assert "one-one-zero" in out  # verbalize is provider-agnostic
+    assert "110" in out and "one-one-zero" not in out  # verbalize off by default
+    # When opted in, verbalize is provider-agnostic (runs even for elevenlabs).
+    el_on = {"preprocessor": {"verbalize_bit_strings": True}}
+    out_on = preprocess_for_tts("SAR code 110", el_on, add_pauses=False)
+    assert "one-one-zero" in out_on
 
 
 def test_preprocess_for_tts_scrubber_idempotent_without_pauses():
@@ -498,6 +508,37 @@ def test_preprocess_for_tts_scrubber_idempotent_without_pauses():
     once = preprocess_for_tts(text, _FISH, add_pauses=False)
     twice = preprocess_for_tts(once, _FISH, add_pauses=False)
     assert once == twice
+
+
+def test_preprocess_for_tts_ch10_codewords_when_opted_in():
+    # Hamming coding-theory (CH10) is the one source kind that opts the scrubber
+    # back on. With verbalize_bit_strings: true, bare codewords still read
+    # digit-by-digit through the full preprocess chain. Guards the opt-in path
+    # against future regex regressions.
+    cfg = {"provider": "fish_speech",
+           "preprocessor": {"verbalize_bit_strings": True}}
+    text = "The codewords are 0, 10, 110, and 111 in order."
+    out = preprocess_for_tts(text, cfg, add_pauses=False)
+    assert "one-zero, one-one-zero, and one-one-one" in out
+    assert "110" not in out and "111" not in out
+
+
+def test_binary_codeword_prompt_examples_drop_ambiguous_ten():
+    # The self-contradictory example list that named the decimal 10 as a binary
+    # codeword ("e.g. 0, 10, 110, 1011") is what licensed the LLM to digit-spell
+    # ordinary tens. Guard all four prompt sites: each carries a BINARY CODEWORDS
+    # rule, and none lists 10 right after the leading "0," of the example.
+    repo = Path(__file__).resolve().parent.parent
+    sites = [
+        "swanki/conf/prompts/default.yaml",
+        "swanki/conf/prompts/book_voice.yaml",
+        "swanki/audio/reading.py",
+        "swanki/audio/summary.py",
+    ]
+    for rel in sites:
+        text = (repo / rel).read_text()
+        assert "BINARY CODEWORDS" in text, f"{rel} missing binary rule"
+        assert "0, 10," not in text, f"{rel} still lists 10 as a codeword example"
 
 
 # ---------------------------------------------------------------------------

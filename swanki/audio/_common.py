@@ -141,7 +141,10 @@ def preprocess_for_tts(
     if is_fish and prep_cfg.get("acronym_letter_by_letter", True):
         allowlist = set(prep_cfg.get("acronym_allowlist", []))
         out = expand_acronyms_for_tts(out, allowlist=allowlist)
-    if prep_cfg.get("verbalize_bit_strings", True):
+    # Opt-in (default off): the prompt rule already makes the LLM emit word-form
+    # codewords; an always-on scrubber mangles 0/1-only decimals (10, 100). Enable
+    # per dense-codeword paper via verbalize_bit_strings: true in fish_speech_<paper>.yaml.
+    if prep_cfg.get("verbalize_bit_strings", False):
         out = verbalize_bit_strings(
             out, max_len=int(prep_cfg.get("bit_strings_max_len", 32))
         )
