@@ -696,7 +696,7 @@ def _humanize_citation(
             user_prompt,
             instructions=system_prompt,
             model=model,
-            model_settings={"max_tokens": 100},
+            model_settings={"max_tokens": 2000},
         )
         humanized = result.output.strip()
         if humanized:
