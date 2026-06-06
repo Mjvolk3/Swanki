@@ -87,6 +87,14 @@ class TestAnkiTarget:
         assert n == 2
         actions = [c.kwargs["json"]["action"] for c in post.call_args_list]
         assert actions == ["version", "importPackage", "importPackage", "sync"]
+        # importPackage params must be ONLY {path}: the headless Anki build
+        # rejects a deleteExisting kwarg. Guards against reintroducing it.
+        import_calls = [
+            c for c in post.call_args_list
+            if c.kwargs["json"]["action"] == "importPackage"
+        ]
+        for c in import_calls:
+            assert set(c.kwargs["json"]["params"]) == {"path"}
 
     def test_no_sync_when_disabled(self, tmp_path: Path) -> None:
         apkg = tmp_path / "a.apkg"
