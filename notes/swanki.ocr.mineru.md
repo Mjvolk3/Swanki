@@ -55,3 +55,7 @@ Validated on gilahyper during the GRE page-1 live run: prior to the cherry-pick,
 ## 2026-05-25 — Type-annotate `configured` in `_resolve_mineru_python` for mypy
 
 Added `: str` annotation on `configured` so mypy stops flagging the two `return configured` paths as returning `Any` (the underlying `ocr_config.get(...)` returns `Any` from `dict[str, Any]`, which propagates through `os.path.expanduser`). Mirrors the existing `return str(sibling)` pattern. Trivial divergence from `7b92a73` -- a 5-char addition -- so the upstream PR conflict will be a clear "keep ours".
+
+## 2026.06.06 — GPU pin honors the ambient allocation (SLURM)
+
+Dropped the hardcoded `CUDA_VISIBLE_DEVICES="3"` default. New `_ocr_gpu_pin(ocr_config)` returns the configured `cuda_visible_devices` only when explicitly set, else `None` so the subprocess inherits the ambient `CUDA_VISIBLE_DEVICES`. Under SLURM `--gres=gpu:1` the cgroup exposes the allocated card as local index 0, so a baked-in "3" was out of range; inheriting is correct. `mineru.yaml` sets `cuda_visible_devices: null` (inherit) and fixes the stale `~/opt/miniconda3` `python_bin` default to `~/miniconda3` per [[reference_gilahyper_conda_paths]]. Tested in `tests/test_ocr_mineru_gpu_pin.py` (no implicit "3", explicit pin honored). Part of [[plan.slurm-native-serverless-fish.2026.06.06]] / [[runbook.slurm-cutover]].
