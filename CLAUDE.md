@@ -76,9 +76,13 @@ To run **many sources without babysitting blocking**, use the fire-and-forget se
 - **Drainer:** `scripts/swanki_queue.sh`, run by the `swanki-queue.service` systemd --user unit (enabled, survives reboot). Jobs land in `~/.swanki-queue/pending/` and move to `done/`/`failed/` with per-job logs in `logs/`.
 - **Watch:** `tail -f ~/.swanki-queue/queue.log`, `journalctl --user -u swanki-queue -f`, `ls ~/.swanki-queue/pending` (depth), `systemctl --user status swanki-queue`.
 
-**Why serial:** the single shared Fish TTS server is the bottleneck — one swanki run saturates all its workers — so `SWANKI_QUEUE_CONCURRENCY` (default 1) keys off **Fish capacity, not GPU count**. SLURM is overkill for one box + one Fish service. `SWANKI_QUEUE_EXECUTOR` (`local` | `noop` dry-run | `slurm` stub) is the forward-compat hook for the dual-purpose era. Each job runs the gilahyper default invocation (`audio=all anki=default ocr=mineru models=<voice> zotero=sync …`).
+**Why serial (legacy local mode):** with the persistent Fish fleet, one swanki run already fans TTS across all GPUs, so `SWANKI_QUEUE_CONCURRENCY` (default 1) keys off **Fish capacity, not GPU count**. Each job runs the gilahyper default invocation (`audio=all anki=default ocr=mineru models=<voice> zotero=default …`).
 
-**Important:** the queue only serializes jobs **submitted through it** — a swanki run launched by hand stays outside it and will contend for Fish. Once the queue is in use, run everything through it. Full design/rationale: `notes/scripts.swanki_queue.md` ([[scripts.swanki_queue]]).
+**Important:** the local queue only serializes jobs **submitted through it** — a swanki run launched by hand stays outside it and will contend for Fish. Once the queue is in use, run everything through it. Full design/rationale: `notes/scripts.swanki_queue.md` ([[scripts.swanki_queue]]).
+
+### SLURM-native mode (serverless per-job Fish)
+
+The forward path: set `SWANKI_QUEUE_EXECUTOR=slurm` and `scripts/swanki_enqueue.sh` submits one `sbatch --gres=gpu:1` job per paper (`scripts/swanki_job.sbatch`) instead of writing a drainer spec. Each job brings up Fish **in-job** via `apptainer --nv` (baked `.sif`) on its single allocated GPU, runs OCR+cards+TTS pinned to that GPU, delivers Zotero→Anki→ABS at end-of-job, then tears Fish down — so idle swanki uses zero GPU and SLURM's cgroups keep it off science's GPUs. Linear vs parallel is a SLURM QOS `GrpTRES=gres/gpu=N` cap (and/or `--enqueue ... --singleton`); chain jobs with `--after <jobid>` / `--dependency`. OCR honors the ambient `CUDA_VISIBLE_DEVICES` (the allocated GPU is local index 0) and TTS targets the single job-private `SWANKI_FISH_PORTS`. ABS is a `--dependency=singleton` finalizer (`scripts/swanki_finalize_abs.sbatch`). This is **not yet cut over** — the live box still runs the Docker Fish fleet + bash drainer; the one-time migration is `notes/runbook.slurm-cutover.md` ([[runbook.slurm-cutover]]) / `scripts/slurm_cutover.sh`.
 
 ## Sync Terminology
 

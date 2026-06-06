@@ -96,3 +96,18 @@ markers. A spec moves to `done/` only when that succeeds.
   busy->idle edge, then clears the flag.
 - `SWANKI_QUEUE_DELIVER=0` opts out of delivery (generation-only). Delivery only
   runs under `EXECUTOR=local`.
+
+## 2026.06.06 - SLURM-native bridge (the `slurm` executor is real now)
+
+The `slurm` executor stub is implemented as an additive bridge: it exports the
+spec as `SWANKI_JOB_*` and submits [[scripts.swanki_job]] via
+`sbatch --parsable --export=ALL`, then moves the spec to `done/` (SLURM owns the
+job lifecycle + in-job delivery from there). `DRY_RUN=1` prints the submission
+instead of running it. The `local` drain path is unchanged, so the live drainer
+keeps working until the cutover retires it. End-state: enqueue == sbatch
+(`SWANKI_QUEUE_EXECUTOR=slurm` on [[scripts.swanki_enqueue]]) and this loop is
+disabled. Bridge-not-delete keeps the change additive while the box still runs the
+Docker-Fish + drainer setup. Concurrency moves from `SWANKI_QUEUE_CONCURRENCY`
+(Fish-capacity) to a SLURM QOS `GrpTRES=gres/gpu=N` cap and
+`--dependency=singleton`. Plan: [[plan.slurm-native-serverless-fish.2026.06.06]];
+cutover: [[runbook.slurm-cutover]].

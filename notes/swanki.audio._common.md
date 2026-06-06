@@ -502,3 +502,14 @@ not exercise it). Config knobs (`soft_max_chars: 500`, `min_sentences_per_chunk:
 2`, `chunk_onset_fade_ms: 25`, `max_chars: 700->650`) live in `fish_speech.yaml`
 and the three voice-clone variants (hamming/bechtel/audrey). Plan:
 [[plan.smarter-lecture-tts-chunking.2026.06.06]].
+
+## 2026.06.06 — single-port discovery for SLURM serverless Fish
+
+Documented (no behavior change needed) that `SWANKI_FISH_PORTS` already collapses
+to one server when set to a single port. Under the SLURM per-job model
+([[scripts.swanki_job]]) each job brings up one Fish on a job-private host port and
+exports `SWANKI_FISH_PORTS=<that port>`, so `_discover_fish_speech_servers`
+probes only that one server -- no probing of the legacy 8080-8083 fleet. The job
+waits on `/v1/health` before any TTS, so the single server is up by first call.
+Covered by `tests/test_audio_fish_port_resolution.py`. Part of
+[[plan.slurm-native-serverless-fish.2026.06.06]].

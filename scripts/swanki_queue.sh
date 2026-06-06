@@ -28,6 +28,9 @@
 #   SWANKI_QUEUE_DIR          queue root            (default ~/.swanki-queue)
 #   SWANKI_QUEUE_CONCURRENCY  max in-flight jobs    (default 1)
 #   SWANKI_QUEUE_EXECUTOR     local | noop | slurm  (default local)
+#                             slurm = submit swanki_job.sbatch per spec; SLURM
+#                             owns scheduling and the job delivers in-job.
+#   DRY_RUN                   1 = print the slurm submission, don't run (default 0)
 #   SWANKI_REPO               repo root for `swanki`(default ~/Documents/projects/Swanki)
 #   SWANKI_CONDA_SH           conda profile.d path  (default ~/miniconda3/etc/profile.d/conda.sh)
 #   SWANKI_QUEUE_POLL         poll seconds          (default 5)
@@ -94,12 +97,33 @@ run_one() {
             { echo "DRY RUN — would execute:"; printf '  swanki'; printf ' %q' "${args[@]}"; echo; } >"$logf"
             ;;
         slurm)
-            # FORWARD-COMPAT STUB (dual-purpose era): submit to SLURM instead of
-            # running locally. Keep this same spec/interface; the only rule is
-            # to cap concurrent swanki jobs to Fish capacity (via
-            # SWANKI_QUEUE_CONCURRENCY here, or `sbatch --dependency=singleton`
-            # / array %N on the SLURM side). Not implemented yet.
-            log "ERROR slurm executor not implemented yet (job $id)"; rc=70
+            # SLURM-native bridge: hand the spec to SLURM as one GPU job that runs
+            # serverless Fish + generation + delivery in-job (swanki_job.sbatch).
+            # SLURM owns scheduling/concurrency (QOS GrpTRES / --dependency); this
+            # drainer just submits and is done with the spec. DRY_RUN=1 prints the
+            # submission instead. The end-state retires this loop (see
+            # notes/runbook.slurm-cutover.md); the bridge keeps the change additive.
+            export SWANKI_JOB_PDF="$pdf" SWANKI_JOB_KEY="$key" \
+                SWANKI_JOB_CONTENT_KEY="$ck" SWANKI_JOB_VOICE="$voice" \
+                SWANKI_JOB_AUTHOR="$author" SWANKI_JOB_EXTRA="$extra"
+            local sb=(sbatch --parsable --job-name=swanki --export=ALL
+                      --output="$QUEUE_DIR/logs/slurm-%j.log"
+                      "$REPO/scripts/swanki_job.sbatch")
+            if [ "${DRY_RUN:-0}" = "1" ]; then
+                { echo "DRY RUN — would submit:"; printf '  %q' "${sb[@]}"; echo; } >"$logf"
+                mv "$spec" "$QUEUE_DIR/done/"; log "DONE $id (slurm dry-run)"
+                return
+            fi
+            local jid srate=0
+            jid="$("${sb[@]}" 2>>"$logf")" || srate=$?
+            if [ "$srate" -eq 0 ]; then
+                mv "$spec" "$QUEUE_DIR/done/"
+                log "SUBMITTED $id -> slurm job $jid (delivery in-job); spec done"
+            else
+                mv "$spec" "$QUEUE_DIR/failed/"
+                log "FAIL $id (rc=$srate, slurm submit) — see $logf"
+            fi
+            return
             ;;
         *)
             log "ERROR unknown executor '$EXECUTOR' (job $id)"; rc=64

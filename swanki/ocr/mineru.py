@@ -61,6 +61,22 @@ def _resolve_mineru_python(ocr_config: dict[str, Any]) -> str:
     return configured
 
 
+def _ocr_gpu_pin(ocr_config: dict[str, Any]) -> str | None:
+    """Resolve an explicit MinerU GPU pin, or None to inherit the ambient device.
+
+    Returns the configured ``cuda_visible_devices`` as a string when set, else
+    None so the subprocess inherits the ambient ``CUDA_VISIBLE_DEVICES``. Under
+    SLURM ``--gres=gpu:1`` the cgroup exposes only the allocated card as local
+    index 0, so inheriting is correct -- a hardcoded index (the old ``"3"``)
+    would be out of range. Outside SLURM an unset ambient lets MinerU see every
+    visible GPU; set ``models.ocr.cuda_visible_devices`` to pin manually.
+    """
+    pin = ocr_config.get("cuda_visible_devices")
+    if pin is None or str(pin) == "":
+        return None
+    return str(pin)
+
+
 def convert_pdf_mineru(
     pdf_path: Path | None,
     output_base: Path,
@@ -97,12 +113,16 @@ def convert_pdf_mineru(
     env = os.environ.copy()
     env.update(
         {
-            "CUDA_VISIBLE_DEVICES": str(ocr_config.get("cuda_visible_devices", "3")),
             "HF_HOME": hf_home,
             "MINERU_MODEL_SOURCE": "huggingface",
             "MINERU_DEVICE_MODE": ocr_config.get("device_mode", "cuda"),
         }
     )
+    # GPU: honor an explicit config pin if given, else inherit the ambient
+    # CUDA_VISIBLE_DEVICES (SLURM sets the allocated GPU, local index 0).
+    gpu_pin = _ocr_gpu_pin(ocr_config)
+    if gpu_pin is not None:
+        env["CUDA_VISIBLE_DEVICES"] = gpu_pin
 
     python_bin = _resolve_mineru_python(ocr_config)
     runner = str(
@@ -123,7 +143,8 @@ def convert_pdf_mineru(
         "--method",
         ocr_config.get("method", "auto"),
     ]
-    logger.info(f"Running MinerU on {pdf_path.name} (GPU {env['CUDA_VISIBLE_DEVICES']})")
+    gpu_label = env.get("CUDA_VISIBLE_DEVICES", "ambient/all")
+    logger.info(f"Running MinerU on {pdf_path.name} (GPU {gpu_label})")
     proc = subprocess.run(
         cmd, env=env, capture_output=True, text=True, timeout=ocr_config.get("timeout", 3600)
     )
