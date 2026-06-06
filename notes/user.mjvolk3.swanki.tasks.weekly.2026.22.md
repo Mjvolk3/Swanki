@@ -46,3 +46,7 @@ created: 1779864732867
 - [x] Fixed reasoning-model token-exhaustion crashes: bumped image-summary `max_tokens` 1024->8000 (hard crash at `process_images` on Kuchel CH05) and table-summary 256->4000 defensively, since `gpt-5.5` reasoning tokens count against `max_tokens` and exhaust tiny budgets before any visible output (commit 2b40e42) [[swanki.processing.image_processor]]
 - [x] Re-applied the Zotero sync-log pagination fix on current main: `_find_or_create_sync_note` now lookups via `zot.everything(zot.children(parent_key))` so an existing "Swanki Sync Log" note that fell off page 1 is found instead of duplicated (was 85 dupes on one item); `#34`'s client refactor had made the original PR #25 conflict and left the bug live, so #25 closed as superseded; added `tests/test_zotero_sync_note.py` regression [[swanki.sync.zotero]]
 - [x] Documented the six precise ch1-3 Hamming lecture edits (World War Two x2, two prosody re-rolls, the "physically" skip, the Socrates ending) applied via `edit_chunk` and published to ABS as `20260602T1434-ef69683`, plus the verbalizer Roman-numeral root-cause fix (PR #31, `2c6392d`); ch1-3 ABS bookmarks now need clear+re-mark [[swanki.audio.hamming-comments-runbook.2026.05.29]]
+
+## 2026.06.06
+
+- [ ] Smarter lecture TTS chunking (balanced even-split + min-2-sentence invariant, soft 500 / hard cap 650) plus a conservative per-chunk onset fade, fish-only and opt-in; offline sweep over Hamming CH01-10 moves mean 493->423 / stdev 158->95 and single-sentence chunks 20->1 [[plan.smarter-lecture-tts-chunking.2026.06.06]]
