@@ -77,7 +77,13 @@ echo "[swanki-job $job] fish port=$port gpu=${CUDA_VISIBLE_DEVICES:-ambient}"
 
 # --- 2. bring up serverless Fish on the allocated GPU -----------------------
 instance="fish_${job}"
-apptainer instance start --nv \
+# --writable-tmpfs: the .sif is read-only but the image writes at runtime (uv
+# cache, etc.); an ephemeral tmpfs overlay absorbs those writes per job. Once the
+# image bakes deps + model cache at build time this is cheap; set
+# SWANKI_FISH_WRITABLE=0 to drop it for a fully-baked image.
+tmpfs_flag=()
+[ "${SWANKI_FISH_WRITABLE:-1}" = "1" ] && tmpfs_flag=(--writable-tmpfs)
+apptainer instance start --nv "${tmpfs_flag[@]}" \
     --bind "$FISH_REPO/checkpoints:/app/checkpoints,$FISH_REPO/references:/app/references" \
     --env "COMPILE=$COMPILE" \
     "$FISH_SIF" "$instance"
