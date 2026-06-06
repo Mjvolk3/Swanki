@@ -8,6 +8,7 @@ Shared TTS utilities: chunking, speech synthesis, audio combination, and metadat
 
 import json
 import logging
+import math
 import os
 import re
 import threading as _threading
@@ -262,8 +263,155 @@ def chunk_text(text: str, max_chars: int = 3000) -> list[str]:
     return chunks
 
 
+def _split_sentences(paragraph: str) -> list[str]:
+    """Split a paragraph into sentences at ``.``/``!``/``?`` + whitespace."""
+    return [s for s in re.split(r"(?<=[.!?])\s+", paragraph.strip()) if s.strip()]
+
+
+def _balanced_sentence_groups(
+    sentences: list[str], k: int
+) -> list[list[str]]:
+    """Distribute sentences into ``k`` contiguous near-equal-char groups.
+
+    Greedy by running char count against ``total / k``; closes the current
+    group once it would overshoot the per-group target by >15%, leaving at
+    least one sentence for each remaining group.
+
+    Args:
+        sentences: Ordered sentence list of one source paragraph.
+        k: Desired number of groups (``<= 1`` returns a single group).
+
+    Returns:
+        List of ``k`` (or fewer) contiguous sentence sublists.
+    """
+    if k <= 1:
+        return [sentences]
+    target = len(" ".join(sentences)) / k
+    groups: list[list[str]] = []
+    current: list[str] = []
+    current_len = 0
+    for s in sentences:
+        if (
+            current
+            and len(groups) < k - 1
+            and current_len + len(s) > target * 1.15
+        ):
+            groups.append(current)
+            current = []
+            current_len = 0
+        current.append(s)
+        current_len += len(s) + 1
+    if current:
+        groups.append(current)
+    return groups
+
+
+def _chunk_balanced(
+    text: str,
+    *,
+    soft_max_chars: int,
+    max_chars: int,
+    min_sentences_per_chunk: int,
+) -> list[tuple[str, str]]:
+    """Balanced, even-sized chunking for TTS stability (fish path).
+
+    Splits each over-soft paragraph into ``ceil(char_len / soft_max_chars)``
+    near-equal sentence groups, packs units toward ``soft_max_chars`` (never
+    exceeding the hard ``max_chars`` cap), then enforces the
+    ``min_sentences_per_chunk`` invariant by merging lone-sentence chunks into
+    the smaller adjacent neighbor that still fits the cap. See
+    :func:`chunk_text_paragraphs` for the boundary-type contract.
+    """
+    # A "unit" is one packing atom: a small whole paragraph, or one balanced
+    # group of an over-soft paragraph. The first group of a paragraph keeps
+    # boundary "paragraph"; later groups are "sentence" (mid-paragraph split).
+    units: list[tuple[list[str], str]] = []
+    for p in [p.strip() for p in text.split("\n\n") if p.strip()]:
+        sentences = _split_sentences(p)
+        if not sentences:
+            continue
+        if len(p) <= soft_max_chars:
+            units.append((sentences, "paragraph"))
+            continue
+        k = math.ceil(len(p) / soft_max_chars)
+        for j, group in enumerate(_balanced_sentence_groups(sentences, k)):
+            units.append((group, "paragraph" if j == 0 else "sentence"))
+
+    # Each chunk is a list of units (units joined with "\n\n"; sentences inside
+    # a unit joined with " ") -- matching the legacy join semantics so the
+    # manifest text and inter-chunk pacing stay consistent.
+    def _chunk_text(chunk_units: list[list[str]]) -> str:
+        return "\n\n".join(" ".join(u) for u in chunk_units)
+
+    def _chunk_nsents(chunk_units: list[list[str]]) -> int:
+        return sum(len(u) for u in chunk_units)
+
+    chunk_units: list[list[list[str]]] = []
+    chunk_bounds: list[str] = []
+    cur: list[list[str]] = []
+    cur_bound = "paragraph"
+    for sents, bound in units:
+        if not cur:
+            cur, cur_bound = [list(sents)], bound
+            continue
+        cur_len = len(_chunk_text(cur))
+        joined_len = len(_chunk_text(cur + [list(sents)]))
+        if joined_len <= soft_max_chars or (
+            cur_len < soft_max_chars * 0.6 and joined_len <= max_chars
+        ):
+            cur.append(list(sents))
+        else:
+            chunk_units.append(cur)
+            chunk_bounds.append(cur_bound)
+            cur, cur_bound = [list(sents)], bound
+    if cur:
+        chunk_units.append(cur)
+        chunk_bounds.append(cur_bound)
+
+    # min-sentences invariant: a single-sentence chunk merges into its smaller
+    # neighbor when the result fits the cap, else the larger, else it stays
+    # lone (paragraph-of-one at a section edge, or a sentence too long to
+    # merge). Boundary of a merge follows the EARLIER chunk in sequence.
+    if min_sentences_per_chunk > 1:
+        changed = True
+        while changed:
+            changed = False
+            for i, units_i in enumerate(chunk_units):
+                if _chunk_nsents(units_i) >= min_sentences_per_chunk:
+                    continue
+                cands: list[tuple[int, int, str]] = []
+                if i > 0:
+                    merged = chunk_units[i - 1] + units_i
+                    cands.append((len(_chunk_text(merged)), i - 1, "prev"))
+                if i < len(chunk_units) - 1:
+                    merged = units_i + chunk_units[i + 1]
+                    cands.append((len(_chunk_text(merged)), i + 1, "next"))
+                cands = [c for c in cands if c[0] <= max_chars]
+                if not cands:
+                    continue
+                cands.sort()
+                _, j, side = cands[0]
+                if side == "prev":
+                    chunk_units[j] = chunk_units[j] + units_i
+                else:
+                    chunk_units[j] = units_i + chunk_units[j]
+                    chunk_bounds[j] = chunk_bounds[i]
+                chunk_units.pop(i)
+                chunk_bounds.pop(i)
+                changed = True
+                break
+
+    return [
+        (_chunk_text(u), b) for u, b in zip(chunk_units, chunk_bounds)
+    ]
+
+
 def chunk_text_paragraphs(
-    text: str, max_chars: int = 4500
+    text: str,
+    max_chars: int = 4500,
+    *,
+    soft_max_chars: int | None = None,
+    min_sentences_per_chunk: int = 1,
 ) -> list[tuple[str, str]]:
     """Split text at paragraph boundaries, falling back to sentences.
 
@@ -274,7 +422,17 @@ def chunk_text_paragraphs(
 
     Args:
         text: Text to split into chunks.
-        max_chars: Maximum characters per chunk.
+        max_chars: Hard cap -- no chunk ever exceeds this many characters.
+        soft_max_chars: When set, switch to the balanced chunker
+            (:func:`_chunk_balanced`): over-soft paragraphs are split into
+            near-equal sentence groups and units pack toward this target,
+            taming size variance and chunk tails. When ``None`` (every
+            non-fish caller) the legacy greedy packer runs and output is
+            byte-identical to before.
+        min_sentences_per_chunk: Balanced path only. When ``> 1``, lone
+            single-sentence chunks are merged into an adjacent neighbor
+            (smaller first) so a declarative statement is never left to end on
+            a question-like uptone. Ignored on the legacy path.
 
     Returns:
         List of ``(chunk_text, boundary_type)`` tuples. ``boundary_type``
@@ -288,6 +446,14 @@ def chunk_text_paragraphs(
         boundary types to :func:`combine_audio_with_section_pauses` so each
         inter-chunk silence can be sized for the kind of break it spans.
     """
+    if soft_max_chars is not None:
+        return _chunk_balanced(
+            text,
+            soft_max_chars=soft_max_chars,
+            max_chars=max_chars,
+            min_sentences_per_chunk=min_sentences_per_chunk,
+        )
+
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
 
     # First-level split: each item is either a whole paragraph or a sentence-
@@ -1237,6 +1403,7 @@ def _accumulate_timeline(
     gain_match_target_dbfs: float | None,
     chunk_boundaries: Sequence[list[str]] | None,
     chunk_pause_ms_by_boundary: dict[str, int] | None,
+    chunk_onset_fade_ms: int = 0,
 ) -> tuple[AudioSegment | None, ChunkTimeline]:
     """The single assembly traversal: build the combined segment AND record
     every chunk/section/bookend offset off the running segment lengths.
@@ -1285,7 +1452,13 @@ def _accumulate_timeline(
                     len(seg),
                 )
                 seg = seg[:abs_cut]
-        return _gain_match(seg)
+        seg = _gain_match(seg)
+        # Conservative per-chunk leading-edge fade: rounds the hard onset Fish
+        # renders at each chunk start without dulling the re-attack. Applied
+        # after gain-match so the fade shapes the final levels. 0 = off.
+        if chunk_onset_fade_ms > 0:
+            seg = seg.fade_in(chunk_onset_fade_ms)
+        return seg
 
     _bounds: Sequence[list[str]] | None = chunk_boundaries
     _pause_map: dict[str, int] | None = chunk_pause_ms_by_boundary
@@ -1397,6 +1570,7 @@ def combine_audio_with_section_pauses(
     gain_match_target_dbfs: float | None = None,
     chunk_boundaries: Sequence[list[str]] | None = None,
     chunk_pause_ms_by_boundary: dict[str, int] | None = None,
+    chunk_onset_fade_ms: int = 0,
 ) -> ChunkTimeline:
     """Combine audio chunks grouped by section with real silence between sections.
 
@@ -1443,6 +1617,10 @@ def combine_audio_with_section_pauses(
             together with ``chunk_boundaries``, supersedes ``chunk_pause_ms``
             -- each inter-chunk gap uses the duration matching the chunk's
             boundary type. Missing keys fall back to ``chunk_pause_ms``.
+        chunk_onset_fade_ms: Linear fade-in applied to the leading edge of
+            every chunk (after gain-match, before append). Rounds the hard
+            onset Fish renders at chunk starts. 0 (default) = off, so non-fish
+            callers are byte-identical.
     """
     combined, timeline = _accumulate_timeline(
         sections,
@@ -1458,6 +1636,7 @@ def combine_audio_with_section_pauses(
         gain_match_target_dbfs=gain_match_target_dbfs,
         chunk_boundaries=chunk_boundaries,
         chunk_pause_ms_by_boundary=chunk_pause_ms_by_boundary,
+        chunk_onset_fade_ms=chunk_onset_fade_ms,
     )
     if combined is None:
         if not sections:
@@ -1650,6 +1829,7 @@ def restitch_from_chunks(
         chunk_pause_ms_by_boundary=boundary_map,
         chunk_pause_ms=int(post.get("chunk_pause_ms", 0)),
         gain_match_target_dbfs=post.get("gain_match_target_dbfs"),
+        chunk_onset_fade_ms=int(post.get("chunk_onset_fade_ms", 0)),
     )
 
     # Persist bookend-pause overrides into the manifest so later surgical /
@@ -1724,6 +1904,7 @@ def _ensure_timeline(manifest_path: Path, sidecar_path: Path) -> ChunkTimeline:
         gain_match_target_dbfs=post.get("gain_match_target_dbfs"),
         chunk_boundaries=inp.boundary_lists if boundary_map else None,
         chunk_pause_ms_by_boundary=boundary_map,
+        chunk_onset_fade_ms=int(post.get("chunk_onset_fade_ms", 0)),
     )
     timeline.audio_type = inp.audio_type
     for sp in timeline.chunks:

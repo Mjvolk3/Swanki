@@ -909,6 +909,14 @@ def generate_lecture_audio(
     _chunk_raw = tts_kwargs.get("chunking")
     chunking_cfg: dict = _chunk_raw if isinstance(_chunk_raw, dict) else {}
     chunk_max_chars = int(chunking_cfg.get("max_chars", 2000 if is_fish else 4500))
+    # Balanced chunker (fish opt-in): when fish_speech.yaml ships
+    # `soft_max_chars`, over-soft paragraphs are split into near-equal sentence
+    # groups and lone single-sentence chunks are merged, taming size variance
+    # and uptone-prone tails. Absent (every non-fish config) -> None -> legacy
+    # greedy packer, byte-identical output.
+    _soft_raw = chunking_cfg.get("soft_max_chars")
+    chunk_soft_max_chars = int(_soft_raw) if _soft_raw is not None else None
+    chunk_min_sentences = int(chunking_cfg.get("min_sentences_per_chunk", 1))
 
     # Collect all chunks across all sections with section index. Each job
     # carries (section_idx, text, path, boundary_type) where boundary_type
@@ -917,7 +925,12 @@ def generate_lecture_audio(
     # "paragraph" since there's no predecessor inside the section.
     all_jobs: list[tuple[int, str, Path, str]] = []
     for sec_idx, section in enumerate(sections_text):
-        audio_chunks = chunk_text_paragraphs(section, max_chars=chunk_max_chars)
+        audio_chunks = chunk_text_paragraphs(
+            section,
+            max_chars=chunk_max_chars,
+            soft_max_chars=chunk_soft_max_chars,
+            min_sentences_per_chunk=chunk_min_sentences,
+        )
         for chunk_text, boundary in audio_chunks:
             chunk_path = chunks_dir / f"{prefix}_chunk{chunk_counter}.mp3"
             all_jobs.append((sec_idx, chunk_text, chunk_path, boundary))
@@ -958,6 +971,7 @@ def generate_lecture_audio(
     chunk_tail_trim_ms = int(post_cfg.get("chunk_tail_trim_ms", 250 if is_fish else 0))
     chunk_pause_ms = int(post_cfg.get("chunk_pause_ms", 700 if is_fish else 0))
     chunk_crossfade_ms = int(post_cfg.get("chunk_crossfade_ms", 50 if is_fish else 0))
+    chunk_onset_fade_ms = int(post_cfg.get("chunk_onset_fade_ms", 0))
     gain_match = post_cfg.get("gain_match_target_dbfs", -25.0 if is_fish else None)
     # Content-aware inter-chunk silence: per-boundary durations supersede the
     # uniform chunk_pause_ms when the YAML provides a map. Fish defaults give
@@ -994,6 +1008,7 @@ def generate_lecture_audio(
         gain_match_target_dbfs=gain_match,
         chunk_boundaries=all_section_boundaries if chunk_pause_ms_by_boundary else None,
         chunk_pause_ms_by_boundary=chunk_pause_ms_by_boundary,
+        chunk_onset_fade_ms=chunk_onset_fade_ms,
     )
 
     # Write chunk manifest for surgical regeneration; chunk files are kept.
@@ -1019,6 +1034,7 @@ def generate_lecture_audio(
             "chunk_pause_ms": chunk_pause_ms,
             "chunk_tail_trim_ms": chunk_tail_trim_ms,
             "chunk_crossfade_ms": chunk_crossfade_ms,
+            "chunk_onset_fade_ms": chunk_onset_fade_ms,
             "gain_match_target_dbfs": gain_match,
             "chunk_pause_ms_by_boundary": chunk_pause_ms_by_boundary,
             "bookend_start_pause_ms": bookend_start_pause_ms,

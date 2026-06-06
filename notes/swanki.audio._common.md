@@ -452,3 +452,53 @@ three audio types (lecture/reading/summary) read+forward+persist them.
 Fish read "World War II" as "one one". Root cause was NOT `verbalize_bit_strings` (matches `[01]` digits only — Hamming codewords stay safe) but `expand_acronyms_for_tts`: its `_STANDALONE_ACRONYM_RE = [A-Z]{2,6}` letter-spells any uppercase run, so `II` -> `I-I` exactly like `MIT` -> `M-I-T`. Confirmed in Hamming ch1/ch3 lecture cleaned markdown ("World War I-I").
 
 Fix: a `_ROMAN_NUMERAL_WORDS` map (`II`->"two", `III`->"three", `VII`..`XX`); `_sub` returns the cardinal word for those tokens instead of letter-spelling. The keys are I/V/X-only, so real initialisms needing letter-spelling (`MD`, `CV`, `DC`, `MC`, `CI`, `MM`, ...) are absent and unchanged. `IV` (intravenous) and `VI` (the vi editor) are deliberately EXCLUDED — they collide with initialisms and keep letter-spelling, so there is NO regression for them. Single-letter `I`/`V`/`X` never reach the expander (its floor is 2 letters). Catches "World War II/III", "Part VII", "Henry VIII", "Chapter IX", "Section XV" pipeline-wide. Distinct from `humanize_chapter_slug_spoken` (`swanki.utils.formatting`), which only handles trailing Roman tokens in chapter-slug bookends, not body prose. Tests in `tests/test_audio_common.py` (`test_expand_acronyms_for_tts_roman_numerals_become_words` + ambiguous/acronym/codeword guards). Plan: [[plan.verbalizer-roman-numeral-guard.2026.06.02]].
+
+## 2026.06.06 - Balanced chunker + per-chunk onset fade (fish opt-in)
+
+`chunk_text_paragraphs` gains two keyword-only params: `soft_max_chars: int |
+None = None` and `min_sentences_per_chunk: int = 1`. When `soft_max_chars` is
+`None` (every non-fish caller -- reading/summary/elevenlabs and the existing
+tests) the legacy greedy packer runs unchanged and output is byte-identical;
+when set, dispatch goes to a new `_chunk_balanced`. The balanced path splits
+each over-soft paragraph into `ceil(char_len / soft_max_chars)` near-equal
+sentence groups (`_balanced_sentence_groups`, greedy against `total/k` with a
+15% overshoot tolerance), packs units toward the soft target (lifting an
+undersized current chunk up to the hard `max_chars` cap when the next unit
+fits), then enforces the min-sentence invariant by merging any lone-sentence
+chunk into its SMALLER adjacent neighbor that still fits the cap, else the
+larger, else accepting it lone (a paragraph-of-one at a section edge, or a
+single sentence too long to merge -- the safe long survivor). Boundary typing:
+the first group of a split paragraph keeps `"paragraph"`, the rest are
+`"sentence"` (preserves the 500ms mid-paragraph gap vs the 1100ms paragraph
+gap); a merge follows the EARLIER chunk's boundary, so the first chunk stays
+`"paragraph"`. Units join with `"\n\n"`, sentences within a unit with `" "` --
+matching legacy join semantics, so the manifest `text` and inter-chunk pacing
+are consistent. The motivation is Fish's per-chunk prosodic arc (hard onset ->
+settle -> fast/monotone tail), which turns "musical" at seams under
+single-sentence chunks (uptone on a declarative) and high size variance.
+
+Why balanced-from-paragraphs rather than a post-pass on the greedy output (the
+plan's framing): it directly reproduces the validated S8 sweep and the non-fish
+risk is fully contained by the `soft_max_chars is None` gate, so there is no
+upside to threading a second pass through the greedy list. Validated text-only
+over Hamming CH01-10 with the SHIPPED code (reconstructing each section from the
+live manifests): old (`max_chars=700`) -> new (`soft=500, cap=650, min2`) moves
+mean 515->423, median 547->408, stdev 146->95, max 700->650, single-sentence
+13->1 (the survivor is the safe ~280-char long sentence); CH04 the worst,
+single-sentence 5->0, stdev 185->91. Numbers match the plan's S8 target
+(295/423/95/1).
+
+Onset fade: `_accumulate_timeline` / `combine_audio_with_section_pauses` /
+`restitch_from_chunks` / `_ensure_timeline` gain a `chunk_onset_fade_ms: int =
+0` param. In the `_load` closure a `seg.fade_in(chunk_onset_fade_ms)` is applied
+AFTER `_gain_match` (so it shapes final levels) and before the
+`append(crossfade=...)`. At Fish's 44.1kHz, 25ms ~= 1102 samples -- rounds the
+hard onset without dulling the re-attack. 0 = off keeps non-fish byte-identical.
+`restitch_from_chunks`/`_ensure_timeline` read it back from the manifest
+postprocessor so surgical restitches inherit it. KNOWN open item: the 25ms
+fade_in overlaps the 50ms `append` crossfade region -- a mild double-attenuation
+at the seam that needs a listen-check before broad audio rollout (text A/B does
+not exercise it). Config knobs (`soft_max_chars: 500`, `min_sentences_per_chunk:
+2`, `chunk_onset_fade_ms: 25`, `max_chars: 700->650`) live in `fish_speech.yaml`
+and the three voice-clone variants (hamming/bechtel/audrey). Plan:
+[[plan.smarter-lecture-tts-chunking.2026.06.06]].

@@ -187,3 +187,19 @@ postprocessor so restitch reproduces them. See [[swanki.audio._common]]
 ## 2026.05.31 - Retire `_embed_images` prose; figures/tables ride landmarks
 
 `_embed_images` previously rewrote `![alt](url)` into "Looking at {alt}, we can see {summary}" prose from the multi-sentence image summaries. That conflicts with the new deterministic `Figure:`/`Table:` landmarks (now injected upstream in [[swanki.processing.markdown_cleaner]]), and tables had no path at all (deleted). `_embed_images` now just concatenates page content: the landmark carries the figure caption-or-summary, and the leftover empty-alt `![](url)` is dropped by `clean_markdown_for_tts` downstream. The `image_summaries` argument is retained for signature stability but no longer embedded. This makes lecture and reading consistent for figures/tables. NOTE: the lecture path still REFORMULATES prose narratively (per-section regen + refine loop), so its landmarks are not byte-for-byte deterministic the way reading's are -- the reading path is the deterministic guarantee. Plan: [[plan.reading-table-figure-landmarks.2026.05.31]].
+
+## 2026.06.06 - Wire balanced chunker + onset fade through the lecture path
+
+Resolves three new fish knobs from `tts_kwargs` and forwards them. From the
+`chunking` sub-tree: `soft_max_chars` (None if absent -> legacy greedy, so
+non-fish is byte-identical) and `min_sentences_per_chunk` (default 1), both
+passed to `chunk_text_paragraphs`; `max_chars` drops 700->650 (now the hard cap,
+with `soft_max_chars=500` the balancing target). From the `postprocessor`
+sub-tree: `chunk_onset_fade_ms` (default 0), forwarded to
+`combine_audio_with_section_pauses` and recorded in the manifest postprocessor
+block so surgical restitches reproduce it. Only the fish configs ship these
+keys, so elevenlabs/non-fish resolve to legacy/off and their output is
+unchanged. See [[swanki.audio._common]] (2026.06.06) for the chunker algorithm,
+the boundary-typing rule, and the Hamming CH01-10 A/B (mean 515->423, stdev
+146->95, single-sentence 13->1). Plan:
+[[plan.smarter-lecture-tts-chunking.2026.06.06]].

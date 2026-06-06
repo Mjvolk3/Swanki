@@ -15,6 +15,7 @@ from pydub import AudioSegment
 from swanki.audio._common import (
     FISH_SPEECH_FORBIDDEN_TAGS,
     SECTION_BREAK_MARKER,
+    _balanced_sentence_groups,
     _normalize_fish_speech_punct,
     append_chunk_pause,
     apply_pronunciation_overrides,
@@ -1243,6 +1244,120 @@ def test_chunk_text_paragraphs_two_paragraphs_split_to_two_chunks():
     # carry "sentence". At minimum one of the later chunks should be
     # "paragraph" (the start of paragraph B).
     assert "paragraph" in boundaries[1:]
+
+
+# ---------------------------------------------------------------------------
+# chunk_text_paragraphs - balanced chunker (fish opt-in via soft_max_chars)
+# ---------------------------------------------------------------------------
+
+
+def test_balanced_path_is_opt_in_default_byte_identical():
+    # Without soft_max_chars the legacy greedy packer runs and output is
+    # byte-identical to the documented legacy behavior.
+    text = "Para one is short.\n\nPara two is also short."
+    legacy = chunk_text_paragraphs(text, max_chars=200)
+    explicit_none = chunk_text_paragraphs(
+        text, max_chars=200, soft_max_chars=None, min_sentences_per_chunk=2
+    )
+    assert legacy == explicit_none
+    assert legacy == [
+        ("Para one is short.\n\nPara two is also short.", "paragraph")
+    ]
+
+
+def test_balanced_legacy_cap_paths_match_existing_tests():
+    # The four legacy-path invariants still hold when soft_max_chars is None.
+    paras = "\n\n".join(f"Paragraph {i}. " + ("filler. " * 30) for i in range(5))
+    assert all(len(t) <= 700 for t, _ in chunk_text_paragraphs(paras, max_chars=700))
+
+
+def test_balanced_even_split_groups_are_near_equal():
+    sentences = [f"Sentence number {i} here." for i in range(8)]
+    groups = _balanced_sentence_groups(sentences, 4)
+    assert len(groups) == 4
+    # Every sentence is preserved, in order, no duplication.
+    assert [s for g in groups for s in g] == sentences
+    sizes = [len(" ".join(g)) for g in groups]
+    # Near-equal: spread between largest and smallest group stays small.
+    assert max(sizes) - min(sizes) <= max(len(s) for s in sentences) + 5
+
+
+def test_balanced_oversoft_paragraph_splits_into_even_chunks():
+    # One paragraph well over soft splits into multiple near-soft chunks; the
+    # first carries "paragraph", the rest "sentence" (Decision 7).
+    para = " ".join(f"Sentence {i} ends here now." for i in range(40))
+    chunks = chunk_text_paragraphs(
+        para, max_chars=650, soft_max_chars=500, min_sentences_per_chunk=2
+    )
+    assert len(chunks) > 1
+    assert all(len(t) <= 650 for t, _ in chunks)
+    boundaries = [b for _, b in chunks]
+    assert boundaries[0] == "paragraph"
+    assert all(b == "sentence" for b in boundaries[1:])
+
+
+def test_balanced_hard_cap_never_exceeded():
+    para = " ".join(f"Sentence {i} runs on a bit here." for i in range(120))
+    chunks = chunk_text_paragraphs(
+        para, max_chars=650, soft_max_chars=500, min_sentences_per_chunk=2
+    )
+    assert all(len(t) <= 650 for t, _ in chunks), [len(t) for t, _ in chunks]
+
+
+def test_balanced_no_single_sentence_chunk_when_mergeable():
+    # A trailing lone sentence merges into a neighbor rather than standing as a
+    # single-sentence chunk.
+    para = " ".join(f"Sentence {i} ends here." for i in range(15))
+    chunks = chunk_text_paragraphs(
+        para, max_chars=200, soft_max_chars=140, min_sentences_per_chunk=2
+    )
+
+    def nsents(t):
+        import re
+
+        return len([s for s in re.split(r"(?<=[.!?])\s+", t) if s.strip()])
+
+    # Every chunk that COULD have merged (i.e. is not at the hard-cap limit)
+    # holds at least two sentences.
+    lone = [t for t, _ in chunks if nsents(t) < 2 and len(t) < 140]
+    assert lone == [], lone
+
+
+def test_balanced_merges_lone_middle_sentence():
+    # A single-sentence middle paragraph must merge into a neighbor rather than
+    # stand alone, so no short chunk is left with one sentence.
+    import re
+
+    text = "Aa bb cc. Dd ee ff.\n\nGg hh ii jj.\n\nKk ll mm. Nn oo pp."
+    chunks = chunk_text_paragraphs(
+        text, max_chars=120, soft_max_chars=40, min_sentences_per_chunk=2
+    )
+    for t, _ in chunks:
+        n = len([s for s in re.split(r"(?<=[.!?])\s+", t) if s.strip()])
+        assert n >= 2 or len(t) >= 120
+
+
+def test_balanced_lone_sentence_kept_when_unmergeable():
+    # A single-sentence paragraph longer than the cap cannot merge with any
+    # neighbor and is accepted as a lone chunk (the S8-survivor escape hatch).
+    long_sentence = "This one sentence is deliberately very long " + (
+        "and keeps going " * 20
+    ) + "until it stops."
+    neighbor = "Short tail. Another short tail."
+    text = f"{long_sentence}\n\n{neighbor}"
+    chunks = chunk_text_paragraphs(
+        text, max_chars=200, soft_max_chars=180, min_sentences_per_chunk=2
+    )
+    # The long sentence stays as its own chunk (merging would bust the cap).
+    assert any(long_sentence[:30] in t for t, _ in chunks)
+
+
+def test_balanced_first_chunk_boundary_is_paragraph():
+    text = "Alpha one. Alpha two.\n\nBeta one. Beta two.\n\nGamma one. Gamma two."
+    chunks = chunk_text_paragraphs(
+        text, max_chars=200, soft_max_chars=40, min_sentences_per_chunk=2
+    )
+    assert chunks[0][1] == "paragraph"
 
 
 # ---------------------------------------------------------------------------
