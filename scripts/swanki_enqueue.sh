@@ -76,6 +76,11 @@ if [ "$EXECUTOR" = "slurm" ]; then
         dep_join="$(IFS=,; echo "${deps[*]}")"
         sb+=(--dependency="$dep_join")
     fi
+    # SWANKI_SBATCH_EXTRA passes raw sbatch flags through, e.g. to dedicate N GPUs
+    # to swanki: `export SWANKI_SBATCH_EXTRA="--qos=swanki --account=swanki"` with a
+    # QOS GrpTRES=gres/gpu=N cap (see notes/runbook.slurm-cutover.md). Word-split.
+    # shellcheck disable=SC2206
+    [ -n "${SWANKI_SBATCH_EXTRA:-}" ] && sb+=($SWANKI_SBATCH_EXTRA)
     sb+=("$REPO/scripts/swanki_job.sbatch")
 
     export SWANKI_JOB_PDF="$pdf" SWANKI_JOB_KEY="$key" \

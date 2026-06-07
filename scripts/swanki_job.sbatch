@@ -76,26 +76,24 @@ done
 echo "[swanki-job $job] fish port=$port gpu=${CUDA_VISIBLE_DEVICES:-ambient}"
 
 # --- 2. bring up serverless Fish on the allocated GPU -----------------------
-instance="fish_${job}"
-# --writable-tmpfs: the .sif is read-only but the image writes at runtime (uv
-# cache, etc.); an ephemeral tmpfs overlay absorbs those writes per job. Once the
-# image bakes deps + model cache at build time this is cheap; set
-# SWANKI_FISH_WRITABLE=0 to drop it for a fully-baked image.
+# Run Fish as a direct background CHILD (apptainer exec, NOT `instance start`):
+# an instance is a daemon that survives scancel/SIGKILL (the EXIT trap never
+# fires), orphaning ~22GB of GPU memory so the NEXT job on that card OOMs. A
+# child lives in the job's cgroup, so SLURM's cgroup-kill reaps it on ANY
+# termination. --writable-tmpfs absorbs the read-only image's runtime writes;
+# SWANKI_FISH_PYTHON is the venv interpreter (not on PATH once we bypass entrypoint).
 tmpfs_flag=()
 [ "${SWANKI_FISH_WRITABLE:-1}" = "1" ] && tmpfs_flag=(--writable-tmpfs)
-apptainer instance start --nv "${tmpfs_flag[@]}" \
+apptainer exec --nv "${tmpfs_flag[@]}" --pwd /app \
     --bind "$FISH_REPO/checkpoints:/app/checkpoints,$FISH_REPO/references:/app/references" \
     --env "COMPILE=$COMPILE" \
-    "$FISH_SIF" "$instance"
-trap 'apptainer instance stop "$instance" 2>/dev/null' EXIT
-
-# Full interpreter path: the image's venv is NOT on PATH when we bypass the
-# entrypoint, so bare `python` fails. SWANKI_FISH_PYTHON overrides for other images.
-apptainer exec --pwd /app "instance://$instance" \
+    "$FISH_SIF" \
     "${SWANKI_FISH_PYTHON:-/app/.venv/bin/python}" tools/api_server.py --listen "0.0.0.0:$port" \
         --llama-checkpoint-path checkpoints/s2-pro \
         --decoder-checkpoint-path checkpoints/s2-pro/codec.pth \
         --decoder-config-name modded_dac_vq &
+fish_pid=$!
+trap 'kill "$fish_pid" 2>/dev/null' EXIT TERM INT
 
 # wait for health (~model load; bounded)
 ready=0
