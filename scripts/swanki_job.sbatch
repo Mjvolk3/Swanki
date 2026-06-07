@@ -89,8 +89,10 @@ apptainer instance start --nv "${tmpfs_flag[@]}" \
     "$FISH_SIF" "$instance"
 trap 'apptainer instance stop "$instance" 2>/dev/null' EXIT
 
+# Full interpreter path: the image's venv is NOT on PATH when we bypass the
+# entrypoint, so bare `python` fails. SWANKI_FISH_PYTHON overrides for other images.
 apptainer exec --pwd /app "instance://$instance" \
-    python tools/api_server.py --listen "0.0.0.0:$port" \
+    "${SWANKI_FISH_PYTHON:-/app/.venv/bin/python}" tools/api_server.py --listen "0.0.0.0:$port" \
         --llama-checkpoint-path checkpoints/s2-pro \
         --decoder-checkpoint-path checkpoints/s2-pro/codec.pth \
         --decoder-config-name modded_dac_vq &
