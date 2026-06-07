@@ -1,21 +1,21 @@
 ---
 name: uber-implement
-description: End-to-end autonomous pipeline -- plans with /plan-4.7 (3 scouts, deliberator, plan-writer, reducer-critic), then implements with /wt-implement in an isolated worktree. No manual approval between plan and implementation.
+description: End-to-end autonomous pipeline -- plans with /plan-4.8 (3 scouts, deliberator, plan-writer, reducer-critic), then implements with /wt-implement in an isolated worktree. No manual approval between plan and implementation.
 ---
 
 # Uber Implement
 
-End-to-end pipeline: plan a change with the full `/plan-4.7` pipeline, then immediately implement it in a worktree via `/wt-implement`. No manual approval gate between planning and implementation.
+End-to-end pipeline: plan a change with the full `/plan-4.8` pipeline, then immediately implement it in a worktree via `/wt-implement`. No manual approval gate between planning and implementation.
 
 ## Usage
 
 `/uber-implement <request> [merge when done]`
 
-The request is the same natural language you would pass to `/plan-4.7`. Append "merge when done" to auto-merge the PR after implementation.
+The request is the same natural language you would pass to `/plan-4.8`. Append "merge when done" to auto-merge the PR after implementation.
 
-## Phase A: Plan (plan-4.7 phases 0--5)
+## Phase A: Plan (plan-4.8 phases 0--5)
 
-Run `/plan-4.7` phases 0 through 5 exactly as documented in that skill:
+Run `/plan-4.8` phases 0 through 5 exactly as documented in that skill:
 
 1. **Phase 0: Setup** -- create the plan note (`dendron-cli note write --fname "plan.<slug>.YYYY.MM.DD"`)
 2. **Phase 1: Three Parallel Scouts** -- codebase, design history, gotchas (single message, three Agent calls)
@@ -61,14 +61,14 @@ Files changed:
 
 ## Important Rules
 
-- **No approval gate between plan and implement.** The reducer-critic in `/plan-4.7` Phase 4 is the only quality gate.
-- **All `/plan-4.7` rules apply** during Phase A (no H1 headers, no emojis, escape issue numbers, web-search policy, 3 scouts + 1 deliberator + 1 plan-writer + 1 reducer-critic, etc.)
+- **No approval gate between plan and implement.** The reducer-critic in `/plan-4.8` Phase 4 is the only quality gate.
+- **All `/plan-4.8` rules apply** during Phase A (no H1 headers, no emojis, escape issue numbers, web-search policy, 3 scouts + 1 deliberator + 1 plan-writer + 1 reducer-critic, etc.)
 - **All `/wt-implement` rules apply** during Phase B (edits in worktree only, follow specs exactly, rebase retry, etc.)
 - **Commit the plan note before implementation** so it exists in git history even if implementation fails.
 - **Do NOT use EnterPlanMode/ExitPlanMode** -- this skill replaces built-in plan mode.
 - **Do NOT ask extra approval questions** -- tool approval prompts are the gates.
 - **Token budget**: this skill uses significant context across both phases. If the codebase is very large, use targeted `/read-codebase <prefix>` filters.
-- **Use high or xhigh effort** for the wt-implement phase -- Anthropic's recommendation for agentic coding tasks on Opus 4.7.
+- **Use high or xhigh effort** for the wt-implement phase -- Anthropic's recommendation for agentic coding tasks on Opus 4.8.
 
 ## Example
 

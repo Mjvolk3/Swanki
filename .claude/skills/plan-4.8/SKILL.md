@@ -1,17 +1,17 @@
 ---
-name: plan-4.7
-description: Three scouts explore the codebase in parallel, argue the approach, and a plan-writer agent synthesizes the deliberation into a concise Dendron note. A reducer-critic then smart-tightens the plan (flagging low-value content for cuts, not truncating) until the plan is dense and human-readable. Built for Claude Opus 4.7 -- literal instruction-following, self-verification, long-running coherence -- so plans describe what and why, not every line of code.
+name: plan-4.8
+description: Three scouts explore the codebase in parallel, argue the approach, and a plan-writer agent synthesizes the deliberation into a concise Dendron note. A reducer-critic then smart-tightens the plan (flagging low-value content for cuts, not truncating) until the plan is dense and human-readable. Built for Claude Opus 4.8 -- literal instruction-following, self-verification, long-running coherence -- so plans describe what and why, not every line of code.
 ---
 
-# Plan-4.7
+# Plan-4.8
 
-A lightweight, high-level planning skill built for Opus 4.7 implementation agents.
+A lightweight, high-level planning skill built for Opus 4.8 implementation agents.
 
 ## Why this skill exists
 
-Anthropic's Opus 4.7 release notes ([anthropic.com/news/claude-opus-4-7](https://www.anthropic.com/news/claude-opus-4-7)) surface three behaviors that reshape how planning should work:
+Anthropic's Opus 4.8 release notes ([anthropic.com/news/claude-opus-4-8](https://www.anthropic.com/news/claude-opus-4-8)) surface three behaviors that reshape how planning should work:
 
-1. **"Opus 4.7 takes the instructions literally."** Loose, over-constrained plans now get copy-pasted into shallow implementations. Leave judgment room -- 4.7 will use it.
+1. **"Opus 4.8 takes the instructions literally."** Loose, over-constrained plans now get copy-pasted into shallow implementations. Leave judgment room -- 4.8 will use it.
 2. **"Catches its own logical faults during the planning phase"** and **"devises ways to verify its own outputs before reporting back."** Implementation agents self-correct; plans do not need to enumerate every edge case.
 3. **"Works coherently for hours"**, with "loop resistance" and "graceful error recovery." Plans can describe broad strokes; the implementer sustains the multi-step work.
 
@@ -21,7 +21,7 @@ Together: a plan that reads like a design memo -- file paths, gotchas, key decis
 
 ## Usage
 
-`/plan-4.7 <request>`
+`/plan-4.8 <request>`
 
 Freeform request. Scouts read the codebase to ground the plan -- you don't have to hand-hold.
 
@@ -245,7 +245,7 @@ Loop logic:
 
     Read the plan in your editor. Ask questions or request revisions here.
     When ready to implement: /wt-implement notes/<fname>.md
-    (Use high or xhigh effort for implementation -- Anthropic's recommendation for agentic coding tasks on Opus 4.7.)
+    (Use high or xhigh effort for implementation -- Anthropic's recommendation for agentic coding tasks on Opus 4.8.)
     ```
 
 Nothing after this block.
@@ -261,13 +261,13 @@ After presenting, enter a revision loop. The user may:
 
 Exit when the user approves or pivots.
 
-## Rules (Opus 4.7 takes these literally)
+## Rules (Opus 4.8 takes these literally)
 
 - **3 scouts, 1 deliberator, 1 plan-writer, 1 reducer-critic (looped).** Do not add agents.
 - **Scouts run in parallel** in a single message with multiple Agent calls.
 - **No artificial word caps on scouts.** The reducer-critic trims; scouts report honestly.
 - **Reducer removes low-value content categories, not line count.** After 3 passes, if still over target, stop -- signal density beats arbitrary length.
-- **Self-verify before reporting.** Plan-writer and reducer-critic must each self-check their output (Opus 4.7 does this well when instructed explicitly).
+- **Self-verify before reporting.** Plan-writer and reducer-critic must each self-check their output (Opus 4.8 does this well when instructed explicitly).
 - **No EnterPlanMode / ExitPlanMode.** This skill replaces plan mode.
 - **Leave judgment room.** If the plan specifies every detail, the implementer stops thinking and starts templating. That is the failure mode this skill is built against.
 - **Verify library currency from the web, not memory.** Training cutoff is January 2026; library versions, APIs, and deprecations have moved on. See the "Web-search policy" section above.
@@ -275,7 +275,7 @@ Exit when the user approves or pivots.
 ## Example
 
 ```text
-/plan-4.7 Fix Hamming lecture audio quality regressions surfaced by ABS bookmarks: tighter fish-speech chunks, per-chunk leading-edge fade, deterministic acronym + forbidden-tag passes, humanized chapter intros, and narrative critic checks (repeated phrases, chronology, connectives).
+/plan-4.8 Fix Hamming lecture audio quality regressions surfaced by ABS bookmarks: tighter fish-speech chunks, per-chunk leading-edge fade, deterministic acronym + forbidden-tag passes, humanized chapter intros, and narrative critic checks (repeated phrases, chronology, connectives).
 ```
 
 Scouts fan out over `swanki/audio/`, `swanki/conf/models/`, `swanki/models/cards.py`, `tests/test_audio_*.py`. Deliberator resolves "ship the per-chunk leading fade as a `combine_audio_with_section_pauses` parameter or a per-provider postprocess?" Plan-writer drafts ~360 lines. Reducer-critic flags ~50 lines of low-value content (a 25-line Pydantic skeleton that reads better as prose, two convention restatements, an obvious-context paragraph) and applies cuts. Final plan: ~310 lines, dense. User reads in a few minutes.
