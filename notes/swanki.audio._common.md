@@ -533,3 +533,21 @@ demonstrated CH10 regression while stopping the false positives everywhere else.
 cue-gating (window brittleness, test churn, no-op on CH10 anyway). See
 [[plan.scope-binary-codeword-tts.2026.06.06]]; scrubber origin was `#18`
 ([[plan.bit-string-verbalizer-hamming-annotations.2026.05.29]]).
+
+## 2026.06.07 - ensure_fish_speech_reference honors dynamic Fish port (SLURM fix)
+
+`ensure_fish_speech_reference` dialed the raw `server_url` (default
+`http://localhost:8080`) for `/v1/references/list` and `/v1/references/add`,
+bypassing `_discover_fish_speech_servers`. Under the SLURM-native serverless
+Fish (PR #38, `e9c6a48`) each job's Fish listens on a dynamic
+`SWANKI_FISH_PORTS` port (e.g. 8148), not 8080, so the reference call was
+refused with `[Errno 111] Connection refused` BEFORE any TTS -- the TTS path
+worked because it goes through `_pick_fish_speech_server` ->
+`_discover_fish_speech_servers`, but the reference path did not. Fix: resolve
+`server_url = _discover_fish_speech_servers(server_url)[0]` at the top of the
+function, exactly like the TTS path. `_discover` falls back to `[server_url]`
+when nothing else is healthy, so local 8080 runs are byte-identical. Validated:
+CH01 SLURM canary (job 851) went from dying at ~2.5 min to COMPLETED, 27-chunk
+lecture rendered. Bug owned by the SLURM session (PR #38); landed here per their
+greenlight. Separately observed: per-job Fish runs uncompiled (COMPILE=0) at
+~3.6 tok/s -> ~1.3 h/chapter; `SWANKI_FISH_COMPILE=1` is the lever under test.

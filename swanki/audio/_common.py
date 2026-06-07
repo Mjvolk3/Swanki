@@ -1007,6 +1007,13 @@ def ensure_fish_speech_reference(
         audio_path: Path to the reference WAV file.
         text: Transcription of the reference audio.
     """
+    # Honor SWANKI_FISH_PORTS / dynamic-port discovery, same as the TTS path
+    # (_pick_fish_speech_server). Under SLURM the per-job Fish listens on a
+    # dynamic port, not 8080; without this the reference call dials the raw
+    # server_url and is refused before any TTS. _discover falls back to
+    # [server_url] when nothing else is healthy, so local 8080 runs are
+    # unchanged.
+    server_url = _discover_fish_speech_servers(server_url)[0]
     client = httpx.Client(timeout=httpx.Timeout(30.0, connect=10.0))
 
     # Check if already registered
