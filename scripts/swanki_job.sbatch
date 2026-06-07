@@ -129,6 +129,14 @@ args+=(pipeline.processing.confirm_before_generation=false)
 echo "[swanki-job $job] generating: swanki ${args[*]}"
 swanki "${args[@]}" || { echo "ERROR: swanki generation failed" >&2; exit 1; }
 
+# Generation done. SWANKI_JOB_DELIVER=0 stops here (audio-only / parallel runs
+# skip the card-oriented Zotero+Anki delivery: it races on a shared Zotero item
+# and has no apkg under mode=audio_only -- push audio to ABS separately).
+if [ "${SWANKI_JOB_DELIVER:-1}" != "1" ]; then
+    echo "[swanki-job $job] DONE (generation only; delivery skipped)"
+    exit 0
+fi
+
 # --- 5. locate the output dir (newest matching; swanki auto-increments _N) ---
 base="$key"; prefix="$key"
 [ -n "$ck" ] && { base="$key/$ck"; prefix="$ck"; }
