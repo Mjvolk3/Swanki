@@ -61,3 +61,7 @@ created: 1779864732867
 - [x] Added an `SWANKI_SBATCH_EXTRA` enqueue passthrough so a QOS `GrpTRES=gres/gpu=N` cap can dedicate N (1-4) GPUs to swanki [[scripts.swanki_enqueue]]
 
 - [x] Made the Fish TTS client resilient: `_tts_fish_speech` retries the `/v1/tts` POST (default 4 attempts, 2/5/15/30s backoff) and force-re-discovers a healthy server between tries, so a mid-generation `RemoteProtocolError: Server disconnected` no longer kills a 70-min run (6/9 concurrent Hamming jobs died this way at ~chunk 30; ruled out OOM/Xid/disk/timeout). Keeps the HTTP/server boundary for cloud portability; pairs with a possible sbatch Fish-restart supervisor [[swanki.audio._common]]
+
+## 2026.06.08
+
+- [ ] Add a Layer-2 Fish restart-supervisor to `scripts/swanki_job.sbatch`: an inline unified poll loop wraps the generation step, respawns the in-job Fish on the same port when its PID dies mid-run (so the existing `_tts_fish_speech` client retry reconnects and the job reaches DONE), bounds respawns via `SWANKI_FISH_MAX_RESTARTS`/`SWANKI_FISH_RESTART_ENABLED`, raises `SWANKI_FISH_TTS_ATTEMPTS`, and appends best-effort crash capture (exit code, dmesg/Xid) to a per-job log [[plan.fish-restart-supervisor-slurm-job.2026.06.08]]
