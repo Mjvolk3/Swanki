@@ -551,3 +551,25 @@ CH01 SLURM canary (job 851) went from dying at ~2.5 min to COMPLETED, 27-chunk
 lecture rendered. Bug owned by the SLURM session (PR #38); landed here per their
 greenlight. Separately observed: per-job Fish runs uncompiled (COMPILE=0) at
 ~3.6 tok/s -> ~1.3 h/chapter; `SWANKI_FISH_COMPILE=1` is the lever under test.
+
+## 2026.06.08 - Resilient Fish TTS client (retry + re-discover)
+
+`_tts_fish_speech` now retries the `/v1/tts` POST up to `_FISH_TTS_MAX_ATTEMPTS`
+(env `SWANKI_FISH_TTS_ATTEMPTS`, default 4) with backoff (2/5/15/30s), forcing
+`_discover_fish_speech_servers(..., force=True)` between attempts so a server
+that restarted on its port is re-found. Catches `httpx.HTTPError` (covers
+`RemoteProtocolError` "Server disconnected" + `ConnectError` + transient 5xx);
+only a genuine repeated failure raises.
+
+Motivation: in the concurrent Hamming CH02-CH10 SLURM batch, 6/9 jobs failed
+late (~chunk 30 of 32) with `RemoteProtocolError: Server disconnected` -- the
+per-job Fish dropped the TTS connection mid-generation and the client had ZERO
+retry, so one blip killed a 70-minute run. Ruled out: GPU collision (fixed),
+host/cgroup RAM (MaxRSS ~16G, no OOM-killer in dmesg), clean CUDA OOM (no
+`torch.OutOfMemoryError` logged), GPU Xid, disk-full, timeout. The retry is also
+the diagnostic: if it recovers, Fish was alive (transient drop); if it can't
+reconnect, Fish truly died and `swanki_job.sbatch` needs a restart-supervisor
+(layer 2). Architecture decision: keep the HTTP/server boundary (env isolation
+local; portable to cloud/hosted Fish) and harden the client -- retry/backoff is
+exactly what a future cloud endpoint needs too. Plan discussion in-session
+2026.06.08; pairs with the SLURM serverless work (PR #38/#40).

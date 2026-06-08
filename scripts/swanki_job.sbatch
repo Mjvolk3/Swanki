@@ -76,36 +76,74 @@ done
 echo "[swanki-job $job] fish port=$port gpu=${CUDA_VISIBLE_DEVICES:-ambient}"
 
 # --- 2. bring up serverless Fish on the allocated GPU -----------------------
-instance="fish_${job}"
-# --writable-tmpfs: the .sif is read-only but the image writes at runtime (uv
-# cache, etc.); an ephemeral tmpfs overlay absorbs those writes per job. Once the
-# image bakes deps + model cache at build time this is cheap; set
-# SWANKI_FISH_WRITABLE=0 to drop it for a fully-baked image.
+# Run Fish as a direct background CHILD (apptainer exec, NOT `instance start`):
+# an instance is a daemon that survives scancel/SIGKILL (the EXIT trap never
+# fires), orphaning ~22GB of GPU memory so the NEXT job on that card OOMs. A
+# child lives in the job's cgroup, so SLURM's cgroup-kill reaps it on ANY
+# termination. --writable-tmpfs absorbs the read-only image's runtime writes;
+# SWANKI_FISH_PYTHON is the venv interpreter (not on PATH once we bypass entrypoint).
 tmpfs_flag=()
 [ "${SWANKI_FISH_WRITABLE:-1}" = "1" ] && tmpfs_flag=(--writable-tmpfs)
-apptainer instance start --nv "${tmpfs_flag[@]}" \
-    --bind "$FISH_REPO/checkpoints:/app/checkpoints,$FISH_REPO/references:/app/references" \
-    --env "COMPILE=$COMPILE" \
-    "$FISH_SIF" "$instance"
-trap 'apptainer instance stop "$instance" 2>/dev/null' EXIT
 
-# Full interpreter path: the image's venv is NOT on PATH when we bypass the
-# entrypoint, so bare `python` fails. SWANKI_FISH_PYTHON overrides for other images.
-apptainer exec --pwd /app "instance://$instance" \
-    "${SWANKI_FISH_PYTHON:-/app/.venv/bin/python}" tools/api_server.py --listen "0.0.0.0:$port" \
-        --llama-checkpoint-path checkpoints/s2-pro \
-        --decoder-checkpoint-path checkpoints/s2-pro/codec.pth \
-        --decoder-config-name modded_dac_vq &
+# Crash log for Layer-2 supervision (best-effort; $QUEUE_DIR is under $HOME, not
+# the often-full /scratch). /tmp fallback if the logs dir is somehow unwritable.
+CRASH_LOG="$QUEUE_DIR/logs/swanki-job-$job-fish-crash.log"
+[ -w "$QUEUE_DIR/logs" ] || CRASH_LOG="/tmp/swanki-job-$job-fish-crash.log"
 
-# wait for health (~model load; bounded)
-ready=0
-for _ in $(seq 1 "${SWANKI_FISH_HEALTH_TIMEOUT:-300}"); do
-    if curl -sf -m 3 "http://127.0.0.1:$port/v1/health" >/dev/null 2>&1; then
-        ready=1; break
-    fi
-    sleep 1
-done
-[ "$ready" = 1 ] || { echo "ERROR: Fish did not become healthy on :$port" >&2; exit 1; }
+# start_fish: (re)launch Fish on $port as a cgroup child, reassign the GLOBAL
+# fish_pid (so the late-bound EXIT/TERM/INT trap always reaps the CURRENT Fish),
+# and block until /v1/health answers. Returns non-zero if Fish dies or never goes
+# healthy within the bounded timeout -- the caller (initial launch or the Layer-2
+# supervisor) decides whether that is fatal. Reused verbatim for every respawn so
+# a restarted Fish is identical to the original (same .sif, port, checkpoints).
+start_fish() {
+    apptainer exec --nv "${tmpfs_flag[@]}" --pwd /app \
+        --bind "$FISH_REPO/checkpoints:/app/checkpoints,$FISH_REPO/references:/app/references" \
+        --env "COMPILE=$COMPILE" \
+        "$FISH_SIF" \
+        "${SWANKI_FISH_PYTHON:-/app/.venv/bin/python}" tools/api_server.py --listen "0.0.0.0:$port" \
+            --llama-checkpoint-path checkpoints/s2-pro \
+            --decoder-checkpoint-path checkpoints/s2-pro/codec.pth \
+            --decoder-config-name modded_dac_vq &
+    fish_pid=$!
+    local i
+    for i in $(seq 1 "${SWANKI_FISH_HEALTH_TIMEOUT:-300}"); do
+        if curl -sf -m 3 "http://127.0.0.1:$port/v1/health" >/dev/null 2>&1; then
+            return 0
+        fi
+        kill -0 "$fish_pid" 2>/dev/null || return 1   # Fish died before health
+        sleep 1
+    done
+    return 1
+}
+
+# capture_fish_crash <label> [exit_code]: append a best-effort, timestamped record
+# (exit code, dmesg/Xid, nvidia-smi Xid) to $CRASH_LOG so the next node-level kill
+# is finally named. Every probe is guarded -- instrumentation must NEVER abort the
+# job -- so this always returns 0.
+capture_fish_crash() {
+    local label="$1" rc="${2:-?}"
+    {
+        echo "=== fish crash [$label] $(date -u +%Y-%m-%dT%H:%M:%SZ) job=$job pid=${fish_pid:-?} rc=$rc gpu=${CUDA_VISIBLE_DEVICES:-ambient} port=$port ==="
+        echo "--- kernel log tail ---"
+        dmesg 2>/dev/null | tail -n 50 \
+            || journalctl -k -n 50 2>/dev/null \
+            || tail -n 50 /var/log/messages 2>/dev/null \
+            || echo "(kernel log unavailable: dmesg restricted, no journalctl/-k, no /var/log/messages)"
+        echo "--- nvidia-smi Xid ---"
+        nvidia-smi -q 2>/dev/null | grep -iA3 xid || echo "(no Xid lines / nvidia-smi unavailable)"
+        echo
+    } >> "$CRASH_LOG" 2>/dev/null
+    return 0
+}
+
+# The trap is late-bound on $fish_pid (decision 2): start_fish reassigns the
+# global on every respawn, so this always kills whichever Fish is current.
+fish_pid=""
+trap 'kill "$fish_pid" 2>/dev/null' EXIT TERM INT
+
+# Initial launch -- a cold Fish that never goes healthy is a hard failure.
+start_fish || { echo "ERROR: Fish did not become healthy on :$port" >&2; exit 1; }
 export SWANKI_FISH_PORTS="$port"
 
 # --- 3. activate native conda env (swanki + swanki-mineru live here) ---------
@@ -127,7 +165,51 @@ args+=(pipeline.processing.confirm_before_generation=false)
 [ -n "$extra" ] && args+=($extra)
 
 echo "[swanki-job $job] generating: swanki ${args[*]}"
-swanki "${args[@]}" || { echo "ERROR: swanki generation failed" >&2; exit 1; }
+if [ "${SWANKI_FISH_RESTART_ENABLED:-1}" = "1" ]; then
+    # --- Layer 2: supervise generation ---------------------------------------
+    # Background swanki and poll BOTH it and Fish from this one shell (the shell
+    # that owns $fish_pid + the trap). When Fish dies mid-run, reap it, capture a
+    # crash record, respawn on the SAME port, re-wait health, and continue -- the
+    # client retry in swanki/audio/_common.py (_tts_fish_speech) re-discovers the
+    # fresh server and resumes. Stretch that client's reconnect window so its
+    # 2/5/15/30s backoff outlasts a respawn's ~30-60s model reload (default 4
+    # attempts is too tight); honor a caller override.
+    export SWANKI_FISH_TTS_ATTEMPTS="${SWANKI_FISH_TTS_ATTEMPTS:-8}"
+    swanki "${args[@]}" &
+    swanki_pid=$!
+    gen_rc=0
+    restarts=0
+    while true; do
+        # Check swanki FIRST so a completed run is never masked by a simultaneous
+        # Fish teardown (on success the trap, not the loop, reaps Fish).
+        if ! kill -0 "$swanki_pid" 2>/dev/null; then
+            wait "$swanki_pid"; gen_rc=$?      # harvest swanki's real exit code
+            break
+        fi
+        if ! kill -0 "$fish_pid" 2>/dev/null; then
+            wait "$fish_pid" 2>/dev/null; fish_rc=$?   # fully reap, free the port
+            capture_fish_crash "$restarts" "$fish_rc"
+            restarts=$(( restarts + 1 ))
+            if [ "$restarts" -gt "${SWANKI_FISH_MAX_RESTARTS:-3}" ]; then
+                echo "ERROR: Fish exceeded max restarts ($(( restarts - 1 )))" >&2
+                capture_fish_crash "final" "$fish_rc"
+                kill "$swanki_pid" 2>/dev/null
+                exit 1
+            fi
+            echo "[swanki-job $job] Fish died (rc=$fish_rc); respawn $restarts/${SWANKI_FISH_MAX_RESTARTS:-3} on :$port" >&2
+            sleep "${SWANKI_FISH_RESPAWN_SETTLE:-5}"   # let the socket fully release
+            start_fish || { echo "ERROR: respawned Fish never healthy on :$port" >&2
+                            capture_fish_crash "respawn-unhealthy"
+                            kill "$swanki_pid" 2>/dev/null; exit 1; }
+        fi
+        sleep "${SWANKI_FISH_POLL_S:-3}"
+    done
+    [ "$gen_rc" -eq 0 ] || { echo "ERROR: swanki generation failed (rc=$gen_rc)" >&2; exit 1; }
+else
+    # Kill-switch (SWANKI_FISH_RESTART_ENABLED=0): launch-once, no supervisor --
+    # the old behavior, a fast fail on Fish death. For crash-loop debugging.
+    swanki "${args[@]}" || { echo "ERROR: swanki generation failed" >&2; exit 1; }
+fi
 
 # Generation done. SWANKI_JOB_DELIVER=0 stops here (audio-only / parallel runs
 # skip the card-oriented Zotero+Anki delivery: it races on a shared Zotero item

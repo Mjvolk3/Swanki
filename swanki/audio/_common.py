@@ -12,6 +12,7 @@ import math
 import os
 import re
 import threading as _threading
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal, NamedTuple
@@ -902,6 +903,15 @@ _FISH_SPEECH_PORTS = [
     int(p) for p in os.getenv("SWANKI_FISH_PORTS", "8080,8081,8082,8083").split(",")
 ]
 
+# TTS resilience. A single Fish server (local serverless or a future cloud/
+# hosted endpoint) can drop the TTS connection mid-generation
+# (httpx.RemoteProtocolError) or return a transient 5xx. One blip on chunk ~30
+# of ~32 must NOT kill a 70-minute lecture run, so retry with backoff and
+# re-discover a healthy server between attempts (re-finds a server that
+# restarted on its port). Tunable via env.
+_FISH_TTS_MAX_ATTEMPTS = int(os.getenv("SWANKI_FISH_TTS_ATTEMPTS", "4"))
+_FISH_TTS_BACKOFF_S = (2.0, 5.0, 15.0, 30.0)
+
 # Thread-safe round-robin state for multi-server distribution
 _server_lock = _threading.Lock()
 _server_index = 0
@@ -968,7 +978,13 @@ def _tts_fish_speech(
     audio_format: str,
     speed: float,
 ) -> None:
-    """Fish Speech S2 Pro TTS backend."""
+    """Fish Speech S2 Pro TTS backend.
+
+    Resilient to a server that drops the connection mid-generation or returns a
+    transient 5xx: retries up to ``_FISH_TTS_MAX_ATTEMPTS`` with backoff,
+    re-discovering a healthy server between attempts. Only a genuine repeated
+    failure raises -- a single blip no longer aborts the whole run.
+    """
     clean_text = _strip_ssml(text)
     clean_text = _normalize_fish_speech_punct(clean_text)
 
@@ -983,14 +999,41 @@ def _tts_fish_speech(
     if reference_id:
         payload["reference_id"] = reference_id
 
-    url = _pick_fish_speech_server(server_url)
-    client = httpx.Client(timeout=httpx.Timeout(1800.0, connect=60.0))
-    response = client.post(f"{url}/v1/tts", json=payload)
-    assert response.status_code == 200, (
-        f"Fish Speech TTS failed: {response.status_code} {response.text}"
-    )
+    last_err: str = "unknown"
+    for attempt in range(_FISH_TTS_MAX_ATTEMPTS):
+        # First attempt uses the round-robin pick; retries force re-discovery so
+        # a server that restarted (new health, same port) is re-found.
+        if attempt == 0:
+            url = _pick_fish_speech_server(server_url)
+        else:
+            url = _discover_fish_speech_servers(server_url, force=True)[0]
+        try:
+            with httpx.Client(
+                timeout=httpx.Timeout(1800.0, connect=60.0)
+            ) as client:
+                response = client.post(f"{url}/v1/tts", json=payload)
+            if response.status_code == 200:
+                _apply_speed(response.content, output_path, speed)
+                return
+            last_err = f"HTTP {response.status_code}: {response.text[:200]}"
+        except httpx.HTTPError as e:
+            last_err = f"{type(e).__name__}: {e}"
 
-    _apply_speed(response.content, output_path, speed)
+        if attempt < _FISH_TTS_MAX_ATTEMPTS - 1:
+            backoff = _FISH_TTS_BACKOFF_S[
+                min(attempt, len(_FISH_TTS_BACKOFF_S) - 1)
+            ]
+            logger.warning(
+                f"Fish TTS attempt {attempt + 1}/{_FISH_TTS_MAX_ATTEMPTS} "
+                f"failed ({last_err}); re-discovering and retrying in "
+                f"{backoff}s"
+            )
+            time.sleep(backoff)
+
+    raise RuntimeError(
+        f"Fish Speech TTS failed after {_FISH_TTS_MAX_ATTEMPTS} attempts: "
+        f"{last_err}"
+    )
 
 
 def ensure_fish_speech_reference(
