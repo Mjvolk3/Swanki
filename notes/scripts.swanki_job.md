@@ -30,3 +30,29 @@ import+sync, so ONLY this phase is serialized across the node), then touch
 delivery Python module is unchanged; only the call site moved here from the
 drainer. Full design: [[plan.slurm-native-serverless-fish.2026.06.06]];
 cutover: [[runbook.slurm-cutover]].
+
+## 2026.06.07 - First live cutover: four bugs found and fixed
+
+The serverless path went live (Docker Fish decommissioned, drainer disabled) and
+the first real runs surfaced four issues, all now fixed:
+
+- **Fish interpreter** (`9fb2179`): `apptainer exec ... python` fails -- the
+  image's venv is not on `PATH` once the entrypoint is bypassed. Call the venv
+  binary directly: `/app/.venv/bin/python` (override `SWANKI_FISH_PYTHON`).
+- **Un-baked image writes** (`3935542`): the read-only `.sif` needs
+  `--writable-tmpfs` so the image's runtime writes land in an ephemeral overlay
+  (`SWANKI_FISH_WRITABLE=0` once deps are baked at build time). Cold start ~64s.
+- **Generation-only** (`4533c9c`): `SWANKI_JOB_DELIVER=0` stops after generation,
+  skipping the card-oriented Zotero+Anki delivery. Needed for `mode=audio_only`
+  (no apkg) and for parallel runs over a shared Zotero item (concurrent backups
+  race); push audio to ABS separately.
+- **Orphaned-Fish GPU leak** (`8a1416d`, the important one): Fish was an
+  `apptainer instance` (daemon). On `scancel`/SIGKILL the `EXIT` trap never fires,
+  so the daemon kept ~22GB of VRAM; the next job on that "free" card OOM'd
+  (job 853: "44GB used, this process 6.9GB"). Now Fish runs as a background CHILD
+  (`apptainer exec ... &`) in the job's cgroup, so SLURM cgroup-kill reaps it on
+  any termination; trap also catches TERM/INT.
+
+Confirmed NOT a problem: GPU pinning. Two concurrent jobs get distinct physical
+GPUs (cgroup-isolated, local index 0 each), and `apptainer --nv` honors the
+cgroup -- the OOMs were leaked memory, not pile-up. See [[runbook.slurm-cutover]].

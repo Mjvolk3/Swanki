@@ -83,3 +83,29 @@ paper works serverless, and ONLY THEN decommission Docker Fish + the drainer.
   at `squeue`/`scontrol`/`scancel` is a follow-up once they are committed.
 - Preemption (`PreemptType=preempt/qos`) so a science surge can reclaim swanki's
   GPU; v1 relies on the QOS GpuTRES cap instead.
+
+## 2026.06.07 - Cutover executed: what actually bit
+
+The cutover ran on 2026-06-07. The plan above was right in shape; three things
+were not in it and cost the most time.
+
+- **The node-down root cause was DNS, not SLURM.** `gilahyper` resolved to a stale
+  `/etc/hosts` IP (`192.168.1.15`) after a DHCP drift to `.17`, so slurmctld's
+  health-ping to the node went nowhere and it flapped to `DOWN+NOT_RESPONDING` ~5
+  min after every `slurmd` start (this is why it had been down since the May 22
+  reboot). Durable fix: pin node comms to loopback --
+  `NodeName=gilahyper NodeAddr=127.0.0.1` in `slurm.conf` + restart
+  `slurmctld slurmd`. Reboot-proof; prefer this over chasing the IP in `/etc/hosts`.
+- **GPU pinning was never broken.** With `gres` + cgroup `ConstrainDevices=yes`,
+  concurrent `--gres=gpu:1` jobs get distinct physical GPUs (each sees its card as
+  local index 0) and `apptainer --nv` honors the cgroup. Verified with two
+  concurrent diagnostic jobs landing on different UUIDs.
+- **The real concurrency killer was orphaned Fish.** `apptainer instance start`
+  daemons survived `scancel`/SIGKILL and leaked ~22GB VRAM, OOM-ing the next job on
+  that card. Fixed by running Fish as a cgroup child (`apptainer exec ... &`); see
+  [[scripts.swanki_job]] 2026.06.07. Also landed: the venv-`python` path, the
+  `ensure_fish_speech_reference` dynamic-port fix ([[swanki.audio._common]]),
+  `--writable-tmpfs`, and `SWANKI_JOB_DELIVER=0` for audio-only/parallel runs.
+- **Image bake not needed (yet):** the 14.6GB Docker image already carries deps, so
+  serverless cold start is ~64s with `--writable-tmpfs` -- no build-time bake
+  required for now.

@@ -22,3 +22,13 @@ comma-joined `--dependency`. Job inputs cross into the sbatch via exported
 `--extra` and spaced `--author`). `DRY_RUN=1` prints the submission instead of
 running it. Linear/parallel is also a SLURM QOS `GrpTRES=gres/gpu=N` cap. Plan:
 [[plan.slurm-native-serverless-fish.2026.06.06]]; cutover: [[runbook.slurm-cutover]].
+
+## 2026.06.07 - SWANKI_SBATCH_EXTRA for dedicating N GPUs
+
+Added a raw `sbatch`-flag passthrough so the operator can dedicate a fixed number
+of GPUs to swanki (`8a1416d`): `export SWANKI_SBATCH_EXTRA="--qos=swanki
+--account=swanki"` routes jobs through a QOS whose `GrpTRES=gres/gpu=N` caps swanki
+at N concurrent GPUs, leaving 4-N free for other work. Word-split and appended to
+the `sbatch` argv. Without it, swanki opportunistically uses every free GPU. The
+QOS itself is created once via `sacctmgr` (see [[runbook.slurm-cutover]]); change N
+anytime with `sacctmgr modify qos swanki set GrpTRES=gres/gpu=N`.
