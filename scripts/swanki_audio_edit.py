@@ -14,6 +14,7 @@ edit_chunk -- the edit/agent/re-TTS/restitch logic stays in edit_chunk.
 
 import argparse
 import os
+import re
 from pathlib import Path
 
 import yaml
@@ -58,7 +59,13 @@ def main() -> None:
     """Resolve the in-job Fish, build tts_kwargs, and apply one chunk edit."""
     ap = argparse.ArgumentParser(description="SLURM-native surgical audio chunk edit")
     ap.add_argument("--manifest", required=True, help="path to chunk_manifest.json")
-    ap.add_argument("--idx", type=int, required=True, help="audio-type-local chunk index")
+    ap.add_argument(
+        "--idx",
+        required=True,
+        help="audio-type-local chunk index, or a list separated by ':' / space / "
+        "',' (e.g. 9:19) applied sequentially in one Fish session, same mode for "
+        "all. Prefer ':' under SLURM -- a comma collides with sbatch --export.",
+    )
     grp = ap.add_mutually_exclusive_group(required=True)
     grp.add_argument("--speech-only", action="store_true", help="re-roll stored text verbatim")
     grp.add_argument("--comment", help="reviewer comment driving the agent rewrite")
@@ -86,19 +93,25 @@ def main() -> None:
     else:
         kw["new_text"] = args.new_text
 
-    res = edit_chunk(
-        Path(args.manifest),
-        args.idx,
-        tts_kwargs=tts_kwargs,
-        speed=args.speed,
-        model=args.model,
-        **kw,
-    )
-    print(
-        f"[swanki_audio_edit] action={res.action} rationale={res.rationale}\n"
-        f"  output_file={res.output_file}\n"
-        f"  new_window_ms=({res.start_ms}, {res.end_ms})"
-    )
+    # Sequential edits on the SAME manifest: each edit_chunk re-reads the manifest
+    # (with prior edits applied) and restitches, so order compounds correctly.
+    indices = [int(x) for x in re.split(r"[,:\s]+", str(args.idx).strip()) if x]
+    manifest = Path(args.manifest)
+    for idx in indices:
+        res = edit_chunk(
+            manifest,
+            idx,
+            tts_kwargs=tts_kwargs,
+            speed=args.speed,
+            model=args.model,
+            **kw,
+        )
+        print(
+            f"[swanki_audio_edit] idx={idx} action={res.action} "
+            f"rationale={res.rationale}\n"
+            f"  output_file={res.output_file}\n"
+            f"  new_window_ms=({res.start_ms}, {res.end_ms})"
+        )
 
 
 if __name__ == "__main__":

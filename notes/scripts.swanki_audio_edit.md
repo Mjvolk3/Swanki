@@ -39,3 +39,26 @@ First use: Hamming CH01 (orientation) lecture chunk 12 - an orange ABS bookmark
 ("whooshing sound right after obsolescence") drove a speech-only re-roll. Job 885
 COMPLETED in ~4 min on the free GPU while 882/883/884 generated; new chunk-12
 window (344663, 373824) ms.
+
+## 2026.06.09 - Multi-chunk edits + the --export comma gotcha
+
+`swanki_audio_edit.py --idx` now accepts a LIST (split on `,` / `:` / whitespace),
+applied sequentially in one Fish session. Sequential edits on the same manifest
+compound correctly: each `edit_chunk` re-reads the manifest (with prior edits
+applied) and restitches, so order is well-defined. This is the right shape for
+multiple comments on one chapter -- one Fish cold-start, not N -- and it is also
+why the edits MUST be serial: two parallel jobs on the same manifest would race
+the restitch + `chunk_timeline.json` rewrite.
+
+**Gotcha (cost a wasted job):** SLURM `sbatch --export=ALL,VAR=val,...` uses commas
+as its own delimiter, so `SWANKI_EDIT_IDX="9,19"` in the `--export` list is parsed
+as `SWANKI_EDIT_IDX=9` plus a garbage `19"` token -- the job silently edits only
+chunk 9. Use a colon in the SLURM submit (`SWANKI_EDIT_IDX=9:19`), or `export` the
+var in the shell first and pass bare `--export=ALL`. The launcher accepts all three
+separators so the colon form just works.
+
+First multi-chunk use: Hamming CH02 lecture chunks 9 + 19 (speech-only re-rolls),
+from two 2026-06-08 ABS bookmarks (chunk 9 "ends on a strange nonconclusive note",
+chunk 19 "blip"). Paired with the bookmark-wipe-on-replace policy: the two
+addressed bookmarks are deleted after the new audio lands. See
+[[project_abs_crud_build]] (windowed-wipe default, still to be automated).
