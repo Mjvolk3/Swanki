@@ -573,3 +573,24 @@ reconnect, Fish truly died and `swanki_job.sbatch` needs a restart-supervisor
 local; portable to cloud/hosted Fish) and harden the client -- retry/backoff is
 exactly what a future cloud endpoint needs too. Plan discussion in-session
 2026.06.08; pairs with the SLURM serverless work (PR #38/#40).
+
+## 2026.06.09 - Mixed pause-tag stacks collapse (the stacked-marker bug)
+
+`add_tts_pauses` (fish path) stacked `[short pause]` against `[pause]` at every
+intra-chunk paragraph break ending in a period: the paragraph rule inserts
+`[pause]`, then the sentence rule fires on the same boundary, and the old
+collapse regexes only deduped SAME-type runs. Fish renders every tag (the
+`[pause]` one as an audible breath -- the artifact `chunk_tail_trim_ms` exists
+to clip at chunk ends), so each surviving stack was a mid-chunk pause+breath
+artifact. Found via a CH03 review comment; 28 stacks existed across the live
+Hamming chapters (CH07 alone had 10).
+
+- New `collapse_stacked_pause_tags`: any run of >=2 adjacent pause tags keeps
+  its strongest tag (`[long pause]` > `[pause]` > `[short pause]`). Runs as the
+  final step of `add_tts_pauses` and is exported for the remediation mode in
+  [[scripts.swanki_audio_edit]].
+- The generation prompts (default.yaml + book_voice.yaml section 12) now also
+  instruct the LLM to never place two pause tags adjacent, so stacks are
+  guarded at both layers.
+- `add_tts_pauses` remains non-idempotent overall (the every-3-sentences
+  injector shifts on re-runs) -- the preprocess-once invariant stands.

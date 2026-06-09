@@ -90,6 +90,7 @@ edit=(python scripts/swanki_audio_edit.py --manifest "$manifest" --idx "$idx"
       --voice "$voice" --speed "$speed")
 case "$mode" in
     speech_only) edit+=(--speech-only) ;;
+    collapse_pauses) edit+=(--collapse-pauses) ;;
     comment)     edit+=(--comment "$payload"); [ -n "$model" ] && edit+=(--model "$model") ;;
     new_text)    edit+=(--new-text "$payload"); [ -n "$model" ] && edit+=(--model "$model") ;;
     *) echo "ERROR: bad SWANKI_EDIT_MODE: $mode" >&2; exit 2 ;;

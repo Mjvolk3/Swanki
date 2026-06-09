@@ -86,9 +86,11 @@ def add_tts_pauses(text: str, provider: str = "elevenlabs") -> str:
             return ""
 
         text = re.sub(r"(?<=[.!?])(?=\s+[A-Z])", _inject_pause, text)
-        # Collapse stacked tags
-        text = re.sub(r"(\[pause\]\s*){2,}", "[pause]\n\n", text)
-        text = re.sub(r"(\[short pause\]\s*){2,}", "[short pause] ", text)
+        # Collapse stacked tags, including MIXED stacks: the paragraph rule
+        # ([pause]) and the sentence rule ([short pause]) both fire on a
+        # paragraph break ending in a period, and Fish renders each tag (the
+        # [pause] one as an audible breath) -- a stack is never wanted.
+        text = collapse_stacked_pause_tags(text)
     else:
         text = re.sub(r"\n\n+", '\n\n<break time="0.7s" />\n\n', text)
         text = re.sub(r":\s*\n", ':\n<break time="0.4s" />\n', text)
@@ -99,6 +101,29 @@ def add_tts_pauses(text: str, provider: str = "elevenlabs") -> str:
         )
 
     return text
+
+
+_PAUSE_TAG_RUN = re.compile(r"(?:\[(?:short |long )?pause\]\s*){2,}")
+
+
+def collapse_stacked_pause_tags(text: str) -> str:
+    """Collapse any run of adjacent Fish pause tags to a single tag.
+
+    Two pause tags must never sit adjacent: Fish renders each one, so a stack
+    produces pause + audible breath artifacts mid-chunk. A run keeps its
+    strongest tag -- ``[long pause]`` over ``[pause]`` over ``[short pause]``
+    -- with paragraph-style spacing for the pause variants.
+    """
+
+    def _one(m: re.Match) -> str:
+        run = m.group(0)
+        if "[long pause]" in run:
+            return "[long pause]\n\n"
+        if "[pause]" in run:
+            return "[pause]\n\n"
+        return "[short pause] "
+
+    return _PAUSE_TAG_RUN.sub(_one, text)
 
 
 def preprocess_for_tts(

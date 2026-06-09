@@ -73,3 +73,14 @@ All three sbatch headers now default to the same absolute
 expand `~`/`$HOME`, hence the literal path -- consistent with the queue's
 convention), and `slurm-*.log` is gitignored as a backstop. Found while running
 the CH03 surgical-edit chain by hand.
+
+## 2026.06.09 - --collapse-pauses remediation mode
+
+New mutually-exclusive mode (`SWANKI_EDIT_MODE=collapse_pauses`): per index,
+collapse stacked pause tags in the STORED manifest text via
+`collapse_stacked_pause_tags`, then re-roll verbatim through the speech_only
+path; chunks with no stack are skipped. Deliberately does NOT use the new_text
+path -- stored text is post-preprocessor and `add_tts_pauses` is not
+idempotent, so re-running the full chain would stack tags again (exactly how
+the CH03 chunk-3 pause insert became a triple). Built to remediate the 28
+stacked chunks across the live Hamming chapters ([[swanki.audio._common]]).

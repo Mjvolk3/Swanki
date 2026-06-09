@@ -13,13 +13,17 @@ edit_chunk -- the edit/agent/re-TTS/restitch logic stays in edit_chunk.
 """
 
 import argparse
+import json
 import os
 import re
 from pathlib import Path
 
 import yaml
 
-from swanki.audio._common import _discover_fish_speech_servers
+from swanki.audio._common import (
+    _discover_fish_speech_servers,
+    collapse_stacked_pause_tags,
+)
 from swanki.audio.comment_edit import edit_chunk
 
 
@@ -70,6 +74,11 @@ def main() -> None:
     grp.add_argument("--speech-only", action="store_true", help="re-roll stored text verbatim")
     grp.add_argument("--comment", help="reviewer comment driving the agent rewrite")
     grp.add_argument("--new-text", help="explicit replacement prose")
+    grp.add_argument(
+        "--collapse-pauses",
+        action="store_true",
+        help="collapse stacked pause tags in stored text, then re-roll (skips clean chunks)",
+    )
     ap.add_argument("--voice", required=True, help="models config name, e.g. fish_speech_hamming")
     ap.add_argument("--speed", type=float, default=1.0, help="must match the original render speed")
     ap.add_argument("--model", default=None, help="pydantic-ai llm string (comment path only)")
@@ -86,7 +95,7 @@ def main() -> None:
     tts_kwargs = build_fish_tts_kwargs(voice_cfg, server_url)
 
     kw: dict = {}
-    if args.speech_only:
+    if args.speech_only or args.collapse_pauses:
         kw["speech_only"] = True
     elif args.comment is not None:
         kw["comment"] = args.comment
@@ -98,6 +107,20 @@ def main() -> None:
     indices = [int(x) for x in re.split(r"[,:\s]+", str(args.idx).strip()) if x]
     manifest = Path(args.manifest)
     for idx in indices:
+        if args.collapse_pauses:
+            # Deterministic text repair: collapse stacked pause tags in the
+            # STORED text, then re-roll verbatim via the speech_only path.
+            # The stored text is post-preprocessor, so re-running the full
+            # new_text chain (add_tts_pauses is not idempotent) would stack
+            # tags again -- exactly the bug being repaired.
+            manifest_data = json.loads(manifest.read_text())
+            chunk = manifest_data["chunks"][idx]
+            collapsed = collapse_stacked_pause_tags(chunk["text"])
+            if collapsed == chunk["text"]:
+                print(f"[swanki_audio_edit] idx={idx} no stacked tags; skipping")
+                continue
+            chunk["text"] = collapsed
+            manifest.write_text(json.dumps(manifest_data, indent=2) + "\n")
         res = edit_chunk(
             manifest,
             idx,

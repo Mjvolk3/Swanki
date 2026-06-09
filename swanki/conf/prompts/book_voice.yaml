@@ -378,6 +378,9 @@ prompts:
               after a striking number, or on transitions where the audience needs
               a breath. Listeners report book-voice lectures feel rushed without
               these — err generous, ~6-10 per chapter at rhetorical pivots.
+          NEVER stack pause tags: two pause tags must never sit adjacent
+          (e.g. "[short pause] [pause]") -- one boundary, one tag. Fish renders
+          every tag, so a stack produces pause + audible-breath artifacts.
 
           Emphasis (5-10 per chapter — book voice lectures earn more emphasis than papers):
             - [emphasis] — placed immediately before a key term, definition, or crux statement.

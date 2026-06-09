@@ -1565,3 +1565,61 @@ def test_figure_landmark_caption_not_doubled_by_empty_alt():
     cleaned = clean_markdown_for_tts(content)
     assert "img/fig1.png" not in cleaned
     assert cleaned.count("A growth curve.") == 1
+
+
+# ---------------------------------------------------------------------------
+# collapse_stacked_pause_tags: stacked tags must never survive (Fish renders
+# every tag; a stack = pause + audible-breath artifact mid-chunk).
+# ---------------------------------------------------------------------------
+
+
+class TestCollapseStackedPauseTags:
+    def test_mixed_stack_collapses_to_pause(self):
+        from swanki.audio._common import collapse_stacked_pause_tags
+
+        text = "computing.\n[short pause]\n[pause]\n\nIn the 1930s"
+        out = collapse_stacked_pause_tags(text)
+        assert out == "computing.\n[pause]\n\nIn the 1930s"
+
+    def test_triple_with_manual_tag_collapses(self):
+        from swanki.audio._common import collapse_stacked_pause_tags
+
+        text = "digital.\n[short pause]\n[pause]\n\n[short pause] Next"
+        out = collapse_stacked_pause_tags(text)
+        assert out == "digital.\n[pause]\n\nNext"
+
+    def test_short_pause_run_stays_short(self):
+        from swanki.audio._common import collapse_stacked_pause_tags
+
+        text = "a. [short pause] [short pause] b"
+        assert collapse_stacked_pause_tags(text) == "a. [short pause] b"
+
+    def test_long_pause_wins(self):
+        from swanki.audio._common import collapse_stacked_pause_tags
+
+        text = "a.\n[short pause]\n[long pause]\n\nb"
+        assert collapse_stacked_pause_tags(text) == "a.\n[long pause]\n\nb"
+
+    def test_single_tags_untouched(self):
+        from swanki.audio._common import collapse_stacked_pause_tags
+
+        text = "a. [short pause] b.\n[pause]\n\nc"
+        assert collapse_stacked_pause_tags(text) == text
+
+    def test_add_tts_pauses_paragraph_break_yields_single_tag(self):
+        # Regression: the paragraph rule ([pause]) and the sentence rule
+        # ([short pause]) both fire on a period-terminated paragraph break;
+        # the mixed stack must collapse to one tag.
+        import re
+
+        from swanki.audio._common import add_tts_pauses
+
+        out = add_tts_pauses(
+            "This was analog computing, not digital computing.\n\n"
+            "In the 1930s, slide rules were standard equipment.",
+            "fish_speech",
+        )
+        assert not re.search(
+            r"\[(?:short |long )?pause\]\s*\[(?:short |long )?pause\]", out
+        )
+        assert "[pause]" in out

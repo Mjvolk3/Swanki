@@ -317,6 +317,9 @@ prompts:
             - [pause]        — sentence / topic-shift beat
             - [short pause]  — clause / mid-sentence beat
             - [long pause]   — major section boundary only (sparingly)
+          NEVER stack pause tags: two pause tags must never sit adjacent
+          (e.g. "[short pause] [pause]") -- one boundary, one tag. Fish renders
+          every tag, so a stack produces pause + audible-breath artifacts.
 
           Emphasis (3-6 per chapter):
             - [emphasis] — placed immediately before a key term, definition, or crux statement.
