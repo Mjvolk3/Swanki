@@ -35,6 +35,9 @@ dependencies = [
     # audioop-lts restores it; required since requires-python = ">=3.13".
     "audioop-lts",
     "requests",
+    # httpx was previously only transitive (pyzotero); swanki/abs, swanki/audio,
+    # and swanki/sync import it directly.
+    "httpx>=0.28",
     "markdown",
     "pyzotero",
     "Pillow",

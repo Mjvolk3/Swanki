@@ -4,84 +4,21 @@
 # [[scripts.abs_refresh]]
 # https://github.com/Mjvolk3/Swanki/tree/main/scripts/abs_refresh.sh
 #
-# End-to-end refresh of ABS state from Zotero. Idempotent; safe to run on a
-# tight schedule (cron/systemd timer). A flock keeps overlapping runs from
-# clobbering each other when a prior run is still mid-download.
+# Exec shim: the 7-step refresh orchestration moved into the package
+# (swanki/abs/refresh.py, `python -m swanki.abs refresh`). This wrapper keeps
+# the historical entry point alive for the cron line, the legacy one-off
+# publish scripts, and muscle memory -- without touching crontab.
 #
-# Lock modes:
-#   default   non-blocking (-n): skip if a run is already in progress. Right
-#             for the cron/timer path — the next tick covers what was skipped.
-#   --wait    block until the lock frees. Right for the delivery path
-#             (`python -m swanki.delivery finalize-abs`) so a contended drain
-#             never silently no-ops its ABS step.
-#
-# Pipeline:
-#   1. swanki_abs_sync.py            — pull new mp3s from Zotero zips
-#   2. abs_sync_zotero_collections.py — mirror Zotero collections → ABS collections
-#   3. abs_enrich_metadata.py        — author + covers for new items
-#   4. abs_clean_stale_chapters.py   — drop chapters that reference deleted files
-#   5. abs_set_chapter_titles.py     — set canonical content_key chapter titles
-#   6. POST /api/libraries/:id/scan  — force ABS to pick up new files
+# Lock modes (now enforced by fcntl.flock in Python on the SAME
+# /tmp/abs-refresh.lock, so in-flight runs of old and new worlds still
+# exclude each other; this shim carries no lock of its own):
+#   default   non-blocking: skip if a run is already in progress (cron path).
+#   --wait    block until the lock frees (delivery path).
 
 set -euo pipefail
 
-WAIT=false
-for arg in "$@"; do
-    case "$arg" in
-        --wait) WAIT=true ;;
-    esac
-done
-
-LOCKFILE=/tmp/abs-refresh.lock
-exec 200>"$LOCKFILE"
-if [ "$WAIT" = true ]; then
-    # Block until the lock frees so delivery-driven refreshes always run.
-    flock 200
-else
-    if ! flock -n 200; then
-        echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] another abs_refresh in progress — skipping" >&2
-        exit 0
-    fi
-fi
-
-export ABS_API_TOKEN_FILE="${ABS_API_TOKEN_FILE:-$HOME/Documents/projects/infra/abs/.api-token}"
 PY="${ABS_REFRESH_PY:-$HOME/miniconda3/envs/swanki/bin/python}"
 SWANKI_DIR="${ABS_REFRESH_SWANKI_DIR:-$HOME/Documents/projects/Swanki}"
-ABS_URL="${ABS_URL:-https://abs.michaelvolk.dev}"
 
 cd "$SWANKI_DIR"
-
-log() {
-    echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] $*"
-}
-
-log "=== abs_refresh start ==="
-
-log "step 1/7 — swanki_abs_sync"
-"$PY" scripts/swanki_abs_sync.py
-
-log "step 2/7 — abs_setup_libraries (idempotent)"
-"$PY" scripts/abs_setup_libraries.py
-
-log "step 3/7 — abs_sync_zotero_collections"
-"$PY" scripts/abs_sync_zotero_collections.py
-
-log "step 4/7 — abs_enrich_metadata"
-"$PY" scripts/abs_enrich_metadata.py
-
-log "step 5/7 — abs_clean_stale_chapters"
-"$PY" scripts/abs_clean_stale_chapters.py
-
-log "step 6/7 — abs_set_chapter_titles"
-"$PY" scripts/abs_set_chapter_titles.py
-
-log "step 7/7 — scan libraries"
-TOKEN=$(cat "$ABS_API_TOKEN_FILE")
-for lib_id in $(curl -s -H "Authorization: Bearer $TOKEN" -H "User-Agent: swanki-abs-setup/1.0" \
-                  "$ABS_URL/api/libraries" | jq -r '.libraries[].id'); do
-    curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "User-Agent: swanki-abs-setup/1.0" \
-         "$ABS_URL/api/libraries/$lib_id/scan" > /dev/null
-    log "  scanned $lib_id"
-done
-
-log "=== abs_refresh done ==="
+exec "$PY" -m swanki.abs refresh "$@"

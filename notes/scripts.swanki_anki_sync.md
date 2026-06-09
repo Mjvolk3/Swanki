@@ -47,3 +47,11 @@ its walk-all manual "push to anki" command (Sync Terminology) but imports those
 primitives so the queue's per-item delivery and this command share one
 implementation. AnkiConnect-primitive tests moved to `tests/test_delivery_anki.py`;
 the push-projection tests here now patch `swanki.delivery.targets.anki.requests`.
+
+## 2026.06.09 - Import repoint after the ABS consolidation
+
+`swanki_abs_sync.py` was absorbed into the package, so the five shared helpers
+now come from [[swanki.abs.projections]] (`DEFAULT_PROJECTIONS`,
+`citation_key`, `load_projections`, `resolve_library`) and [[swanki.abs.sync]]
+(`fetch_items`). Behavior and the dict-shaped projection configs are
+unchanged; tests untouched.

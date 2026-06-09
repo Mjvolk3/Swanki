@@ -25,3 +25,11 @@ Books that share a single Zotero parent item (e.g. Bechtel — one citation key,
 `ZIP_PATTERN`, `latest_zips`, and `latest_zip` moved into [[scripts._swanki_zotero_artifacts]] so the new [[scripts.swanki_anki_sync]] can mirror the same "newest attachment per content-prefix" logic for apkgs (`latest_apkgs`). `swanki_abs_sync.py` imports `latest_zips` from the helper; no behavior change on the audio side.
 
 Also added a `push_audio: bool` early-return at the top of `sync_projection` (default `True` when the key is absent). Set `push_audio: false` on a projection in `infra/abs/projections.yml` to suppress its audio extraction while still letting the anki side push apkgs for the same projection. Existing michaelvolk / mv-ll projections inherit the `True` default and behave exactly as before.
+
+## 2026.06.09 - Absorbed into swanki/abs/sync.py; script deleted
+
+Ported near-verbatim to [[swanki.abs.sync]] as part of the one-pass ABS
+consolidation ([[plan.abs-crud-core-module.2026.06.09]]); the script was
+referenced only by `abs_refresh.sh` (now a shim over `python -m swanki.abs
+refresh`) and `swanki_anki_sync.py` (imports repointed). All idempotency rules
+documented here carry over unchanged.

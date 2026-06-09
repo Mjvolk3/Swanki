@@ -96,9 +96,18 @@ writes a `_edits/` audit trail (prior chunk mp3+text + manifest snapshot +
    `swanki.sync.zotero.sync_to_zotero(citation_key, output_dir, audio_prefix,
    content_key)` so the embedded `_git_short_hash` is the final one. If a
    rebase happens AFTER sync, re-sync.
-3. Poll the abs-refresh flock (`/tmp/abs-refresh.lock`) until free, then run
-   `bash scripts/abs_refresh.sh` (a scheduled run otherwise silently skips).
-4. Report: synced zip filename, commit hash, and confirm the fox tag (Zotero
+3. Land on ABS via the targeted refresh (seconds, not the ~20-min full
+   refresh): `python -m swanki.abs refresh --target <content_key>
+   --output-dir <output_dir>` -- it blocks on the shared lock, drops the new
+   mp3 into every routed projection, scans only those libraries, verifies the
+   item serves the new file, and fixes that item's chapters. (Fallback:
+   `bash scripts/abs_refresh.sh --wait` for a full refresh.)
+4. Wipe the addressed bookmarks (windowed, never whole-book):
+   `python -m swanki.abs clear-bookmarks --citation-key <key> --window
+   START_S END_S ... --yes` after a dry run. Windows are item-global seconds
+   from the OLD (pre-edit) chunk timeline + preceding-chapter durations --
+   never `edit_chunk`'s returned (new-timeline) window.
+5. Report: synced zip filename, commit hash, and confirm the fox tag (Zotero
    unicode marker) is present on the item (idempotent in `sync_to_zotero`).
 
 ## Rules
