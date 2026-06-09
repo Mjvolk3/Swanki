@@ -23,3 +23,9 @@ Bug surfaced after the Hamming v2 rerun: ABS UI showed Ch1 and Ch2 "grouped" —
 Fix: the check now also compares each chapter's `start` and `end` against the desired cumulative durations with a 0.5s tolerance (sub-second drift acceptable; the player only uses chapter boundaries for navigation, not transport accuracy). Per-book log line gains a "boundaries shifted" action label so this case is obvious in the run log going forward.
 
 This pairs with the existing `abs_clean_stale_chapters` pattern: that script clears titles whose stem no longer prefix-matches any audioFile (catches removed/renamed files); this script then sets titles AND boundaries from the current audioFiles. Both run as steps 5 and 6 of `scripts/abs_refresh.sh`.
+
+## 2026.06.09 - Absorbed into swanki/abs/chapters.py; script deleted
+
+Merged with the stale-clean pass into [[swanki.abs.chapters]]
+([[plan.abs-crud-core-module.2026.06.09]]). The content_key naming rule, the
+cumulative-duration bounds, and the 0.5s drift tolerance carry over unchanged.

@@ -31,3 +31,10 @@ Replaced the subset check with a per-title `_valid` predicate that accepts eithe
 Either form keeps the chapter alive. The "followed by `-`" anchor is important: bare prefix would also match unrelated keys (e.g. `hammingArtDoingScience2020_01` matching `hammingArtDoingScience2020_01_orientation`), which the suffix delimiter prevents.
 
 Net effect: human-readable chapter titles survive cron cycles; the script still wipes truly stale chapter arrays where titles point at deleted files.
+
+## 2026.06.09 - Absorbed into swanki/abs/chapters.py; script deleted
+
+Merged with the retitle pass into [[swanki.abs.chapters]]
+([[plan.abs-crud-core-module.2026.06.09]]). The exact-or-prefix stale rule and
+the API-write requirement documented here carry over unchanged; the new
+per-item `fix_item_chapters` extends the same rules to the targeted refresh.

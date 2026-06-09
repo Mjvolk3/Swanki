@@ -26,3 +26,12 @@ the playhead WHEN SAVED (lags the issue by minutes) so it only narrows the
 chapter/audio_type -- the chunk is found by content-match + the
 `chunk_timeline.json` sidecar
 ([[plan.exact-chunk-time-mapping-audio-fix-from-annotations.2026.05.18]]).
+
+## 2026.06.09 - Became a re-export shim over swanki/abs/bookmarks.py
+
+The fetcher moved into the package ([[swanki.abs.bookmarks]], one ABSClient +
+unified token chain, httpx instead of requests). This module keeps the
+historical import path (`from scripts.abs_bookmarks import get_bookmarks`) and
+CLI that the audio-fix-from-annotations skill uses, mirroring the
+`_swanki_zotero_artifacts.py` shim precedent. The `/api/me` mapping and its
+fixture tests live on in the package (`tests/test_abs_bookmarks.py`).

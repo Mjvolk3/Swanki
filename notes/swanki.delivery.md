@@ -63,3 +63,14 @@ duplicated into Hydra.
   conflating a delivery flake with a generation failure would force a
   regenerate on retry. `undelivered/` keeps artifacts + `.delivery.json` on disk
   so a re-run resumes delivery without regenerating.
+
+## 2026.06.09 - AbsTarget calls the module instead of subprocessing bash
+
+`swanki/delivery/targets/abs.py` stops shelling out to
+`scripts/abs_refresh.sh --wait` and calls
+`swanki.abs.refresh.full_refresh(wait=True)` directly
+([[swanki.abs.refresh]]), completing the absorption its stub docstring
+promised. Interface unchanged (`name`, `refresh(dry_run=...)`, blocking
+default), so the orchestrator, `python -m swanki.delivery finalize-abs`, and
+the SLURM finalizer are untouched; `repo_dir` is retained in the signature for
+compatibility but unused.

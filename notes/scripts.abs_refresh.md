@@ -24,3 +24,12 @@ Extended from 5 to 6 steps. The new step `abs_clean_stale_chapters.py` runs betw
 non-blocking `-n` for cron). The delivery path (`python -m swanki.delivery
 finalize-abs`) uses `--wait` so a contended drain never silently no-ops its ABS
 step, while cron keeps `-n` (the next tick covers a skip).
+
+## 2026.06.09 - Became an exec shim; orchestration moved into swanki/abs/
+
+The 7-step pipeline now lives at [[swanki.abs.refresh]] as `full_refresh`; this
+script is a ~10-line `exec python -m swanki.abs refresh "$@"` wrapper kept so
+the 5-minute cron line and the legacy one-off publish scripts keep working
+without touching crontab. The flock moved to Python (`fcntl.flock` on the same
+`/tmp/abs-refresh.lock`, so old and new worlds still exclude each other); the
+shim carries no lock of its own. `--wait` semantics unchanged.

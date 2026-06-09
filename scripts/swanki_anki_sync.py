@@ -30,14 +30,14 @@ from typing import Any
 from _swanki_zotero_artifacts import latest_apkgs
 from dotenv import load_dotenv
 from pyzotero import zotero
-from swanki_abs_sync import (
+
+from swanki.abs.projections import (
     DEFAULT_PROJECTIONS,
     citation_key,
-    fetch_items,
     load_projections,
     resolve_library,
 )
-
+from swanki.abs.sync import fetch_items
 from swanki.delivery.targets.anki import (
     ANKICONNECT_VERSION as ANKICONNECT_VERSION,
 )
