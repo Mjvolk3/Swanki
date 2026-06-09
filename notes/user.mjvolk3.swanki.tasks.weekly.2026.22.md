@@ -70,3 +70,4 @@ created: 1779864732867
 ## 2026.06.09
 
 - [x] Fixed Hamming CH02 lecture chunks 9 + 19 (speech-only re-rolls via the SLURM surgical-edit path) from two ABS bookmarks, extended `swanki_audio_edit.py --idx` to take a `:`-separated list (one Fish session, sequential), and worked around the `sbatch --export` comma collision; delivered CH02 to Zotero->ABS and wiped the two addressed bookmarks per the replace-old-comments policy [[scripts.swanki_audio_edit]]
+- [ ] Planned the ABS-CRUD consolidation: ten `scripts/abs_*` files collapse into a new `swanki/abs/` package (one httpx `ABSClient`, full + targeted refresh, default windowed bookmark-wipe-on-replace), one-pass migration with three shims and seven deletions [[plan.abs-crud-core-module.2026.06.09]]
