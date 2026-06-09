@@ -62,3 +62,14 @@ from two 2026-06-08 ABS bookmarks (chunk 9 "ends on a strange nonconclusive note
 chunk 19 "blip"). Paired with the bookmark-wipe-on-replace policy: the two
 addressed bookmarks are deleted after the new audio lands. See
 [[project_abs_crud_build]] (windowed-wipe default, still to be automated).
+
+## 2026.06.09 - Default slurm log path moved out of the repo root
+
+Direct `sbatch scripts/swanki_audio_edit.sbatch` submissions dumped `slurm-%j.log`
+into the submit cwd (the repo root) because the header's relative `--output` was
+only ever overridden by `swanki_enqueue.sh` (`$QUEUE_DIR/logs/slurm-%j.log`).
+All three sbatch headers now default to the same absolute
+`/home/michaelvolk/.swanki-queue/logs/` location (SBATCH directives do not
+expand `~`/`$HOME`, hence the literal path -- consistent with the queue's
+convention), and `slurm-*.log` is gitignored as a backstop. Found while running
+the CH03 surgical-edit chain by hand.

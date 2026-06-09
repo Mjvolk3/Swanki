@@ -16,7 +16,7 @@
 #SBATCH --mem=4G
 #SBATCH --time=01:00:00
 #SBATCH --dependency=singleton
-#SBATCH --output=slurm-abs-%j.log
+#SBATCH --output=/home/michaelvolk/.swanki-queue/logs/slurm-abs-%j.log
 set -uo pipefail
 
 REPO="${SWANKI_REPO:-$HOME/Documents/projects/Swanki}"

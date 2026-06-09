@@ -30,7 +30,7 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
 #SBATCH --time=UNLIMITED
-#SBATCH --output=slurm-%j.log
+#SBATCH --output=/home/michaelvolk/.swanki-queue/logs/slurm-%j.log
 set -uo pipefail
 
 # --- inputs (exported by the submitter) -------------------------------------

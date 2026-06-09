@@ -70,3 +70,5 @@ mermaid-filter.err
 .coverage
 htmlcov/
 
+slurm-*.log
+slurm-abs-*.log

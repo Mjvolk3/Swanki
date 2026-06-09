@@ -117,3 +117,10 @@ respawn-unhealthy -> exit 1, /tmp fallback) -- no GPU needed; the real path is
 the post-cutover re-queue of a LONGEST chapter. `git diff` confirms zero change
 under `swanki/` (card/audio content untouched). Plan:
 [[plan.fish-restart-supervisor-slurm-job.2026.06.08]].
+
+## 2026.06.09 - Default slurm log path moved out of the repo root
+
+Same change as [[scripts.swanki_audio_edit]]: the header `--output` fallback now
+points at `/home/michaelvolk/.swanki-queue/logs/slurm-%j.log` so direct sbatch
+submissions stop dumping logs into the repo root; enqueue-driven submissions
+already overrode it to the same dir.

@@ -18,3 +18,8 @@ touches an `abs-dirty` flag after Anki delivery and this job -- submitted with
 `python -m swanki.delivery finalize-abs` exactly once at a time, clearing the flag
 on success. No GPU. Mirrors the drainer's `finalize_abs()` semantics
 ([[scripts.swanki_queue]]). See [[runbook.slurm-cutover]].
+
+## 2026.06.09 - Default slurm log path moved out of the repo root
+
+Header `--output` fallback now `/home/michaelvolk/.swanki-queue/logs/slurm-abs-%j.log`
+(same root-pollution fix as [[scripts.swanki_audio_edit]]).

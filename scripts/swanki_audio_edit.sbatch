@@ -24,7 +24,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --time=UNLIMITED
-#SBATCH --output=slurm-%j.log
+#SBATCH --output=/home/michaelvolk/.swanki-queue/logs/slurm-%j.log
 set -uo pipefail
 
 manifest="${SWANKI_EDIT_MANIFEST:?SWANKI_EDIT_MANIFEST unset}"
