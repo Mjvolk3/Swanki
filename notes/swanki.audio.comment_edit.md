@@ -50,3 +50,20 @@ git_hash`). `restitch_from_chunks` reads explicit `chunk["file"]` names, so
 `*_NN_slug_<N>` dir, orphaning the old `_edits/` -- inherent (a full regen is a
 fresh baseline). Classification, the review gate, and publishing stay in the
 audio-fix-from-annotations skill.
+
+## 2026.06.09 - `edit_chunk` speed defaults to the original-gen speed for the audio type
+
+`edit_chunk` carried a hardcoded `speed=1.1` default — which happens to match the
+*summary* config but NOT lecture (1.0) or reading (1.2). So any lecture/reading chunk
+edited without an explicit `speed=` came out audibly faster than its neighbors at the
+splice. It already read `audio_type` from the manifest but ignored it for speed.
+
+Fix: `speed` now defaults to `None` and resolves in priority order — (1) the caller's
+explicit `speed=`, (2) the manifest's new `speed` field (written at gen time by
+`write_chunk_manifest`), (3) a per-`audio_type` fallback map `_SPEED_BY_AUDIO_TYPE`
+(lecture 1.0 / summary 1.1 / reading 1.2 / card 1.6) for legacy manifests that predate
+the field. So a surgical edit always re-TTSs at the speed the chapter was generated at,
+and callers (the audio-fix skill) no longer need to pass `speed` at all. The map mirrors
+`swanki/conf/audio/*.yaml`. See [[swanki.audio._common]] (same date) for the manifest
+field. Also repaired two `test_audio_comment_edit` tests left red by the codeword-scope
+default-off change (PR #39): they now opt the scrubber on via the preprocessor config.

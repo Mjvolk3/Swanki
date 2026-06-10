@@ -524,6 +524,7 @@ def generate_reading_audio(
             "bookend_end_pause_ms": bookend_end_pause_ms,
             "bookend_trailing_pause_ms": bookend_trailing_pause_ms,
         },
+        speed=speed,
     )
 
     return output_path.name

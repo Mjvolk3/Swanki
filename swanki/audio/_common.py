@@ -1744,6 +1744,7 @@ def write_chunk_manifest(
     bookend_start: str | None = None,
     bookend_end: str | None = None,
     postprocessor: dict | None = None,
+    speed: float | None = None,
 ) -> Path:
     """Write a chunk manifest JSON for surgical regeneration.
 
@@ -1754,6 +1755,12 @@ def write_chunk_manifest(
         chunks: List of dicts with keys ``index``, ``section``, ``text``, ``file``.
         bookend_start: Filename of start bookend, if any.
         bookend_end: Filename of end bookend, if any.
+        speed: TTS playback speed the original render used for this audio type.
+            Recorded so a later surgical edit (:func:`swanki.audio.comment_edit.
+            edit_chunk`) re-TTSs the replacement chunk at the SAME speed instead
+            of guessing -- a mismatch makes the edited chunk audibly faster or
+            slower than its neighbors. ``None`` omits the key (legacy manifests
+            predate it; ``edit_chunk`` then falls back to an audio-type map).
         postprocessor: Optional dict of the boundary-fix knobs that the
             original render passed to :func:`combine_audio_with_section_pauses`
             (``section_pause_ms``, ``chunk_pause_ms``, ``chunk_tail_trim_ms``,
@@ -1773,6 +1780,7 @@ def write_chunk_manifest(
         "bookend_start": bookend_start,
         "bookend_end": bookend_end,
         "postprocessor": postprocessor or {},
+        "speed": speed,
         "chunks": chunks,
     }
     manifest_path = chunks_dir / "chunk_manifest.json"

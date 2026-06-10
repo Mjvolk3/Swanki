@@ -594,3 +594,11 @@ Hamming chapters (CH07 alone had 10).
   guarded at both layers.
 - `add_tts_pauses` remains non-idempotent overall (the every-3-sentences
   injector shifts on re-runs) -- the preprocess-once invariant stands.
+
+## 2026.06.09 - `write_chunk_manifest` records the gen `speed`
+
+Added a `speed` field to the chunk manifest, threaded from `generate_{lecture,reading,
+summary}_audio` (each already had `speed` in scope). It is the source of truth a later
+surgical edit uses to re-TTS the replacement chunk at the SAME speed instead of guessing
+(see [[swanki.audio.comment_edit]], same date). `None` when a caller omits it; legacy
+manifests without the field fall back to `edit_chunk`'s per-audio-type map.

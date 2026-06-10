@@ -652,6 +652,15 @@ def test_write_chunk_manifest_basic(tmp_path):
     assert data["chunks"] == chunks
 
 
+def test_write_chunk_manifest_records_speed(tmp_path):
+    # The gen speed is persisted so a later surgical edit re-TTSs at the same
+    # speed; omitted (None) for callers that do not pass it.
+    path = write_chunk_manifest(tmp_path, "lecture", "out.mp3", [], speed=1.0)
+    assert json.loads(path.read_text())["speed"] == 1.0
+    path2 = write_chunk_manifest(tmp_path, "summary", "out.mp3", [])
+    assert json.loads(path2.read_text())["speed"] is None
+
+
 def test_write_chunk_manifest_no_bookends(tmp_path):
     path = write_chunk_manifest(tmp_path, "summary", "out.mp3", [])
     data = json.loads(path.read_text())
