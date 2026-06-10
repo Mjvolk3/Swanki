@@ -84,3 +84,14 @@ path -- stored text is post-preprocessor and `add_tts_pauses` is not
 idempotent, so re-running the full chain would stack tags again (exactly how
 the CH03 chunk-3 pause insert became a triple). Built to remediate the 28
 stacked chunks across the live Hamming chapters ([[swanki.audio._common]]).
+
+### Gotcha: concurrent edit jobs get SIGKILLed (2026.06.09)
+
+Running 4 edit jobs in parallel (one per GPU) killed 6 of 9: each victim died
+~4:10 after ITS start mid-TTS with a bare SIGKILL (no kernel OOM logged, SLURM
+state FAILED not OUT_OF_MEMORY, MaxRSS well under the 32G request), exactly one
+survivor per scheduling wave. The same workloads rerun strictly sequentially
+(afterany chain) all completed. Root cause undiagnosed -- until it is, submit
+edit jobs ONE AT A TIME. Recovery note: stdout is block-buffered, so a killed
+job's log under-reports progress; the collapse/text state on disk is ahead of
+the log.
