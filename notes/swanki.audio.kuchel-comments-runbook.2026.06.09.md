@@ -31,3 +31,29 @@ via the new manifest/audio-type resolution (PR #43). Originals backed up to
 Published Zotero (source of truth) -> ABS via `sync_to_zotero` + `swanki.abs.targeted_refresh`.
 ABS chunk times shifted, so CH01 bookmarks need clear + re-mark. See
 [[swanki.audio.comment_edit]], [[plan.scope-binary-codeword-tts.2026.06.06]].
+
+## Kuchel CH05 reading — number-verbalization fix (2026.06.10)
+
+Scan of CH05 found the lecture and summary tracks CLEAN; the **reading** track had
+**34 number-verbalization artifacts across 26 chunks** (same pre-PR#39 root cause, but
+the reading rule's "10" example mangled this section's dense scientific notation,
+figure/chapter refs, and data tables). All 34 were mis-verbalized numbers (no genuine
+codewords — biochemistry), each a deterministic digit-word -> numeral swap:
+`one-zero`->`10`, `one-one`->`11`, `one-zero-zero`->`100`, `one-one-zero`->`110`,
+`one-zero-zero-zero`->`1000`. Examples: "around 10 to the 3 to 10 to the 12" (10^3-10^12),
+"Fig. 5-11", "Chap. 11"/"Chap. 10", "L equals 1000", "2.0; 100" (table cell).
+
+Dir: `kuchelSchaumOutlineBiochemistry2011_CH05_regulation-of-reaction-rates-enzymes_0/reading_chunks`.
+One restitch of the 310-chunk reading manifest is ~122s, so 26 per-chunk `edit_chunk`
+calls would be ~53 min of restitch waste; applied as a **batch** (`/tmp/ch05_numfix.py`)
+that mirrors `edit_chunk`'s verbatim `speech_only` path (archive baseline + `_edits`
+audit) but lifts restitch out of the loop: digit-swap the stored chunk text, verbatim
+re-TTS each affected chunk (no re-preprocess), then a SINGLE `restitch_from_chunks`.
+Speed auto-resolved to **1.2** (reading) via the manifest/audio-type fallback (PR #43).
+Verified: 0 verbalized tokens remain; output mp3 + `chunk_timeline.json` regenerated.
+
+Affected chunks (fix count): 2(2), 4, 9, 10, 48, 52, 53, 54(2), 56, 59(3), 62, 69, 140,
+184, 189(2), 202, 203, 231, 240, 244, 250, 280(4), 281, 285, 298, 307.
+
+Published Zotero -> ABS same as CH01. ABS chunk times shifted, so CH05 bookmarks need
+clear + re-mark.
