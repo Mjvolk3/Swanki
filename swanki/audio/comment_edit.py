@@ -163,6 +163,20 @@ def _append_edit_log(
         f.write(json.dumps(record) + "\n")
 
 
+# Fallback re-TTS speed per audio type, for manifests written before the
+# manifest gained a ``speed`` field. Mirrors the defaults in the audio Hydra
+# configs (swanki/conf/audio/*.yaml): lecture 1.0, summary 1.1, reading 1.2,
+# card/complementary 1.6. A fresh manifest carries its own ``speed`` and never
+# consults this; it exists so a surgical edit of an OLD render still matches.
+_SPEED_BY_AUDIO_TYPE = {
+    "lecture": 1.0,
+    "summary": 1.1,
+    "reading": 1.2,
+    "card": 1.6,
+    "complementary": 1.6,
+}
+
+
 def edit_chunk(
     manifest_path: Path,
     idx: int,
@@ -171,7 +185,7 @@ def edit_chunk(
     new_text: str | None = None,
     speech_only: bool = False,
     tts_kwargs: dict,
-    speed: float = 1.1,
+    speed: float | None = None,
     model: str | None = None,
     section_pause_ms: int | None = None,
 ) -> ChunkEditResult:
@@ -204,7 +218,12 @@ def edit_chunk(
         tts_kwargs: Provider config incl. the ``preprocessor`` sub-tree and the
             paper's reference voice; passed to ``text_to_speech`` (which reads
             only the flat provider keys) and ``preprocess_for_tts``.
-        speed: Playback speed for TTS.
+        speed: Playback speed for the re-TTS. Leave ``None`` (the default) to
+            reuse the speed the original render used for this audio type: the
+            manifest's ``speed`` field if present, else the per-audio-type
+            fallback in :data:`_SPEED_BY_AUDIO_TYPE`. A mismatch makes the
+            edited chunk audibly faster or slower than its neighbors, so the
+            caller should almost never pass this explicitly.
         model: pydantic-ai model string; required for the ``comment`` path.
         section_pause_ms: Optional restitch override.
 
@@ -222,6 +241,14 @@ def edit_chunk(
         "original silence/gain. Refusing to edit."
     )
     audio_type = manifest["audio_type"]
+    if speed is None:
+        speed = manifest.get("speed")
+    if speed is None:
+        assert audio_type in _SPEED_BY_AUDIO_TYPE, (
+            f"No speed for audio_type {audio_type!r}: manifest predates the "
+            "speed field and the type has no fallback. Pass speed= explicitly."
+        )
+        speed = _SPEED_BY_AUDIO_TYPE[audio_type]
     by_idx = {c["index"]: c for c in manifest["chunks"]}
     assert idx in by_idx, f"Chunk index {idx} not in manifest"
     chunk = by_idx[idx]

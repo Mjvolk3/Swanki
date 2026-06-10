@@ -28,9 +28,20 @@ FISH_KWARGS = {
     "preprocessor": {},
 }
 
+# Same voice with the opt-in bit-string scrubber ON, so the preprocessor's
+# effect is observable. The scrubber is default-off (codeword-scope fix, PR #39),
+# so an empty preprocessor leaves "110" alone.
+FISH_VERBALIZE = {**FISH_KWARGS, "preprocessor": {"verbalize_bit_strings": True}}
 
-def _manifest(tmp: Path, *, with_post: bool = True) -> Path:
-    chunks_dir = tmp / "lecture_chunks"
+
+def _manifest(
+    tmp: Path,
+    *,
+    with_post: bool = True,
+    audio_type: str = "lecture",
+    speed: float | None = None,
+) -> Path:
+    chunks_dir = tmp / f"{audio_type}_chunks"
     chunks_dir.mkdir(parents=True)
     chunks = []
     for i in range(3):
@@ -41,13 +52,15 @@ def _manifest(tmp: Path, *, with_post: bool = True) -> Path:
              "boundary": "paragraph"}
         )
     m = {
-        "audio_type": "lecture",
-        "output_file": "paper-lecture-audio.mp3",
+        "audio_type": audio_type,
+        "output_file": f"paper-{audio_type}-audio.mp3",
         "bookend_start": None,
         "bookend_end": None,
         "postprocessor": {"section_pause_ms": 5000},
         "chunks": chunks,
     }
+    if speed is not None:
+        m["speed"] = speed
     if not with_post:
         del m["postprocessor"]
     mp = chunks_dir / "chunk_manifest.json"
@@ -61,7 +74,7 @@ def _manifest(tmp: Path, *, with_post: bool = True) -> Path:
 def test_explicit_new_text_runs_preprocessor(tts, restitch, _ctw, tmp_path):
     mp = _manifest(tmp_path)
     res = edit_chunk(
-        mp, 1, new_text="The codeword 110 has parity.", tts_kwargs=FISH_KWARGS
+        mp, 1, new_text="The codeword 110 has parity.", tts_kwargs=FISH_VERBALIZE
     )
     # Preprocessor ran on the NEW text: bit string verbalized, not bare.
     sent = tts.call_args.kwargs["text"]
@@ -106,7 +119,7 @@ def test_comment_path_agent_edit_text(safety, tts, restitch, _ctw, tmp_path):
     )
     mp = _manifest(tmp_path)
     res = edit_chunk(
-        mp, 0, comment="say the bits", tts_kwargs=FISH_KWARGS,
+        mp, 0, comment="say the bits", tts_kwargs=FISH_VERBALIZE,
         model="openai:gpt-5.5",
     )
     assert "one-one-zero" in tts.call_args.kwargs["text"]
@@ -178,3 +191,34 @@ def test_audit_trail_written(tts, restitch, _ctw, tmp_path):
     assert rec["idx"] == 1
     assert rec["action"] == "edit_text"
     assert rec["old_text"] == "shaped text 1."
+
+
+@patch("swanki.audio.comment_edit.chunk_time_window", return_value=(0, 1000))
+@patch("swanki.audio.comment_edit.restitch_from_chunks")
+@patch("swanki.audio.comment_edit.text_to_speech")
+def test_speed_resolves_from_manifest(tts, _rs, _ctw, tmp_path):
+    # The manifest records the gen speed; edit_chunk re-TTSs at that exact speed.
+    mp = _manifest(tmp_path, audio_type="summary", speed=1.1)
+    edit_chunk(mp, 0, speech_only=True, tts_kwargs=FISH_KWARGS)
+    assert tts.call_args.kwargs["speed"] == 1.1
+
+
+@patch("swanki.audio.comment_edit.chunk_time_window", return_value=(0, 1000))
+@patch("swanki.audio.comment_edit.restitch_from_chunks")
+@patch("swanki.audio.comment_edit.text_to_speech")
+def test_speed_falls_back_to_audio_type_map_for_legacy_manifest(tts, _rs, _ctw, tmp_path):
+    # Legacy manifest (no speed field) -> per-audio-type fallback (lecture=1.0),
+    # NOT edit_chunk's old hardcoded 1.1.
+    mp = _manifest(tmp_path, audio_type="lecture")  # no speed key
+    assert "speed" not in json.loads(mp.read_text())
+    edit_chunk(mp, 0, speech_only=True, tts_kwargs=FISH_KWARGS)
+    assert tts.call_args.kwargs["speed"] == 1.0
+
+
+@patch("swanki.audio.comment_edit.chunk_time_window", return_value=(0, 1000))
+@patch("swanki.audio.comment_edit.restitch_from_chunks")
+@patch("swanki.audio.comment_edit.text_to_speech")
+def test_explicit_speed_overrides_manifest_and_map(tts, _rs, _ctw, tmp_path):
+    mp = _manifest(tmp_path, audio_type="lecture", speed=1.0)
+    edit_chunk(mp, 0, speech_only=True, tts_kwargs=FISH_KWARGS, speed=1.3)
+    assert tts.call_args.kwargs["speed"] == 1.3
