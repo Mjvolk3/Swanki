@@ -148,17 +148,23 @@ def generate_card_transcript(
     logger.debug(f"  Is front: {is_front}")
     logger.debug(f"  Front image path: {card.front.image_path}")
     logger.debug(f"  Back image path: {card.back.image_path}")
-    logger.debug(f"  Front image summary: {card.front.image_summary}")
-    logger.debug(f"  Back image summary: {card.back.image_summary}")
+    logger.debug(f"  Front image summary (perceptual): {card.front.image_summary_perceptual}")
+    logger.debug(f"  Back image summary (interpretive): {card.back.image_summary}")
 
     if is_front:
-        if card.front.image_path and card.front.image_summary:
-            image_summary_for_audio = card.front.image_summary
-            logger.debug("  Using front image summary for front audio")
-        elif card.front.image_path and not card.front.image_summary:
-            logger.error(
-                f"Card {card.card_id} has front image but no image summary for audio"
+        if card.front.image_path:
+            # Front audio speaks the PERCEPTUAL description (what is visible,
+            # never the answer); fall back to the interpretive summary for cards
+            # generated before the perceptual field existed so nothing regresses.
+            image_summary_for_audio = (
+                card.front.image_summary_perceptual or card.front.image_summary or ""
             )
+            if image_summary_for_audio:
+                logger.debug("  Using front perceptual image summary for front audio")
+            else:
+                logger.error(
+                    f"Card {card.card_id} has front image but no image summary for audio"
+                )
     else:
         if card.back.image_path and card.back.image_summary:
             image_summary_for_audio = card.back.image_summary
@@ -819,7 +825,7 @@ def _build_transcript_system_prompt(
                     "   - Read the image description exactly as provided\n"
                     "   - Only convert LaTeX/math notation to speakable form if present\n"
                     "4. Read ALL content in order: main cloze text first, then image description (if present)\n"
-                    "5. The image description is crucial for audio-only learners - never skip it\n"
+                    "5. The image description describes only what is visible (not the answer) and lets audio-only learners picture the figure - never skip it\n"
                     "6. CRITICAL: Image cards should NEVER be cloze cards (this is validated elsewhere)\n"
                 )
             else:
@@ -844,8 +850,9 @@ def _build_transcript_system_prompt(
                     "3. 'Image description:' ALWAYS appears at the end - read it exactly as provided:\n"
                     "   - Read the image description verbatim\n"
                     "   - Only convert LaTeX/math notation to speakable form if present\n"
+                    "   - It describes only what is visible in the figure; it does NOT answer the question\n"
                     "4. DO NOT answer the question or provide explanations\n"
-                    "5. DO NOT skip the image description - it's crucial for audio-only learners\n"
+                    "5. DO NOT skip the image description - it lets audio-only learners picture the figure\n"
                     "6. NEVER read tags (lines starting with # or - #)\n\n"
                     "Example structure: [Question as written]. [Image description as provided]\n"
                 )

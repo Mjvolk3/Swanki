@@ -37,3 +37,7 @@ Removed the `model: str = "openai:gpt-4o"` default from `ImageProcessor.__init__
 ## 2026.06.05 - Bump image-summary max_tokens 1024 -> 8000 for reasoning models
 
 The 1024 cap set on 2026.03.12 became insufficient once the project moved to a reasoning model (`gpt-5.5`): hidden reasoning tokens count against `max_tokens`, so the model can exhaust the entire 1024-token budget while thinking and emit no visible output, raising `Model token limit (1024) exceeded before any response was generated`. This was a hard pipeline crash at `process_images` (Kuchel Schaum's Biochemistry CH05 enzyme-kinetics figure). Bumped to 8000 to match `swanki.audio.reading`, giving ample room for reasoning plus a one-sentence figure caption. Same root cause and same fix were applied to the table-summary call in [[swanki.processing.table_processor]] (256 -> 4000).
+
+## 2026.06.12
+
+`_generate_image_summary` now returns an `ImageDescription` (perceptual + interpretive) from one vision call via `image_description_agent` instead of a single string via `text_agent`. The call site stores both: `image_info["summary"]` = interpretive (unchanged consumers: sidecar file, `_insert_image_summary` markdown landmarks, reading/lecture) and `image_info["summary_perceptual"]` = perceptual (front-card audio only). The non-leaking rule lives in the `ImageDescription` field descriptions plus the call-site prompt; no second-pass leakage gate. See [[plan.two-field-image-descriptions-audio-only.2026.06.12]].

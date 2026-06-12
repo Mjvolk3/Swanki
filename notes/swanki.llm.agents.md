@@ -47,3 +47,7 @@ lives in [[swanki.models.cards]]. Plan:
 ## 2026.06.01 - card_correctness_agent
 
 `card_correctness_agent: Agent[None, CardCorrectnessAssessment]` (`retries=3`), used by the post-generation correctness gate ([[swanki.pipeline.card_correctness]]) one call per card through `with_safety_retry`. Model resolved per-call via `get_model_string` (reuses `models.llm` = `gpt-5.5`, or a nullable `card_correctness_gate.model` override). `CardCorrectnessAssessment` lives in [[swanki.models.cards]]. Plan: [[plan.post-creation-llm-card-correctness-gate.2026.06.01]].
+
+## 2026.06.12
+
+Registered `image_description_agent` (`Agent[None, ImageDescription]`, retries=3) for the dual-field image vision call. Called through the existing `with_safety_retry` (output-type-agnostic, returns the full RunResult), same multimodal `[prompt, image_content]` shape as the prior `text_agent` image-summary call. See [[plan.two-field-image-descriptions-audio-only.2026.06.12]].

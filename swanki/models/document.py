@@ -52,6 +52,11 @@ class ImageSummary(BaseModel):
     page_idx: int
     image_url: str
     summary: str = Field(..., description="Detailed description (up to 300 words)")
+    perceptual: str | None = Field(
+        None,
+        description="Perceptual (front-audio) description: only what is visually "
+        "present, never the answer. Optional for backward compatibility.",
+    )
     extracted_text: str | None = Field(None, description="Any text/equations in image")
     alt_text: str = Field("", description="Alt text for the image")
     context: str = Field("", description="Surrounding text context")
@@ -82,6 +87,30 @@ class ImageSummary(BaseModel):
         if words > 300:  # Increased limit for complex technical images
             raise ValueError(f"Summary too long: {words} words")
         return v
+
+
+class ImageDescription(BaseModel):
+    """Dual description of a figure produced in one vision call.
+
+    The ``perceptual`` half is spoken on a card front: an audio-only learner must
+    be able to picture the figure without being handed the answer. The
+    ``interpretive`` half is spoken on the card back and feeds the reading/lecture
+    landmarks; stating the conclusion there is expected.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    perceptual: str = Field(
+        description="Only what is visually present in the figure (shapes, labels, "
+        "axes, arrangement, colors, what stands out). NEVER state, name, or imply "
+        "the answer to any question the figure supports, or the figure's "
+        "conclusion. Spoken on the card front."
+    )
+    interpretive: str = Field(
+        description="Full takeaway summary: what the figure shows and what it "
+        "means, plus how it relates to the surrounding text. 2-4 sentences. "
+        "Spoken on the card back."
+    )
 
 
 class TableSummary(BaseModel):
