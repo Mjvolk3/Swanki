@@ -83,3 +83,7 @@ created: 1779864732867
 
 - [ ] Fixed Kuchel CH05 number-verbalization in the **reading** track (lecture/summary were clean): 34 mis-verbalized numbers across 26 chunks -- scientific notation ("10 to the 12"), figure/chapter refs ("Fig. 5-11", "Chap. 11"), and table cells -- deterministic digit-word->numeral swap + verbatim re-TTS, batched to a SINGLE 122s restitch (26 per-chunk `edit_chunk` calls would have been ~53 min of restitch waste), speed auto-resolved to reading 1.2; republished Zotero->ABS [[swanki.audio.kuchel-comments-runbook.2026.06.09]]
 - [x] Consumed the 9 CH04-06 listening notes: 7 surgical fixes (4 CH04 re-rolls incl. live `[break]`/`[long-break]` A/B arms + the Human-speech subject fix, CH05 lab-automation transition rewrite + abrupt-ending re-roll, CH06 up-note re-roll) and 2 source-verified keeps (Hamming really says "not to be too scared"; the frog story and Jesuit definition are verbatim ch6) -- republished CH04-06 as `926b415` via targeted refresh and windowed-wiped all 9 bookmarks [[scripts.swanki_audio_edit]]
+
+## 2026.06.12
+
+- [ ] Planned splitting flashcard image descriptions into a perceptual front-audio field (only what is visually present, never leaks the answer) and an interpretive back-audio field (current takeaway), both from one structured vision call, so audio-only learners get a non-leaking front; triggered by the dark-field microscopy CH03 card whose front audio narrated the answer [[plan.two-field-image-descriptions-audio-only.2026.06.12]]
