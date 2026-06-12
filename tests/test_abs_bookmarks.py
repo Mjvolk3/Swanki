@@ -5,14 +5,25 @@ https://github.com/Mjvolk3/Swanki/tree/main/tests/test_abs_bookmarks.py
 Test file: tests/test_abs_bookmarks.py
 
 Tests for swanki/abs/bookmarks.py -- the /api/me JSON->model mapping,
-citation-key filtering, the windowed wipe selection, and the bookmark-delete
-time coercion. Fully mocked via httpx.MockTransport (no ABS network, no token
+citation-key filtering, the windowed wipe selection, the bookmark-delete
+time coercion, and the swanki-attributed create (file-local -> item-global
+time shift). Fully mocked via httpx.MockTransport (no ABS network, no token
 file).
 """
 
-import httpx
+import json
 
-from swanki.abs.bookmarks import _to_bookmark, clear_bookmarks, get_bookmarks
+import httpx
+import pytest
+
+from swanki.abs.bookmarks import (
+    SWANKI_MARK,
+    _to_bookmark,
+    add_bookmark,
+    clear_bookmarks,
+    file_offset_in_item,
+    get_bookmarks,
+)
 from swanki.abs.client import ABSClient
 
 ME_JSON = {
@@ -130,3 +141,96 @@ def test_delete_bookmark_time_coercion():
         "/api/me/item/A/bookmark/2105",
         "/api/me/item/A/bookmark/2105.5",
     ]
+
+
+# -- add_bookmark ------------------------------------------------------------
+
+BOOK_KEY = "hammingArtDoingScience2020"
+CH04_KEY = f"{BOOK_KEY}_CH04_history-of-computers-software"
+
+# Item-global layout: CH03 lecture (600s) precedes CH04 (964s).
+BOOK_ITEM = {
+    "id": "A",
+    "media": {
+        "metadata": {"title": BOOK_KEY},
+        "audioFiles": [
+            {
+                "index": 2,
+                "duration": 964.0,
+                "metadata": {
+                    "filename": f"{CH04_KEY}-lecture-20260610T1907-926b415.mp3"
+                },
+            },
+            {
+                "index": 1,
+                "duration": 600.0,
+                "metadata": {
+                    "filename": f"{BOOK_KEY}_CH03_information-theory"
+                    "-lecture-20260609T1200-0d95eaf.mp3"
+                },
+            },
+        ],
+    },
+}
+
+
+def _create_client(posted: list[tuple[str, dict]]) -> ABSClient:
+    """MockTransport serving libraries/items and capturing bookmark POSTs."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if request.method == "POST":
+            posted.append((path, json.loads(request.content)))
+            return httpx.Response(200, json={})
+        if path == "/api/libraries":
+            return httpx.Response(200, json={"libraries": [{"id": "lib1"}]})
+        if path == "/api/libraries/lib1/items":
+            return httpx.Response(200, json={"results": [BOOK_ITEM]})
+        if path == "/api/items/A":
+            return httpx.Response(200, json=BOOK_ITEM)
+        return httpx.Response(404)
+
+    return ABSClient(
+        base_url="https://abs.test",
+        token="tok",
+        transport=httpx.MockTransport(handler),
+    )
+
+
+def test_file_offset_in_item_orders_by_index():
+    assert file_offset_in_item(BOOK_ITEM, CH04_KEY, "lecture") == 600.0
+    assert (
+        file_offset_in_item(BOOK_ITEM, f"{BOOK_KEY}_CH03_information-theory", "lecture")
+        == 0.0
+    )
+    assert file_offset_in_item(BOOK_ITEM, CH04_KEY, "reading") is None
+
+
+def test_add_bookmark_shifts_to_item_global_and_marks_swanki():
+    posted: list[tuple[str, dict]] = []
+    created = add_bookmark(
+        content_key=CH04_KEY,
+        time_s=108.7,
+        note="A/B [break] spot",
+        client=_create_client(posted),
+    )
+    assert len(created) == 1
+    path, body = posted[0]
+    assert path == "/api/me/item/A/bookmark"
+    # 600s of CH03 + 108.7s file-local, floored to int for delete parity.
+    assert body["time"] == 708
+    assert body["title"] == f"{SWANKI_MARK}: A/B [break] spot"
+    assert created[0].time_s == 708.0
+    assert created[0].item_title == BOOK_KEY
+
+
+def test_add_bookmark_raises_when_no_item_serves_the_file():
+    posted: list[tuple[str, dict]] = []
+    with pytest.raises(LookupError):
+        add_bookmark(
+            content_key=f"{BOOK_KEY}_CH09_n-dimensional-space",
+            time_s=10.0,
+            note="x",
+            client=_create_client(posted),
+        )
+    assert posted == []

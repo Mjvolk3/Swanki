@@ -9,7 +9,13 @@ previously lived as ten loosely-coupled ``scripts/abs_*`` files.
 """
 
 from swanki.abs.bookmarks import (
+    SWANKI_MARK as SWANKI_MARK,
+)
+from swanki.abs.bookmarks import (
     AbsBookmark as AbsBookmark,
+)
+from swanki.abs.bookmarks import (
+    add_bookmark as add_bookmark,
 )
 from swanki.abs.bookmarks import (
     clear_bookmarks as clear_bookmarks,

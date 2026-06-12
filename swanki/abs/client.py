@@ -290,3 +290,16 @@ class ABSClient:
         self.request(
             "DELETE", f"/api/me/item/{library_item_id}/bookmark/{tv}"
         )
+
+    def create_bookmark(
+        self, library_item_id: str, time_s: float, title: str
+    ) -> dict[str, Any]:
+        """Create one bookmark at an item-global time."""
+        return cast(
+            dict[str, Any],
+            self.request(
+                "POST",
+                f"/api/me/item/{library_item_id}/bookmark",
+                json={"time": bookmark_time_key(time_s), "title": title},
+            ),
+        )
