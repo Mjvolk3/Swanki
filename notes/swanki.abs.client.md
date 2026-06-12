@@ -24,3 +24,10 @@ the same policy, so a flaky network can no longer silently leave ABS stale.
   without network or token file.
 - httpx is now a declared dependency in pyproject (was transitive-only via
   pyzotero while three swanki modules imported it directly).
+
+## 2026.06.12 - create_bookmark
+
+`create_bookmark(library_item_id, time_s, title)` — POST
+`/api/me/item/{id}/bookmark`, time coerced through `bookmark_time_key` for
+parity with the int-keyed DELETE. Completes the bookmark CRUD surface for
+[[swanki.abs.bookmarks]] `add_bookmark`.

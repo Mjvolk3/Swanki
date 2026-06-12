@@ -11,11 +11,15 @@ CLI entry for the ABS module (mirrors ``python -m swanki.delivery``):
     python -m swanki.abs bookmarks --citation-key KEY [--json]
     python -m swanki.abs clear-bookmarks --citation-key KEY \
         [--window START END]... [--yes]
+    python -m swanki.abs add-bookmark --content-key KEY --time MM:SS \
+        --note TEXT [--audio-type lecture]
 
 ``refresh`` defaults to non-blocking (cron parity: skip when another refresh
 holds the lock); ``--wait`` blocks (delivery parity). The targeted form
 (``--target``) is always blocking -- the publish path must never silently
-no-op. ``clear-bookmarks`` is dry-run unless ``--yes``.
+no-op. ``clear-bookmarks`` is dry-run unless ``--yes``. ``add-bookmark``
+takes a FILE-LOCAL time (seconds, MM:SS, or HH:MM:SS) and shifts it to the
+item-global timeline; the note lands prefixed with the swanki mark.
 """
 
 import argparse
@@ -60,6 +64,28 @@ def _cmd_bookmarks(args: argparse.Namespace) -> int:
     return 0
 
 
+def parse_clock_time(text: str) -> float:
+    """Parse ``SS``, ``MM:SS``, or ``HH:MM:SS`` into seconds."""
+    t = 0.0
+    for part in text.split(":"):
+        t = t * 60 + float(part)
+    return t
+
+
+def _cmd_add_bookmark(args: argparse.Namespace) -> int:
+    from swanki.abs.bookmarks import add_bookmark, format_bookmark
+
+    created = add_bookmark(
+        content_key=args.content_key,
+        time_s=parse_clock_time(args.time),
+        note=args.note,
+        audio_type=args.audio_type,
+    )
+    for b in created:
+        print(f"created on item={b.library_item_id}: {format_bookmark(b)}")
+    return 0
+
+
 def _cmd_clear_bookmarks(args: argparse.Namespace) -> int:
     from swanki.abs.bookmarks import clear_bookmarks
 
@@ -95,6 +121,23 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--citation-key", default=None)
     b.add_argument("--json", action="store_true", help="Emit JSON")
     b.set_defaults(func=_cmd_bookmarks)
+
+    ab = sub.add_parser(
+        "add-bookmark", help="create a swanki-attributed bookmark"
+    )
+    ab.add_argument("--content-key", required=True)
+    ab.add_argument(
+        "--time",
+        required=True,
+        help="file-local time: SS, MM:SS, or HH:MM:SS",
+    )
+    ab.add_argument("--note", required=True)
+    ab.add_argument(
+        "--audio-type",
+        default="lecture",
+        choices=["lecture", "reading", "summary", "complementary"],
+    )
+    ab.set_defaults(func=_cmd_add_bookmark)
 
     cb = sub.add_parser(
         "clear-bookmarks", help="delete bookmarks (dry-run unless --yes)"

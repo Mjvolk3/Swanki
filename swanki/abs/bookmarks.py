@@ -4,7 +4,17 @@ swanki/abs/bookmarks.py
 https://github.com/Mjvolk3/Swanki/tree/main/swanki/abs/bookmarks.py
 Test file: tests/test_abs_bookmarks.py
 
-ABS user bookmarks: fetch + windowed wipe. Bookmarks are ephemeral issue
+ABS user bookmarks: fetch + windowed wipe + swanki-attributed create.
+``add_bookmark`` is the outbound half of the listening-note loop: swanki
+drops a marker the user sees in Prologue (e.g. "listen here for the A/B
+pause-tag spot"). Notes are prefixed with ``SWANKI_MARK`` so machine-left
+bookmarks are unmistakable next to the user's own. The caller passes a
+FILE-LOCAL time for a content key; the helper shifts it to the item-global
+timeline (book items stitch all chapter tracks, and bookmark ``time`` is
+global across them) and creates the bookmark on every library item serving
+that file (one per projection).
+
+Fetch/wipe half: bookmarks are ephemeral issue
 flags ([[scripts.abs_clear_bookmarks]], 2026-05-21): after replacing audio the
 addressed bookmarks are deleted, never timestamp-migrated -- the durable
 address of an issue is chunk-text content-match, not a timestamp.
@@ -30,6 +40,10 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from swanki.abs.client import ABSClient
+from swanki.abs.libraries import library_items_by_title
+from swanki.abs.projections import group_key, kind_for_key
+
+SWANKI_MARK = "\U0001f9a2 swanki"
 
 
 class AbsBookmark(BaseModel):
@@ -157,3 +171,89 @@ def clear_bookmarks_in_windows(
     return clear_bookmarks(
         citation_key=citation_key, windows=windows, dry_run=dry_run, client=client
     )
+
+
+def file_offset_in_item(
+    item: dict[str, Any], content_key: str, audio_type: str
+) -> float | None:
+    """Seconds of item audio preceding the content_key's file.
+
+    Walks the item's ``audioFiles`` in track order (the same cumulative walk
+    as ``chapters_from_audiofiles``) and returns the start offset of the file
+    named ``{content_key}-{audio_type}-<TS>-<hash>``, or None when the item
+    doesn't serve that file.
+
+    Raises:
+        LookupError: Two audioFiles match the prefix (a stale-replace bug --
+            the refresh guarantees one live file per content_key+type).
+    """
+    ordered = sorted(
+        item.get("media", {}).get("audioFiles", []),
+        key=lambda af: af.get("index", 0),
+    )
+    prefix = f"{content_key}-{audio_type}-"
+    cursor = 0.0
+    hit: float | None = None
+    for af in ordered:
+        fname = af.get("metadata", {}).get("filename", "")
+        if fname.startswith(prefix):
+            if hit is not None:
+                raise LookupError(
+                    f"multiple audioFiles match {prefix!r} in item "
+                    f"{item.get('id', '?')}"
+                )
+            hit = cursor
+        cursor += float(af.get("duration", 0.0))
+    return hit
+
+
+def add_bookmark(
+    *,
+    content_key: str,
+    time_s: float,
+    note: str,
+    audio_type: str = "lecture",
+    client: ABSClient | None = None,
+) -> list[AbsBookmark]:
+    """Create a swanki-attributed bookmark at a file-local time.
+
+    Args:
+        content_key: Full content key naming the audio file (chapter key for
+            books, citation key for papers).
+        time_s: Seconds LOCAL to that file; shifted to the item-global
+            timeline before creation.
+        note: Bookmark text; prefixed with ``SWANKI_MARK`` so it reads as
+            machine-left in Prologue/ABS.
+        audio_type: Which of the file's audio types (lecture/reading/summary).
+        client: Optional pre-built client.
+
+    Returns:
+        One ``AbsBookmark`` per library item the bookmark was created on
+        (the same book is served by one item per projection).
+
+    Raises:
+        LookupError: No ABS item serves the content_key's audio file.
+    """
+    c = client if client is not None else ABSClient()
+    group = group_key(content_key, kind_for_key(content_key))
+    title = f"{SWANKI_MARK}: {note}"
+    created: list[AbsBookmark] = []
+    for lib in c.libraries():
+        item_id = library_items_by_title(c, lib["id"]).get(group)
+        if item_id is None:
+            continue
+        offset = file_offset_in_item(c.item(item_id), content_key, audio_type)
+        if offset is None:
+            continue
+        t = float(int(offset + time_s))
+        c.create_bookmark(item_id, t, title)
+        created.append(
+            AbsBookmark(
+                library_item_id=item_id, time_s=t, note=title, item_title=group
+            )
+        )
+    if not created:
+        raise LookupError(
+            f"no ABS item serves {content_key!r} ({audio_type})"
+        )
+    return created

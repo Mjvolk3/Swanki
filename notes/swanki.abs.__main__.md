@@ -15,3 +15,10 @@ non-blocking (cron parity; `--wait` blocks for the delivery path), `refresh
 [--yes]` is dry-run unless `--yes`. The `scripts/abs_refresh.sh` shim execs
 `refresh "$@"`, so the cron line and the four legacy publish scripts keep
 working unchanged.
+
+## 2026.06.12 - add-bookmark subcommand
+
+`python -m swanki.abs add-bookmark --content-key KEY --time MM:SS --note TEXT
+[--audio-type lecture]` — file-local time (also accepts plain seconds or
+HH:MM:SS via `parse_clock_time`), shifted to item-global by
+[[swanki.abs.bookmarks]] `add_bookmark`; note lands `🦢 swanki:`-prefixed.
