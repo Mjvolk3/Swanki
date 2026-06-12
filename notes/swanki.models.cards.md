@@ -108,3 +108,7 @@ the other two escalate to the human. Plan:
 ## 2026.06.01 - CardCorrectnessAssessment + CardAuditEntry for the correctness gate
 
 Two models for the post-generation correctness gate ([[swanki.pipeline.card_correctness]]). `CardCorrectnessAssessment` is the agent output: `verdict ∈ {pass, fixed, dropped}`, a `reason`, and nullable `corrected_front`/`corrected_back`; an `@model_validator` requires at least one corrected side when `verdict == "fixed"` (a bad LLM response triggers the pydantic-ai retry). `CardAuditEntry` is the audit record written per card to `correctness-assessment.yaml` — its `verdict` adds `assessment_failed` (assigned by the gate on a failed call, never by the agent) and it always carries the original front/back. Deliberately separate from `user_feedback`/`CardFeedback`: the gate never writes into a card field. Plan: [[plan.post-creation-llm-card-correctness-gate.2026.06.01]].
+
+## 2026.06.12
+
+`CardContent` gained `image_summary_perceptual: str | None`. Existing `image_summary` is unchanged and remains the interpretive (back-card) text every current consumer expects (card_correctness, provenance, back-audio); the new field carries the perceptual front-card description. The split is forward-only: old cards lack the field (defaults `None`) and the front-audio picker falls back to `image_summary`. See [[plan.two-field-image-descriptions-audio-only.2026.06.12]].

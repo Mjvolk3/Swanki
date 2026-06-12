@@ -743,6 +743,7 @@ class Pipeline:
                     image_summary = ImageSummary(
                         image_url=info["url"],
                         summary=info["summary"],
+                        perceptual=info.get("summary_perceptual"),
                         alt_text=info.get("alt_text", ""),
                         page_idx=idx,
                         context=info.get("context", ""),
@@ -764,6 +765,7 @@ class Pipeline:
                         image_summary = ImageSummary(
                             image_url=info["url"],
                             summary=truncated_summary,
+                            perceptual=info.get("summary_perceptual"),
                             alt_text=info.get("alt_text", ""),
                             page_idx=idx,
                             context=info.get("context", ""),
@@ -1314,6 +1316,7 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
 
             # Find matching image summary if available
             image_summary_text = None
+            image_summary_perceptual_text = None
             if all_image_summaries:
                 # Try to match by URL/path
                 for img_summary in all_image_summaries:
@@ -1325,6 +1328,7 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
                         == Path(img_summary.image_url).name
                     ):
                         image_summary_text = img_summary.summary
+                        image_summary_perceptual_text = img_summary.perceptual
                         logger.debug(
                             f"Found image summary for {image_info['path']}: {image_summary_text[:50]}..."
                         )
@@ -1439,6 +1443,9 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                         card.front.image_path = image_info["original_path"]
                         if image_summary_text:
                             card.front.image_summary = image_summary_text
+                            card.front.image_summary_perceptual = (
+                                image_summary_perceptual_text
+                            )
                         else:
                             logger.error(
                                 f"No image summary found for {image_info['path']} - skipping this image card"
@@ -1448,6 +1455,9 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                         card.back.image_path = image_info["original_path"]
                         if image_summary_text:
                             card.back.image_summary = image_summary_text
+                            card.back.image_summary_perceptual = (
+                                image_summary_perceptual_text
+                            )
                         else:
                             logger.error(
                                 f"No image summary found for {image_info['path']} - skipping this image card"
@@ -1489,6 +1499,9 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                             card.front.image_path = image_info["original_path"]
                             if image_summary_text:
                                 card.front.image_summary = image_summary_text
+                                card.front.image_summary_perceptual = (
+                                    image_summary_perceptual_text
+                                )
                             else:
                                 logger.error(
                                     f"No image summary found for {image_info['path']} - skipping this image card"
@@ -1500,6 +1513,9 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                             card.back.image_path = image_info["original_path"]
                             if image_summary_text:
                                 card.back.image_summary = image_summary_text
+                                card.back.image_summary_perceptual = (
+                                    image_summary_perceptual_text
+                                )
                             else:
                                 logger.error(
                                     f"No image summary found for {image_info['path']} - skipping this image card"

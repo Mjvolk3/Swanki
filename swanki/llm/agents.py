@@ -16,7 +16,7 @@ from ..models.cards import (
     ChunkEditResponse,
     LectureTranscriptFeedback,
 )
-from ..models.document import DocumentSummary
+from ..models.document import DocumentSummary, ImageDescription
 from ..models.glossary import (
     DefinitionCardBatchResponse,
     GlossaryEnumerationResponse,
@@ -50,6 +50,9 @@ chunk_edit_agent: Agent[None, ChunkEditResponse] = Agent(
 )
 card_correctness_agent: Agent[None, CardCorrectnessAssessment] = Agent(
     output_type=CardCorrectnessAssessment, retries=3
+)
+image_description_agent: Agent[None, ImageDescription] = Agent(
+    output_type=ImageDescription, retries=3
 )
 
 # ── Solution-manual mode agents ────────────────────────────────────────

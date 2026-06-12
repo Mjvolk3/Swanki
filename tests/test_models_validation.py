@@ -16,7 +16,7 @@ from swanki.models.cards import (
     LectureTranscriptFeedback,
     PlainCard,
 )
-from swanki.models.document import DocumentSummary, ImageSummary
+from swanki.models.document import DocumentSummary, ImageDescription, ImageSummary
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -64,6 +64,55 @@ class TestImageSummary:
                 page_idx=0,
                 image_url="fig.png",
                 summary=_make_summary_text(301),
+            )
+
+    def test_perceptual_defaults_none_for_old_records(self) -> None:
+        # Records serialized before the split have no `perceptual` key; they must
+        # still deserialize (forward-only guarantee).
+        old = {
+            "page_idx": 0,
+            "image_url": "fig.png",
+            "summary": "A diagram of a neural network",
+            "extracted_text": None,
+            "alt_text": "",
+            "context": "",
+        }
+        rebuilt = ImageSummary(**old)
+        assert rebuilt.perceptual is None
+
+    def test_perceptual_round_trip(self) -> None:
+        img = ImageSummary(
+            page_idx=0,
+            image_url="fig.png",
+            summary="Dark-field improves contrast without staining.",
+            perceptual="Bright cell outlines against a black background.",
+        )
+        assert ImageSummary(**img.model_dump()) == img
+
+
+# ── ImageDescription ─────────────────────────────────────────────────────
+
+
+class TestImageDescription:
+    def test_round_trip(self) -> None:
+        desc = ImageDescription(
+            perceptual="Bright cell outlines against a black background.",
+            interpretive="Dark-field improves contrast without staining because "
+            "cells scatter oblique light.",
+        )
+        assert ImageDescription(**desc.model_dump()) == desc
+        assert desc.perceptual != desc.interpretive
+
+    def test_both_fields_required(self) -> None:
+        with pytest.raises(ValidationError):
+            ImageDescription(perceptual="only what is visible")
+
+    def test_extra_fields_forbidden(self) -> None:
+        with pytest.raises(ValidationError, match="extra"):
+            ImageDescription(
+                perceptual="visible",
+                interpretive="meaning",
+                bogus="nope",
             )
 
 
