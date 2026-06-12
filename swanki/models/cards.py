@@ -90,7 +90,15 @@ class CardContent(BaseModel):
         None, description="Path to image file for this card side"
     )
     image_summary: str | None = Field(
-        None, description="Description of the image for audio generation"
+        None,
+        description="Interpretive image description (the takeaway) for back-card "
+        "audio; also feeds reading/lecture landmarks.",
+    )
+    image_summary_perceptual: str | None = Field(
+        None,
+        description="Perceptual image description: only what is visually present "
+        "in the figure, never the answer. Spoken on the card front so audio-only "
+        "learners can picture the figure without being handed the answer.",
     )
 
     @field_validator("text")

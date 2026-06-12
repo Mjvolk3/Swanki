@@ -211,3 +211,7 @@ Added an `elif mode == "glossary":` branch in `process_full`, parallel to `solut
 ## 2026.06.01 - Correctness gate at the generate_outputs chokepoint
 
 `generate_outputs` now calls `self._apply_correctness_gate(cards, summary, output_dir)` as its first step, before any markdown/.apkg is written, so the filtered kept-list drives every downstream writer. `_apply_correctness_gate` is a no-op unless `card_correctness_gate.enabled`; when on, it resolves the model (`card_correctness_gate.model` or `models.llm`), reads source context via the new `_read_source_context` (joins `clean-md-singles/*.md`), calls `run_correctness_gate` ([[swanki.pipeline.card_correctness]]), writes `correctness-assessment.yaml`, and warns if every card was dropped. Single chokepoint covers all three card-producing branches (`solution_manual`/`glossary`/`full`). Plan: [[plan.post-creation-llm-card-correctness-gate.2026.06.01]].
+
+## 2026.06.12
+
+`process_images` carries `perceptual` into each `ImageSummary`; the image-card summary lookup captures `image_summary_perceptual_text` alongside `image_summary_text`, and every placement branch sets `image_summary_perceptual` on the same side it sets `image_summary`. Both descriptions travel to the card (placement front/back is decided here, after generation) so the per-side audio picker selects which to speak. See [[plan.two-field-image-descriptions-audio-only.2026.06.12]].
