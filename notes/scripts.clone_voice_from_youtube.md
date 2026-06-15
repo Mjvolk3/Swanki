@@ -30,3 +30,13 @@ Steps in order:
 
 Each invocation creates a separate clip dir under `voice_refs/<speaker>/clips/<id>/`, so you can iterate on clip selection without losing prior takes — pull a different segment, register it under a new id, A/B against the previous, switch the active one in `swanki/conf/models/fish_speech_<speaker>.yaml`.
 
+## 2026.06.14 - Rewrite to speaker/clips schema + fractional timestamps + channel capture
+
+The CLI had drifted from [[swanki.voice_clone.refs]]: it imported `FishSpeechState`/`voice_ref_dir` (removed) and wrote the old flat `voice_refs/<id>/` layout, so it crashed on import. Rewrote against the current `VoiceClip`/`VoiceSpeaker` schema:
+
+- Flags are now `--speaker-id` + `--speaker-name` + `--slug`; the clip id is `<YYYYMMDD>T<HHMM>-<slug>` and the Fish reference id is `<speaker-id>-<clip-id>`. Writes/updates `speaker.json` (sets `active_clip_id`) and `clips/<clip-id>/clip.json`.
+- `_seconds` now parses fractional timestamps (`7:02.9`), so clips can be cut on a sub-second phrase boundary instead of being rounded to whole seconds (used for the Ball clone).
+- New `fetch_youtube_meta` runs `yt-dlp --skip-download --print` before extraction and stamps `channel`/`channel_url`/`video_title`/`upload_date` into `clip.json` (previously only the bare URL was recorded). See [[swanki.voice_clone.refs]] for the new `YoutubeSource` fields.
+
+Used to build the Philip Ball (`fish_speech_ball`) and Christopher Bishop (`fish_speech_bishop`) voices.
+

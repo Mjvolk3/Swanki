@@ -43,6 +43,10 @@ class YoutubeSource(BaseModel):
     url: str
     playlist_url: str | None = None
     title_hint: str | None = None
+    channel: str | None = None
+    channel_url: str | None = None
+    video_title: str | None = None
+    upload_date: str | None = None
     start_timestamp: str
     end_timestamp: str
     duration_seconds: int

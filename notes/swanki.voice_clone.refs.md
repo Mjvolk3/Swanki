@@ -23,3 +23,7 @@ Path helpers honor `$SWANKI_MODELS` (default `/scratch/projects/torchcell-scratc
 
 Persistence helpers serialize the pydantic models to disk (`write_speaker`, `write_clip`) and load them back (`load_speaker`, `load_clip`). `list_clips` returns the sorted clip ids so future iteration calls have a stable order. `iter_clips` is a generator yielding `(clip_id, VoiceClip)` pairs. `preferred_audio` returns the denoised wav if present else the original — callers don't have to reason about denoising state.
 
+## 2026.06.14 - YoutubeSource records channel/title/upload-date
+
+Added `channel`, `channel_url`, `video_title`, and `upload_date` (all optional) to `YoutubeSource`. Previously a clip only recorded the bare video URL, so the source attribution (channel/title) was lost. [[scripts.clone_voice_from_youtube]] now fetches these via `yt-dlp --print` and stamps them into `clip.json`. Backfilled by hand on the existing Ball clip (The Royal Institution).
+

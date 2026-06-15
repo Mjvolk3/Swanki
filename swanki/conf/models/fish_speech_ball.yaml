@@ -1,0 +1,42 @@
+models:
+  llm:
+    provider: openai
+    model: gpt-5.5
+    temperature: 0.7
+    max_retries: 3
+  tts:
+    provider: fish_speech
+    server_url: http://localhost:8080
+    reference_id: ball-20260612T1443-black-box-of-life
+    reference_audio_path: /scratch/projects/torchcell-scratch/Swanki_Models/voice_refs/ball/clips/20260612T1443-black-box-of-life/denoised.wav
+    reference_text: "And we're told what goes on in this black box is so horrendously complicated that you're probably better off not looking inside it at all. Um, but just rest assured that scientists are working on it and one day they'll have it all sorted out. Um, however that advice neglects this inconvenient fact."
+    temperature: 0.8
+    format: mp3
+    # Mirror of fish_speech.yaml sub-tree shape; no per-paper overrides yet.
+    # Philip Ball voice for the "How Life Works" book cards.
+    preprocessor:
+      pronunciations: {}
+      strip_forbidden_tags: true
+      acronym_letter_by_letter: true
+      acronym_allowlist:
+        [USA, UK, NASA, DNA, RNA, PCR, CPU, GPU, API, HTTP, JSON, HTML, XML,
+         SQL, PDF, MP3, WAV, TTS, LLM, AI, ML, NLP, ATP, mRNA, tRNA]
+    chunking:
+      # Balanced chunker: hard cap 650, soft target 500, never-single-sentence.
+      # See swanki.audio._common note 2026.06.06 for the Hamming sweep.
+      max_chars: 650
+      soft_max_chars: 500
+      min_sentences_per_chunk: 2
+      paragraph_priority: true
+    postprocessor:
+      gain_match_target_dbfs: -25.0
+      chunk_pause_ms: 700
+      chunk_pause_ms_by_boundary:
+        paragraph: 1100
+        sentence: 500
+      chunk_tail_trim_ms: 250
+      chunk_crossfade_ms: 50
+      # Conservative per-chunk leading-edge fade (~1102 samples @ 44.1kHz). 0=off.
+      chunk_onset_fade_ms: 25
+      section_pause_ms: 5000
+# OCR backend is its own Hydra group now (ocr=mineru | ocr=mathpix); see swanki/conf/ocr/.

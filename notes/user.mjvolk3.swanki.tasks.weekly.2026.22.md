@@ -87,3 +87,9 @@ created: 1779864732867
 ## 2026.06.12
 
 - [ ] Planned splitting flashcard image descriptions into a perceptual front-audio field (only what is visually present, never leaks the answer) and an interpretive back-audio field (current takeaway), both from one structured vision call, so audio-only learners get a non-leaking front; triggered by the dark-field microscopy CH03 card whose front audio narrated the answer [[plan.two-field-image-descriptions-audio-only.2026.06.12]]
+
+## 2026.06.14
+
+- [x] Cloned the Philip Ball voice (`fish_speech_ball`) for the *How Life Works* book cards and repaired `scripts/clone_voice_from_youtube.py` (crashed on a stale import): rewrote it to the current speaker/clips `VoiceClip`/`VoiceSpeaker` schema, added fractional-timestamp cutting, and made it stamp channel/title/upload-date into `clip.json` via `yt-dlp --print` (new `YoutubeSource` fields) [[scripts.clone_voice_from_youtube]] [[swanki.voice_clone.refs]]
+- [x] Added `pipeline=book` card-density profile (`swanki/conf/pipeline/book.yaml`) capping the 11-chapter Ball book at ~183 cards (figures on, 1 card/figure, 1 text card/10000 chars); ch01 verification run produced 8 cards (6 text + 2 figure), exactly the estimate
+- [ ] Diagnosed the ch01 figure-card complementary audio leaking the answer on the front: root cause is that the perceptual-front/interpretive-back fix ([[plan.two-field-image-descriptions-audio-only.2026.06.12]], commit `929bec0`) was unmerged, so the run used the old full-image-description-on-front path; merging the branch before the full-book gen
