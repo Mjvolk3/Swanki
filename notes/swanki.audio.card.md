@@ -70,3 +70,7 @@ clean_markdown=False)` (cards skip markdown-clean and pause injection). No
 behavior change; removes the fourth inline copy of the scrubber chain. See
 [[swanki.audio._common]] (2026.05.30) and
 [[plan.swanki-comment-driven-chunk-edits.2026.05.30]].
+
+## 2026.06.12
+
+Front-card audio now speaks the perceptual image description (`card.front.image_summary_perceptual`), falling back to the interpretive `image_summary` when perceptual is absent (old cards) so nothing regresses. Back-card audio still speaks the interpretive `image_summary`. The front transcript system prompt no longer frames the image description as answer-bearing ("describes only what is visible; does NOT answer the question"). Fixes the dark-field CH03 card whose front audio narrated the answer. See [[plan.two-field-image-descriptions-audio-only.2026.06.12]].

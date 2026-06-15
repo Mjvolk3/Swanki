@@ -15,8 +15,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
-from ..llm.agents import text_agent
+from ..llm.agents import image_description_agent
 from ..llm.safety import with_safety_retry
+from ..models.document import ImageDescription
 
 logger = logging.getLogger(__name__)
 
@@ -86,13 +87,15 @@ class ImageProcessor:
         processed_images: list[ImageInfo] = []
         for idx, image_info in enumerate(images):
             if self.model:
-                summary = self._generate_image_summary(image_info)
-                if summary:
-                    image_info["summary"] = summary
+                desc = self._generate_image_summary(image_info)
+                if desc:
+                    image_info["summary"] = desc.interpretive
+                    image_info["summary_perceptual"] = desc.perceptual
 
+                    # Sidecar + markdown landmarks stay on the interpretive text.
                     summary_filename = f"{md_path.stem}_{idx + 1}.md"
                     summary_path = self.image_summaries_dir / summary_filename
-                    summary_path.write_text(summary, encoding="utf-8")
+                    summary_path.write_text(desc.interpretive, encoding="utf-8")
                     image_info["summary_path"] = summary_path
                 else:
                     # None means the image is unusable (corrupted URL, missing
@@ -169,28 +172,33 @@ class ImageProcessor:
         cleaned = unquote(url.replace("\\", "").replace("\n", "").strip())
         return cleaned
 
-    def _generate_image_summary(self, image_info: ImageInfo) -> str | None:
-        """Generate a summary for an image using vision model via pydantic-ai.
+    def _generate_image_summary(self, image_info: ImageInfo) -> ImageDescription | None:
+        """Generate perceptual + interpretive descriptions in one vision call.
 
         Args:
             image_info: Dictionary containing image URL and context.
 
         Returns:
-            Generated summary text (2-4 sentences), or None if failed.
+            An :class:`ImageDescription` with both a perceptual (front-audio) and
+            an interpretive (back-audio) description, or None if the image is
+            unusable.
         """
         from pydantic_ai import BinaryContent, ImageUrl
 
-        prompt = f"""Please analyze this image and provide a comprehensive summary.
+        prompt = f"""Analyze this image and produce TWO separate descriptions.
 
 Context around the image: {image_info["context"]}
 
-Describe:
-1. What the image shows (diagrams, graphs, equations, etc.)
-2. Key information or data presented
-3. How it relates to the surrounding text
-4. Any important details that would help understand the content
+1. perceptual -- Describe ONLY what is visually present in the figure: shapes,
+   labels, axes, arrangement, colors, what stands out. This is spoken on a
+   flashcard FRONT to an audio-only learner who cannot see the image, so it must
+   let them picture the figure WITHOUT being told the answer. NEVER state, name,
+   or imply the conclusion, the takeaway, or the answer to any question the
+   figure supports.
 
-Keep the summary concise but informative (2-4 sentences)."""
+2. interpretive -- The full takeaway: what the image shows and means, how it
+   relates to the surrounding text, and any important details. 2-4 sentences.
+   This is spoken on the flashcard BACK, so stating the conclusion is expected."""
 
         image_url: str = image_info["url"]
         image_content: BinaryContent | ImageUrl
@@ -272,15 +280,17 @@ Keep the summary concise but informative (2-4 sentences)."""
         # left untouched). Without this wrap, qu died at 67 seconds on its
         # first CRISPR figure.
         result = with_safety_retry(
-            text_agent,
+            image_description_agent,
             [prompt, image_content],
             model=self.model,
             model_settings={"max_tokens": 8000, "temperature": 0.3},
-            label="image summary",
+            label="image description",
         )
-        summary: str = result.output.strip()
-        logger.debug(f"Generated summary for image: {summary[:50]}...")
-        return summary
+        desc: ImageDescription = result.output
+        desc.perceptual = desc.perceptual.strip()
+        desc.interpretive = desc.interpretive.strip()
+        logger.debug(f"Generated image description: {desc.interpretive[:50]}...")
+        return desc
 
     def _insert_image_summary(self, content: str, image_info: ImageInfo) -> str:
         """Insert image summary into markdown content after the image.
