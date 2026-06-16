@@ -579,6 +579,7 @@ def generate_card_audio(
                 "front_file": front_filename,
                 "back_file": back_filename,
                 "citation_audio": citation_audio_rel,
+                "speed": speed,
                 "sides": {
                     "front": {"chunks": front_manifest_chunks},
                     "back": {"chunks": back_manifest_chunks},
@@ -603,6 +604,7 @@ def generate_card_audio(
                 "front_file": front_filename,
                 "back_file": None,
                 "citation_audio": citation_audio_rel,
+                "speed": speed,
                 "sides": {
                     "front": {"chunks": front_manifest_chunks},
                 },

@@ -74,3 +74,23 @@ behavior change; removes the fourth inline copy of the scrubber chain. See
 ## 2026.06.12
 
 Front-card audio now speaks the perceptual image description (`card.front.image_summary_perceptual`), falling back to the interpretive `image_summary` when perceptual is absent (old cards) so nothing regresses. Back-card audio still speaks the interpretive `image_summary`. The front transcript system prompt no longer frames the image description as answer-bearing ("describes only what is visible; does NOT answer the question"). Fixes the dark-field CH03 card whose front audio narrated the answer. See [[plan.two-field-image-descriptions-audio-only.2026.06.12]].
+
+## 2026.06.15 - `speed` in the per-card manifest + retention guardrail
+
+`generate_card_audio` now records the gen-time `speed` as a top-level field in
+BOTH per-card manifest dicts (front+back side, and the front-only/no-back
+branch). This mirrors the chapter manifest's `speed` field so a later surgical
+edit re-TTSs the replacement card chunk at the SAME speed it was generated at,
+instead of guessing -- a mismatch makes the edited chunk audibly faster or
+slower than its neighbors. Read by the new
+[[swanki.audio.card_edit]] adapter, which falls back to
+`_SPEED_BY_AUDIO_TYPE["card"]` (1.6) for legacy manifests that predate the
+field. `combine_audio(crossfade_ms=0)` is unchanged.
+
+**Retention guardrail:** `card_chunks/` (under `gen-md-complementary-audio/`) is
+RETAINED -- it holds the per-card manifest + the chunk mp3s that make per-chunk
+card editing possible. Never auto-prune it. There is no active post-combine
+delete of card chunks (the historical `p.unlink()` is gone); the only nearby
+`rmtree`/`unlink` are `manifest.py` (a `tempfile.mkdtemp` staging tree for the
+packaged zip) and `mineru.py` (OCR raw dir), neither of which touches
+`card_chunks/`. Plan: [[plan.precise-card-audio-editing.2026.06.15]].
