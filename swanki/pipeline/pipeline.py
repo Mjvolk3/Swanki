@@ -2204,7 +2204,9 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             }
 
         # Generate complementary audio (card audio)
-        if audio_config.get("generate_complementary", False):
+        def _gen_complementary():
+            if not audio_config.get("generate_complementary", False):
+                return
             if not cards:
                 logger.warning(
                     "Complementary audio requires cards. Skipping in audio_only mode."
@@ -2295,7 +2297,9 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                         )
 
         # Generate summary audio
-        if audio_config.get("generate_summary", False):
+        def _gen_summary():
+            if not audio_config.get("generate_summary", False):
+                return
             logger.info("Generating summary audio...")
             summary_text = f"{summary.summary}\n\nKey Contributions:\n" + "\n".join(
                 [f"- {contrib}" for contrib in summary.key_contributions]
@@ -2320,7 +2324,9 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             print(f"Generated summary audio: {summary_audio_path.name}")
 
         # Generate reading audio (full document)
-        if audio_config.get("generate_reading", False):
+        def _gen_reading():
+            if not audio_config.get("generate_reading", False):
+                return
             logger.info("Generating reading audio...")
             # Filtered main_content (excludes review_exercises) when provided
             # by the classifier dispatch; otherwise fall back to all pages.
@@ -2351,7 +2357,9 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             print(f"Generated reading audio: {reading_audio_path.name}")
 
         # Generate lecture audio (educational style)
-        if audio_config.get("generate_lecture", False):
+        def _gen_lecture():
+            if not audio_config.get("generate_lecture", False):
+                return
             logger.info("Generating lecture audio...")
             lecture_audio_path = (
                 self.output_base / f"{self.audio_prefix}-lecture-audio.mp3"
@@ -2404,6 +2412,28 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 **tts_kwargs,
             )
             print(f"Generated lecture audio: {lecture_audio_path.name}")
+
+        # Dispatch audio generation in the configured order. The default
+        # preserves the historical order; ``audio.order`` lets a run front-load
+        # a type (e.g. reading) so it is produced first. Any known type omitted
+        # from a custom order is appended so it is never silently skipped.
+        _audio_generators = {
+            "complementary": _gen_complementary,
+            "summary": _gen_summary,
+            "reading": _gen_reading,
+            "lecture": _gen_lecture,
+        }
+        _default_order = ["complementary", "summary", "reading", "lecture"]
+        _order = list(audio_config.get("order") or _default_order)
+        for _name in _default_order:
+            if _name not in _order:
+                _order.append(_name)
+        for _name in _order:
+            generator = _audio_generators.get(_name)
+            if generator is None:
+                logger.warning(f"Unknown audio.order entry: {_name!r}; skipping")
+                continue
+            generator()
 
         # After all audio generation is complete, write cards with audio links
         if audio_config.get("generate_complementary", False) and cards:

@@ -17,6 +17,7 @@ the lecture-only helper in [[swanki.audio.lecture]] (2026.04.26).
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from pydantic_ai import Agent
@@ -28,6 +29,72 @@ SAFETY_REFUSAL_MARKERS: tuple[str, ...] = (
     "invalid_prompt",
     "limited access to this content for safety",
 )
+
+
+# Transient network failures surfaced by pydantic-ai / the OpenAI SDK. Egress to
+# api.openai.com from some hosts is slow/flaky (5-7s connect, intermittent
+# drops), and the SDK's own 2 fast retries are too tight -- a single drop on the
+# large reading-humanize POSTs aborts the whole run. These markers are matched on
+# the exception string so they cover APIConnectionError, request timeouts, and
+# 5xx gateway blips.
+TRANSIENT_ERROR_MARKERS: tuple[str, ...] = (
+    "Connection error",
+    "APIConnectionError",
+    "APITimeoutError",
+    "timed out",
+    "Timeout",
+    "Temporarily unavailable",
+    "Bad gateway",
+    "Service Unavailable",
+    " 502",
+    " 503",
+    " 504",
+)
+
+
+def _run_sync_with_transient_retry(
+    agent: Agent,
+    message: Any,
+    kwargs: dict,
+    *,
+    max_attempts: int = 6,
+    label: str = "",
+) -> Any:
+    """``agent.run_sync`` with exponential-backoff retry on transient net errors.
+
+    Retries only errors whose string matches ``TRANSIENT_ERROR_MARKERS`` (safety
+    refusals and other non-transient errors propagate immediately so the caller's
+    safety-preamble loop still sees them). Backoff is 2/4/8/16/30s, capped at 30s.
+
+    Raises:
+        The last exception if every attempt fails or the error is non-transient.
+    """
+    delay = 2.0
+    for attempt in range(max_attempts):
+        try:
+            return agent.run_sync(message, **kwargs)
+        except Exception as e:
+            if not any(m in str(e) for m in TRANSIENT_ERROR_MARKERS):
+                raise  # non-transient (incl. safety refusals) -> caller handles
+            if attempt == max_attempts - 1:
+                logger.error(
+                    "%s transient error persisted after %d attempts: %s",
+                    label or "agent call",
+                    max_attempts,
+                    type(e).__name__,
+                )
+                raise
+            logger.warning(
+                "%s transient error (%s); retry %d/%d in %.0fs",
+                label or "agent call",
+                type(e).__name__,
+                attempt + 1,
+                max_attempts - 1,
+                delay,
+            )
+            time.sleep(delay)
+            delay = min(delay * 2, 30.0)
+    raise RuntimeError("transient-retry exhausted without a result")
 
 
 EDU_CONTEXT_PREAMBLE: str = (
@@ -129,7 +196,9 @@ def with_safety_retry(
 
     for i, msg in enumerate(attempts):
         try:
-            return agent.run_sync(msg, **kwargs_base)
+            return _run_sync_with_transient_retry(
+                agent, msg, kwargs_base, label=label
+            )
         except Exception as e:
             err = str(e)
             is_safety = any(m in err for m in SAFETY_REFUSAL_MARKERS)
