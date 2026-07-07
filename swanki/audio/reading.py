@@ -426,6 +426,12 @@ def generate_reading_audio(
         else:
             audio_chunks = [(c, "paragraph") for c in chunk_text(section, max_chars=chunk_max_chars)]
         for chunk_text_, boundary in audio_chunks:
+            # Never send an empty / whitespace-only chunk to TTS: Fish
+            # hallucinates breathing/noise artifacts on empty input (this is the
+            # "weird sound before a figure caption" symptom -- an empty section
+            # left by consecutive ---SECTION_BREAK--- markers).
+            if not chunk_text_.strip():
+                continue
             chunk_path = chunks_dir / f"{prefix}_chunk{chunk_counter}.mp3"
             all_jobs.append((sec_idx, chunk_text_, chunk_path, boundary))
             chunk_counter += 1

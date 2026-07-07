@@ -52,7 +52,10 @@ FISH_SIF="${SWANKI_FISH_SIF:-$HOME/Documents/projects/fish-speech/fish-speech-se
 FISH_REPO="${SWANKI_FISH_REPO:-$HOME/Documents/projects/fish-speech}"
 PORT_BASE="${SWANKI_FISH_PORT_BASE:-8100}"
 PORT_RANGE="${SWANKI_FISH_PORT_RANGE:-400}"
-COMPILE="${SWANKI_FISH_COMPILE:-0}"
+COMPILE="${SWANKI_FISH_COMPILE:-1}"  # torch.compile ON by default: ~10x TTS
+                                     # throughput (uncompiled s2-pro ~3.6 tok/s
+                                     # => ~1.3h/chapter). Warmup adds ~60-90s.
+                                     # Set SWANKI_FISH_COMPILE=0 for short jobs.
 ANKI_URL="${SWANKI_ANKICONNECT_URL:-http://127.0.0.1:8765}"
 QUEUE_DIR="${SWANKI_QUEUE_DIR:-$HOME/.swanki-queue}"
 ANKI_LOCK="${SWANKI_ANKI_LOCK:-$QUEUE_DIR/anki.lock}"
@@ -85,6 +88,14 @@ echo "[swanki-job $job] fish port=$port gpu=${CUDA_VISIBLE_DEVICES:-ambient}"
 tmpfs_flag=()
 [ "${SWANKI_FISH_WRITABLE:-1}" = "1" ] && tmpfs_flag=(--writable-tmpfs)
 
+# api_server.py enables torch.compile via the --compile CLI flag, NOT the COMPILE
+# env var. COMPILE is read only by Fish's Docker entrypoint (build_compile_args),
+# which we BYPASS by invoking api_server.py directly -- so passing --env COMPILE=1
+# alone is a no-op and Fish runs uncompiled (~3.6 tok/s vs ~10x compiled).
+# Translate COMPILE -> --compile here.
+compile_flag=()
+{ [ "$COMPILE" = "1" ] || [ "$COMPILE" = "true" ]; } && compile_flag=(--compile)
+
 # Crash log for Layer-2 supervision (best-effort; $QUEUE_DIR is under $HOME, not
 # the often-full /scratch). /tmp fallback if the logs dir is somehow unwritable.
 CRASH_LOG="$QUEUE_DIR/logs/swanki-job-$job-fish-crash.log"
@@ -104,7 +115,7 @@ start_fish() {
         "${SWANKI_FISH_PYTHON:-/app/.venv/bin/python}" tools/api_server.py --listen "0.0.0.0:$port" \
             --llama-checkpoint-path checkpoints/s2-pro \
             --decoder-checkpoint-path checkpoints/s2-pro/codec.pth \
-            --decoder-config-name modded_dac_vq &
+            --decoder-config-name modded_dac_vq "${compile_flag[@]}" &
     fish_pid=$!
     local i
     for i in $(seq 1 "${SWANKI_FISH_HEALTH_TIMEOUT:-300}"); do
