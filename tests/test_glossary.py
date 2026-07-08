@@ -224,7 +224,7 @@ class TestGlossaryDispatch:
         p.clean_markdown = MagicMock(return_value=[Path("/tmp/p1_clean.md")])
         p.process_images = MagicMock(return_value=[])
         p.generate_document_summary = MagicMock()
-        p.generate_outputs = MagicMock(return_value={})
+        p.generate_outputs = MagicMock(return_value=({}, []))
         p.generate_audio = MagicMock()
         p.data_dir = tmp_path
 

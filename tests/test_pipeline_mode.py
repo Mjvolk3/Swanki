@@ -42,7 +42,7 @@ def mock_pipeline(base_config):
     p.estimate_card_count = MagicMock(return_value=10)
     p._generate_cards_for_segment = MagicMock(return_value=[])
     p._generate_image_cards_for_page = MagicMock(return_value=[])
-    p.generate_outputs = MagicMock(return_value={})
+    p.generate_outputs = MagicMock(return_value=({}, []))
     p.generate_audio = MagicMock()
     p.send_to_anki = MagicMock()
     p.data_dir = Path("/tmp/swanki-test")

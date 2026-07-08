@@ -156,9 +156,7 @@ def test_audit_one_entry_per_card_and_order_preserved(monkeypatch, summary):
         ),
         "d": None,
     }
-    monkeypatch.setattr(
-        card_correctness, "_assess_card", _verdict_by_front(mapping)
-    )
+    monkeypatch.setattr(card_correctness, "_assess_card", _verdict_by_front(mapping))
     cards = [_card("a"), _card("b"), _card("c"), _card("d")]
     kept, audit = run_correctness_gate(cards, summary, "src", "m", max_workers=4)
 
@@ -191,9 +189,7 @@ def test_all_dropped_yields_empty_kept_without_error(monkeypatch, summary):
             }
         ),
     )
-    kept, audit = run_correctness_gate(
-        [_card("x"), _card("y")], summary, "src", "m"
-    )
+    kept, audit = run_correctness_gate([_card("x"), _card("y")], summary, "src", "m")
     assert kept == []
     assert len(audit) == 2
 
@@ -251,9 +247,7 @@ def test_dropped_reason_and_original_text_logged_for_report(
             }
         ),
     )
-    _, audit = run_correctness_gate(
-        [_card("wrong q", "wrong a")], summary, "src", "m"
-    )
+    _, audit = run_correctness_gate([_card("wrong q", "wrong a")], summary, "src", "m")
     out = tmp_path / "correctness-assessment.json"
     write_audit(audit, out)
 
@@ -263,6 +257,44 @@ def test_dropped_reason_and_original_text_logged_for_report(
     assert dropped[0]["reason"] == "every option is chemically wrong"
     assert dropped[0]["original_front"] == "wrong q"
     assert dropped[0]["original_back"] == "wrong a"
+
+
+def test_generate_outputs_returns_gated_list_and_gate_runs_once(summary, tmp_path):
+    """generate_outputs must RETURN the gated kept list and run the gate once.
+
+    Regression for the wiring bug where the gate filtered a local ``cards`` var
+    but the caller kept the pre-gate ``all_cards`` — so audio / apkg / Anki
+    shipped uncorrected cards. The fix returns (outputs, kept) so call sites can
+    reassign ``all_cards`` to the corrected list.
+    """
+    from swanki.pipeline.pipeline import Pipeline
+
+    p = Pipeline({"output": {"output": {"formats": {}, "tag_format": "slugified"}}})
+    p.citation_key = "key2023"
+
+    cards = [_card("a"), _card("b"), _card("c")]
+    kept = [cards[0], cards[2]]  # gate drops "b"
+    calls: list[int] = []
+
+    def fake_gate(cs, doc_summary, out):
+        calls.append(1)
+        return kept
+
+    p._apply_correctness_gate = fake_gate  # type: ignore[method-assign]
+
+    outputs, returned = p.generate_outputs(cards, summary, tmp_path)
+
+    # The returned list IS the gated kept list (single source of truth downstream).
+    assert returned is kept
+    # The gate ran exactly once.
+    assert calls == [1]
+
+    # cards-plain.md reflects only the kept cards.
+    plain = (tmp_path / "cards-plain.md").read_text()
+    assert "## @key2023: a" in plain
+    assert "## @key2023: c" in plain
+    assert "## @key2023: b" not in plain
+    assert outputs["cards_plain"] == tmp_path / "cards-plain.md"
 
 
 def test_dropped_card_emits_warning_with_reason(monkeypatch, summary, caplog):
