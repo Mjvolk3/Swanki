@@ -6,6 +6,24 @@ updated: 1773270048272
 created: 1773013975831
 ---
 
+## 2026.07.07 - Correctness-gate propagation fix (`generate_outputs` returns kept list)
+
+`generate_outputs` applied `_apply_correctness_gate` to a LOCAL `cards` variable and
+correctly wrote the gated list to `cards-plain.md` + the first `.apkg`, but returned
+only the `paths` dict. All three call sites (full `~533`, solution_manual `~337`,
+glossary `~359`) kept their pre-gate `all_cards` and passed it to `generate_audio`
+(`cards-with-audio.md`), the stage-9b apkg re-export, and `send_to_anki` — so dropped /
+corrected cards still reached Anki. This shipped 5 wrong alcamo cards (CH01, CH03,
+CH04 x2, CH05). Fix: `generate_outputs` now returns `(outputs, cards)` and each call
+site reassigns `all_cards` to the gated kept list before any downstream writer runs.
+
+Rejected: a second gate call in `run()` before `generate_audio`. The gate is
+NON-idempotent — parallel LLM calls (cost) and it clobbers `correctness-assessment.json`;
+a second call could yield a different filtered set, diverging `cards-plain.md` from
+`cards-with-audio.md`. Running it exactly once and threading its output is the only
+consistent fix. Motivates the surgical [[swanki.audio.card_replace]] cleanup of the
+5 already-live cards. Plan: [[plan.surgical-card-replacement.2026.07.07]].
+
 ## 2026.03.08 - Integrate ApkgExporter for direct .apkg output
 
 Wire the new `ApkgExporter` into the pipeline so that `.apkg` files are generated alongside markdown card output when `create_anki_deck` is configured. The exporter runs after plain card writing (step 8) and again after audio generation (step 9b) to produce a final deck with audio URIs. This removes the dependency on a running AnkiConnect instance for basic deck creation.
@@ -72,7 +90,7 @@ Two independent changes that together unlock processing book chapters at scale o
 - **Parallel card audio across Fish Speech servers**: Card-audio generation now runs through a `ThreadPoolExecutor` sized to the number of healthy Fish Speech servers when the provider is `fish_speech` and there is more than one card. Each card's `generate_card_audio()` call is dispatched in parallel; results are reassembled in original card order so audio URIs and validation messages are unchanged.
 - **Pre-generated citation audio**: To avoid a race on the shared `{citation_key}_citation.mp3` file when many parallel workers all try to lazily generate it, the citation clip is generated once up front via `generate_citation_audio()` before the parallel batch starts. Cards then hit the cached file.
 
-## 2026.04.26 - mode=solution_manual branch + _apkg_filename helper
+## 2026.04.26 - mode=solution_manual branch +_apkg_filename helper
 
 Added a third arm to the mode dispatch in `process_full()`. When `mode == "solution_manual"` the pipeline calls [[swanki.pipeline.problem_set#run_solution_manual_override]] to enumerate, pair, resolve, and generate problem-set cards in one whole-document pass — bypassing the existing segment-based card-gen body entirely. Provenance YAML is written next to the cards if any `full_solution` cards exist (currently disabled by default).
 

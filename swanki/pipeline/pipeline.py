@@ -111,7 +111,8 @@ class Pipeline:
     generate_image_cards(markdown_files, doc_summary, ...)
         Generate cards from images
     generate_outputs(cards, summary, output_dir)
-        Generate output files in various formats
+        Generate output files in various formats; returns (outputs, kept_cards)
+        where kept_cards is the correctness-gated list to thread onward
     generate_audio(cards, summary, outputs, cleaned_files, image_summaries)
         Generate audio files for cards and content
     send_to_anki(cards, outputs, anki_config)
@@ -211,7 +212,9 @@ class Pipeline:
 
         # Initialize state
         self.state = ProcessingState(
-            pdf_path=pdf_path, citation_key=effective_key, current_stage="initialization"
+            pdf_path=pdf_path,
+            citation_key=effective_key,
+            current_stage="initialization",
         )
         assert self.state is not None  # Set above; helps mypy narrow type
 
@@ -334,7 +337,9 @@ class Pipeline:
             )
             self.state.cards_generated = len(all_cards)
             self.state.current_stage = "output_generation"
-            outputs = self.generate_outputs(
+            # Reassign all_cards to the correctness-gated kept list so audio /
+            # apkg / Anki downstream ship the corrected cards.
+            outputs, all_cards = self.generate_outputs(
                 all_cards, doc_summary, self.output_base
             )
             if provenance_log.entries:
@@ -356,7 +361,9 @@ class Pipeline:
             all_cards = run_glossary_override(self, cleaned_files, doc_summary)
             self.state.cards_generated = len(all_cards)
             self.state.current_stage = "output_generation"
-            outputs = self.generate_outputs(
+            # Reassign all_cards to the correctness-gated kept list so audio /
+            # apkg / Anki downstream ship the corrected cards.
+            outputs, all_cards = self.generate_outputs(
                 all_cards, doc_summary, self.output_base
             )
         else:
@@ -397,9 +404,7 @@ class Pipeline:
                         combined_text, char_config.get("target_chars", 2000)
                     )
                     segment_dir = self.output_base / "segments"
-                    segment_files = write_segment_files(
-                        segment_tuples, segment_dir
-                    )
+                    segment_files = write_segment_files(segment_tuples, segment_dir)
                     seg_to_filtered_pages = build_segment_to_page_map(
                         page_offsets,
                         [(s, e) for _, s, e in segment_tuples],
@@ -451,6 +456,7 @@ class Pipeline:
 
                 last_image_page = -1
                 from ..llm.safety import SAFETY_REFUSAL_MARKERS as _SAFETY_MARKERS
+
                 for seg_idx, seg_file in enumerate(text_card_files):
                     # Tolerate biosec-exhausted-retry on one segment: with
                     # gpt-5.5's biosec guard, a single problematic segment
@@ -473,7 +479,9 @@ class Pipeline:
                                 "Segment %d card-gen biosec-refused after all "
                                 "preamble retries; skipping segment and "
                                 "continuing (lose %d cards from %s)",
-                                seg_idx, cards_per_seg, seg_file.name,
+                                seg_idx,
+                                cards_per_seg,
+                                seg_file.name,
                             )
                             continue
                         raise
@@ -530,7 +538,11 @@ class Pipeline:
 
             # 8. Generate outputs based on config
             self.state.current_stage = "output_generation"
-            outputs = self.generate_outputs(all_cards, doc_summary, self.output_base)
+            # Reassign all_cards to the correctness-gated kept list so audio /
+            # apkg / Anki downstream ship the corrected cards.
+            outputs, all_cards = self.generate_outputs(
+                all_cards, doc_summary, self.output_base
+            )
             if provenance_log is not None and provenance_log.entries:
                 import yaml as _yaml
 
@@ -1967,7 +1979,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
     def generate_outputs(
         self, cards: list[PlainCard], summary: DocumentSummary, output_dir: Path
-    ) -> dict[str, Path]:
+    ) -> tuple[dict[str, Path], list[PlainCard]]:
         """Generate output files in configured formats.
 
         Creates various output files including plain cards, cards with
@@ -1984,11 +1996,17 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
         Returns:
         -------
-        Dict[str, Path]
-            Mapping of output types to file paths:
-            - 'cards_plain': Plain markdown cards
-            - 'cards_audio': Cards with audio (if enabled)
-            - 'summary': Document summary
+        Tuple[Dict[str, Path], List[PlainCard]]
+            A pair of (outputs, kept_cards):
+
+            - outputs maps output types to file paths:
+              - 'cards_plain': Plain markdown cards
+              - 'cards_audio': Cards with audio (if enabled)
+              - 'summary': Document summary
+            - kept_cards is the correctness-gated list actually written to
+              disk. Callers MUST thread this back into ``all_cards`` so the
+              downstream audio / apkg / Anki path ships the gated (not the
+              pre-gate) cards. The gate runs exactly once, here.
 
         Notes:
         -----
@@ -2086,7 +2104,10 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                     f.write(f"- **{term}**: {definition}\\n")
         outputs["summary"] = summary_path
 
-        return outputs
+        # Return the gated kept list alongside outputs so every downstream
+        # writer (generate_audio -> cards-with-audio.md, the 9b apkg re-export,
+        # send_to_anki) ships the corrected cards, not the pre-gate list.
+        return outputs, cards
 
     def generate_audio(
         self,
@@ -2221,7 +2242,9 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                     "force_regenerate_citation", False
                 )
 
-                def _process_card(args: tuple[int, object]) -> tuple[int, str | None, str | None]:
+                def _process_card(
+                    args: tuple[int, object],
+                ) -> tuple[int, str | None, str | None]:
                     idx, card = args
                     front_fn, back_fn = generate_card_audio(
                         card=card,
@@ -2245,9 +2268,11 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                     from ..audio._common import _discover_fish_speech_servers
                     from ..audio.card import generate_citation_audio
 
-                    num_servers = len(_discover_fish_speech_servers(
-                        str(tts_kwargs.get("server_url", "http://localhost:8080"))
-                    ))
+                    num_servers = len(
+                        _discover_fish_speech_servers(
+                            str(tts_kwargs.get("server_url", "http://localhost:8080"))
+                        )
+                    )
 
                     # Pre-generate citation audio once before parallel cards
                     # to avoid race condition on the shared citation file.
@@ -2393,9 +2418,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
             # Use main_content-only files when classifier dispatch supplied them.
             lecture_source_files = (
-                main_content_files
-                if main_content_files is not None
-                else cleaned_files
+                main_content_files if main_content_files is not None else cleaned_files
             )
 
             generate_lecture_audio(
@@ -2526,11 +2549,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         """
         output_config = self.config.get("output", {}).get("output", {})
         suffix = output_config.get("apkg_filename_suffix", "")
-        base = (
-            self.audio_prefix
-            if hasattr(self, "audio_prefix")
-            else self.citation_key
-        )
+        base = self.audio_prefix if hasattr(self, "audio_prefix") else self.citation_key
         return f"{base}{suffix}.apkg"
 
     def format_deck_name(self, template: str, deck_name: str) -> str:
