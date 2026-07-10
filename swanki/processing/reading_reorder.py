@@ -35,7 +35,8 @@ _FIGCAP = re.compile(r"^(?:Fig\.|Figure|Table)\s*(\d+)\b", re.IGNORECASE)
 _EXTENDED = re.compile(r"^(?:Extended Data|Supplementary)", re.IGNORECASE)
 
 _ACCESSED = re.compile(r",?\s*accessed\s+\d{1,2}\s+[A-Za-z]+\s+\d{4}", re.IGNORECASE)
-_BARE_URL = re.compile(r"\(?\bhttps?://[^\s)]+\)?", re.IGNORECASE)
+# The scheme is sometimes split from the host by an OCR space ("https:// www.x").
+_BARE_URL = re.compile(r"\(?\bhttps?://\s?[^\s)]+\)?", re.IGNORECASE)
 
 
 def _split_blocks(content: str) -> list[str]:

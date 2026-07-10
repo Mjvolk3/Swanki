@@ -72,3 +72,11 @@ def test_strip_accessed_date_and_urls():
     assert "accessed" not in out.lower()
     assert "http" not in out
     assert "YMDB database" in out and "was used." in out
+
+
+def test_strip_ocr_space_broken_url():
+    # OCR often splits the scheme from the host: "https:// www.rdkit.org/".
+    src = "predicted with RDKit, https:// www.rdkit.org/. All reactions inherited"
+    out = strip_reference_cruft(src)
+    assert "http" not in out and "rdkit.org" not in out
+    assert "predicted with RDKit" in out and "All reactions inherited" in out
