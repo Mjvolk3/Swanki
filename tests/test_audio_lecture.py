@@ -12,9 +12,12 @@ from unittest.mock import MagicMock, patch
 from pydub import AudioSegment
 
 from swanki.audio.lecture import (
+    _REFINEMENT_TEMPLATE,
     _extract_context,
+    _refine_position_prompts,
     _refine_transcript,
     _split_large_section,
+    _truncate_preserving_closing,
     build_si_index,
     chunk_by_headers,
     extract_relevant_si,
@@ -342,7 +345,10 @@ def test_lecture_feedback_default_done_passes_through():
     from swanki.models.cards import LectureTranscriptFeedback
 
     fb = LectureTranscriptFeedback(
-        feedback=[], done=True, word_count=2000, meets_length_target=True,
+        feedback=[],
+        done=True,
+        word_count=2000,
+        meets_length_target=True,
     )
     # Existing four-kwarg construction must keep working with defaults.
     assert fb.done is True
@@ -380,10 +386,68 @@ def test_lecture_feedback_model_validate_round_trip_runs_validator():
     from swanki.models.cards import LectureTranscriptFeedback
 
     base = LectureTranscriptFeedback(
-        feedback=[], done=True, word_count=2000, meets_length_target=True,
+        feedback=[],
+        done=True,
+        word_count=2000,
+        meets_length_target=True,
     )
     # The Pydantic 2 idiom: dump + reconstruct so @model_validator fires.
     refreshed = LectureTranscriptFeedback.model_validate(
         base.model_dump() | {"repeated_phrases": ["foo bar baz qux quux"]}
     )
     assert refreshed.done is False
+
+
+# ---------------------------------------------------------------------------
+# _refine_position_prompts / _truncate_preserving_closing
+# ---------------------------------------------------------------------------
+
+
+def test_refine_first_chunk_must_keep_opening():
+    _, constraints = _refine_position_prompts(is_first=True, is_last=False)
+    assert "OPENS the lecture" in constraints
+    assert "DO NOT add a new opening hook" not in constraints
+    assert "DO NOT add a new closing summary" in constraints
+
+
+def test_refine_last_chunk_must_keep_closing():
+    _, constraints = _refine_position_prompts(is_first=False, is_last=True)
+    assert "CLOSES the lecture" in constraints
+    assert "DO NOT add a new opening hook" in constraints
+
+
+def test_refine_single_chunk_owns_both_ends():
+    _, constraints = _refine_position_prompts(is_first=True, is_last=True)
+    assert "OPENS the lecture" in constraints
+    assert "CLOSES the lecture" in constraints
+    # A whole-transcript chunk is not a fragment of anything.
+    assert "one part of a longer lecture" not in constraints
+
+
+def test_refine_interior_chunk_owns_neither_end():
+    _, constraints = _refine_position_prompts(is_first=False, is_last=False)
+    assert "DO NOT add a new opening hook" in constraints
+    assert "DO NOT add a new closing summary" in constraints
+    assert "one part of a longer lecture" in constraints
+
+
+def test_refine_position_prompts_substitute_into_template():
+    for is_first in (True, False):
+        for is_last in (True, False):
+            _, constraints = _refine_position_prompts(is_first, is_last)
+            _REFINEMENT_TEMPLATE.substitute(
+                critique="c", transcript="t", position_constraints=constraints
+            )
+
+
+def test_truncate_preserving_closing_is_noop_under_cap():
+    text = "One. Two. Three."
+    assert _truncate_preserving_closing(text, 100) == text
+
+
+def test_truncate_preserving_closing_honors_cap_and_keeps_ending():
+    body = " ".join(f"word{i}." for i in range(500))
+    closing = "So the lesson is simple. It ties the whole story together."
+    out = _truncate_preserving_closing(f"{body}\n\n{closing}", 200)
+    assert len(out.split()) <= 200
+    assert out.rstrip().endswith("It ties the whole story together.")
