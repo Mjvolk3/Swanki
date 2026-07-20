@@ -222,10 +222,9 @@ else
     swanki "${args[@]}" || { echo "ERROR: swanki generation failed" >&2; exit 1; }
 fi
 
-# Generation done. SWANKI_JOB_DELIVER=0 stops here (audio-only / parallel runs
-# skip the card-oriented Zotero+Anki delivery: it races on a shared Zotero item
-# and has no apkg under mode=audio_only -- push audio to ABS separately).
-if [ "${SWANKI_JOB_DELIVER:-1}" != "1" ]; then
+# Generation done. SWANKI_JOB_DELIVER=0 is a hard skip (parallel runs that push
+# ABS out-of-band, or debugging) -- generation only, no delivery at all.
+if [ "${SWANKI_JOB_DELIVER:-1}" = "0" ]; then
     echo "[swanki-job $job] DONE (generation only; delivery skipped)"
     exit 0
 fi
@@ -238,6 +237,26 @@ jobout="$(find "$SWANKI_DATA/$(dirname "$base")" -maxdepth 1 \
             | sort -rn | head -1 | cut -d' ' -f2-)"
 [ -n "$jobout" ] || { echo "ERROR: no output dir under $SWANKI_DATA/$base" >&2; exit 1; }
 echo "[swanki-job $job] delivering from $jobout"
+
+# --- 5a. audio-only regen: MERGE into Zotero, skip Anki ----------------------
+# A partial regen dir holds only the re-rendered track(s) and no apkg. Deliver
+# it merge-aware (`--merge-tracks auto` re-stamps only the tracks present and
+# carries the rest of the Zotero bundle forward verbatim), skip Anki (no cards
+# changed), and flag ABS dirty. This closes the "sync on finish" loop for
+# audio-only reruns without the old DELIVER=0 manual push.
+case " $extra " in
+    *" mode=audio_only "*)
+        echo "[swanki-job $job] audio-only regen: merge-delivering to Zotero"
+        python -m swanki.delivery deliver \
+            --citation-key "$key" --content-key "$ck" \
+            --output-dir "$jobout" --audio-prefix "$prefix" \
+            --targets zotero --merge-tracks auto \
+            || { echo "ERROR: zotero merge delivery failed" >&2; exit 1; }
+        touch "$ABS_DIRTY"
+        echo "[swanki-job $job] DONE (audio-only merged to zotero; abs deferred to finalizer)"
+        exit 0
+        ;;
+esac
 
 # --- 6. delivery: Anki health-check, then Zotero (free), Anki (locked) -------
 # Defer if Anki is down so a transient outage does not burn a completed run.

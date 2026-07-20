@@ -124,3 +124,14 @@ Same change as [[scripts.swanki_audio_edit]]: the header `--output` fallback now
 points at `/home/michaelvolk/.swanki-queue/logs/slurm-%j.log` so direct sbatch
 submissions stop dumping logs into the repo root; enqueue-driven submissions
 already overrode it to the same dir.
+
+## 2026.07.20 - Audio-only regens auto-deliver via merge (no more DELIVER=0)
+
+`SWANKI_JOB_DELIVER=0` is now a HARD skip only (parallel/out-of-band runs). An
+`mode=audio_only` run (detected in `$extra`) takes a new branch: deliver
+`--targets zotero --merge-tracks auto` (re-stamp only the tracks present, carry
+the rest of the Zotero bundle forward verbatim), skip Anki (no cards changed),
+flag ABS dirty for the finalizer. This closes the "trigger sync on finishing an
+artifact-repro job" loop for audio-only reruns — previously they exited at
+`DELIVER=0` and needed a hand push, which left Zotero stale and let the ABS cron
+revert the targeted ABS drop. Merge mechanism: [[swanki.sync.zotero]] 2026.07.20.

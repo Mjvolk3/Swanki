@@ -22,16 +22,55 @@ from .zotero_client import make_zotero_client, with_zotero_retry
 
 logger = logging.getLogger(__name__)
 
-# Swanki output types to upload: (glob pattern, name template).
+# Swanki output types to upload: (track, glob pattern, name template).
+# `track` labels each artifact so a partial regen (e.g. lecture only) can be
+# merged into an existing Zotero bundle instead of replacing the whole thing --
+# see `merge_tracks` on `sync_to_zotero`.
 # The apkg pattern uses a wildcard so it matches both the legacy
 # `<key>.apkg` and the suffixed `<key>-problem-set.apkg` produced by
 # solution-manual mode (see Pipeline._apkg_filename).
 _OUTPUT_TYPES = [
-    ("{citation_key}*.apkg", "{stem}-{timestamp}-{commit}.apkg"),
-    ("{prefix}-lecture-audio.mp3", "{citation_key}-lecture-{timestamp}-{commit}.mp3"),
-    ("{prefix}-summary-audio.mp3", "{citation_key}-summary-{timestamp}-{commit}.mp3"),
-    ("{prefix}-reading-audio.mp3", "{citation_key}-reading-{timestamp}-{commit}.mp3"),
+    ("cards", "{citation_key}*.apkg", "{stem}-{timestamp}-{commit}.apkg"),
+    (
+        "lecture",
+        "{prefix}-lecture-audio.mp3",
+        "{citation_key}-lecture-{timestamp}-{commit}.mp3",
+    ),
+    (
+        "summary",
+        "{prefix}-summary-audio.mp3",
+        "{citation_key}-summary-{timestamp}-{commit}.mp3",
+    ),
+    (
+        "reading",
+        "{prefix}-reading-audio.mp3",
+        "{citation_key}-reading-{timestamp}-{commit}.mp3",
+    ),
 ]
+
+# Every track this module knows how to pack. `--merge-tracks auto` intersects
+# this with what is actually present in the output dir.
+ALL_TRACKS = frozenset(track for track, _, _ in _OUTPUT_TYPES)
+
+# Classify a bundle MEMBER filename back to its track. Audio members carry the
+# track word as an infix (`<key>-lecture-<ts>-<commit>.mp3`); apkgs are the
+# only `.apkg` members, so they map to `cards` regardless of stem.
+_MEMBER_TRACK_RE = re.compile(r"-(?P<track>lecture|summary|reading)-\d{8}T\d{4}-")
+
+
+def _member_track(filename: str) -> str | None:
+    """Classify a bundle member filename into its track, or None if unknown.
+
+    Args:
+        filename: A file name from inside a Swanki bundle zip.
+
+    Returns:
+        One of ``ALL_TRACKS``, or ``None`` for an unrecognized member.
+    """
+    if filename.endswith(".apkg"):
+        return "cards"
+    m = _MEMBER_TRACK_RE.search(filename)
+    return m.group("track") if m else None
 
 
 def _git_short_hash() -> str:
@@ -170,9 +209,65 @@ def _prune_prior_attachments(
     return deleted
 
 
-def _find_or_create_sync_note(
-    zot: zotero.Zotero, parent_key: str
-) -> tuple[dict, str]:
+def _load_existing_bundle(
+    zot: Any, item_key: str, content_key: str
+) -> dict[str, bytes] | None:
+    """Download the newest existing Swanki bundle zip and read its members.
+
+    Used by the merge path: a partial regen preserves the tracks it did not
+    touch by carrying their members forward verbatim (original filenames, hence
+    original provenance) from the current bundle.
+
+    A legacy bare ``.apkg`` attachment (pre-bundle) is treated as a one-member
+    bundle so cards survive an audio-only merge.
+
+    Args:
+        zot: Authenticated Zotero client.
+        item_key: Parent Zotero item key.
+        content_key: Content key (chapter base) identifying the bundle.
+
+    Returns:
+        ``{member_filename: bytes}`` for the newest bundle, or ``None`` when the
+        item has no prior Swanki attachment (nothing to merge into).
+    """
+    base = _chapter_base(content_key)
+    zip_re = re.compile(rf"^{re.escape(base)}.*\.zip$")
+    apkg_re = re.compile(rf"^{re.escape(base)}.*\.apkg$")
+
+    newest_zip: dict | None = None
+    newest_apkg: dict | None = None
+    for child in zot.everything(zot.children(item_key)):
+        data = child["data"]
+        if data.get("itemType") != "attachment":
+            continue
+        fn = data.get("filename", "")
+        # Filenames carry a ...-YYYYMMDDTHHMM-<commit>.<ext> suffix, so a plain
+        # string max picks the most recent deterministically.
+        if zip_re.match(fn) and (
+            newest_zip is None or fn > newest_zip["data"]["filename"]
+        ):
+            newest_zip = child
+        elif apkg_re.match(fn) and (
+            newest_apkg is None or fn > newest_apkg["data"]["filename"]
+        ):
+            newest_apkg = child
+
+    import zipfile
+
+    if newest_zip is not None:
+        raw = zot.file(newest_zip["key"])
+        with tempfile.TemporaryDirectory() as tmp:
+            zp = Path(tmp) / "bundle.zip"
+            zp.write_bytes(raw)
+            with zipfile.ZipFile(zp) as zf:
+                return {n: zf.read(n) for n in zf.namelist()}
+    if newest_apkg is not None:
+        fn = newest_apkg["data"]["filename"]
+        return {fn: zot.file(newest_apkg["key"])}
+    return None
+
+
+def _find_or_create_sync_note(zot: zotero.Zotero, parent_key: str) -> tuple[dict, str]:
     """Find or create a 'Swanki Sync Log' child note.
 
     Args:
@@ -207,18 +302,35 @@ def sync_to_zotero(
     output_dir: Path,
     audio_prefix: str,
     content_key: str = "",
+    merge_tracks: set[str] | str | None = None,
 ) -> None:
-    """Upload Swanki outputs to Zotero as timestamped attachments.
+    """Upload Swanki outputs to Zotero as one timestamped bundle attachment.
 
-    Uploads apkg and any generated audio files as child attachments of the
-    corresponding Zotero library item. Each file gets a timestamp in its
-    name so multiple versions accumulate.
+    Bundles the apkg and any generated audio files into a single zip child
+    attachment of the corresponding Zotero item, then prunes prior bundles so
+    only the newest survives (audio iteration lives in ABS, not in stacked
+    Zotero versions).
+
+    **Full replace** (``merge_tracks=None``, default): the bundle is exactly
+    what is present in ``output_dir``. Correct for a full pipeline run, but for
+    a PARTIAL regen (an audio-only lecture re-render whose dir holds only the
+    lecture) it would drop the untouched tracks.
+
+    **Merge** (``merge_tracks`` set): only the named tracks are re-stamped from
+    ``output_dir``; every other member of the current Zotero bundle is carried
+    forward verbatim, keeping its original filename and provenance. This makes
+    a partial regen additive. ``merge_tracks="auto"`` infers the set from the
+    tracks actually present in ``output_dir`` — safe for full runs too (all
+    tracks present ⇒ identical result to full replace). With no prior bundle to
+    merge into, the merge path degrades to a full pack of whatever is present.
 
     Args:
         citation_key: BibTeX key for Zotero item lookup.
         output_dir: Swanki output directory containing generated files.
         audio_prefix: Audio file prefix (e.g. "citationKey-fish").
         content_key: Content identifier for filenames. Defaults to citation_key.
+        merge_tracks: ``None`` for full replace; a subset of ``ALL_TRACKS`` to
+            update only those tracks; ``"auto"`` to infer from ``output_dir``.
     """
     api_key = os.getenv("ZOTERO_API_KEY")
     library_id = os.getenv("ZOTERO_LIBRARY_ID")
@@ -247,37 +359,78 @@ def sync_to_zotero(
 
     import zipfile
 
+    # Freshly stamp every track present in the output dir: {dest_name: src_path}.
+    fresh: dict[str, Path] = {}
+    fresh_tracks: set[str] = set()
+    for track, source_pattern, name_template in _OUTPUT_TYPES:
+        source_glob = source_pattern.format(citation_key=file_key, prefix=audio_prefix)
+        # Glob to support patterns with `*` (e.g. apkg with optional filename
+        # suffix). For literal patterns, glob returns 0 or 1.
+        matches = sorted(output_dir.glob(source_glob))
+        if not matches:
+            logger.debug(f"Skipping {source_glob} (no matches)")
+            continue
+        for source_path in matches:
+            dest_name = name_template.format(
+                citation_key=file_key,
+                stem=source_path.stem,
+                timestamp=timestamp,
+                commit=commit,
+            )
+            fresh[dest_name] = source_path
+            fresh_tracks.add(track)
+
+    # Resolve which tracks this call re-stamps. "auto" == every track present in
+    # the dir (so a full run behaves exactly like full-replace).
+    if merge_tracks == "auto":
+        merge_set: set[str] | None = set(fresh_tracks)
+    elif merge_tracks is None:
+        merge_set = None
+    else:
+        merge_set = {t.strip() for t in merge_tracks} & ALL_TRACKS
+
+    # Carry forward untouched members from the current bundle when merging.
+    carried: dict[str, bytes] = {}
+    preserved_tracks: set[str] = set()
+    if merge_set is not None:
+        existing = _load_existing_bundle(zot, item_key, file_key)
+        if existing:
+            # Drop only the fresh tracks; keep everything else verbatim.
+            fresh = {n: p for n, p in fresh.items() if _member_track(n) in merge_set}
+            for name, blob in existing.items():
+                if _member_track(name) not in merge_set:
+                    carried[name] = blob
+                    t = _member_track(name)
+                    if t:
+                        preserved_tracks.add(t)
+        else:
+            logger.info(
+                "merge requested but no prior Zotero bundle found; "
+                "packing everything present in the output dir"
+            )
+
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Collect files into zip
         zip_name = f"{file_key}-{timestamp}-{commit}.zip"
         zip_path = Path(tmpdir) / zip_name
         packed: list[str] = []
 
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            for source_pattern, name_template in _OUTPUT_TYPES:
-                source_glob = source_pattern.format(
-                    citation_key=file_key, prefix=audio_prefix
-                )
-                # Glob to support patterns with `*` (e.g. apkg with optional
-                # filename suffix). For literal patterns, glob returns 0 or 1.
-                matches = sorted(output_dir.glob(source_glob))
-                if not matches:
-                    logger.debug(f"Skipping {source_glob} (no matches)")
-                    continue
-
-                for source_path in matches:
-                    dest_name = name_template.format(
-                        citation_key=file_key,
-                        stem=source_path.stem,
-                        timestamp=timestamp,
-                        commit=commit,
-                    )
-                    zf.write(source_path, dest_name)
-                    packed.append(dest_name)
+            for dest_name, source_path in fresh.items():
+                zf.write(source_path, dest_name)
+                packed.append(dest_name)
+            for name, blob in carried.items():
+                zf.writestr(name, blob)
+                packed.append(name)
 
         if not packed:
             logger.warning("No files found to upload to Zotero")
             return
+
+        if merge_set is not None and carried:
+            logger.info(
+                f"Merge: updated {sorted(fresh_tracks & merge_set)}, "
+                f"preserved {sorted(preserved_tracks)}"
+            )
 
         zip_size_mb = zip_path.stat().st_size / 1024 / 1024
         logger.info(f"Uploading {zip_name} ({zip_size_mb:.1f} MB) to Zotero...")
@@ -312,10 +465,7 @@ def sync_to_zotero(
     # Update sync log note
     note_item, note_html = _find_or_create_sync_note(zot, item_key)
     file_lines = "".join(f"<li>{f}</li>" for f in uploaded)
-    log_entry = (
-        f"<h3>{timestamp} ({commit})</h3>\n"
-        f"<ul>{file_lines}</ul>\n"
-    )
+    log_entry = f"<h3>{timestamp} ({commit})</h3>\n<ul>{file_lines}</ul>\n"
     note_item["data"]["note"] = note_html + log_entry
     zot.update_item(note_item)
 
