@@ -12,7 +12,8 @@
 # Inputs (exported by the caller; sbatch --export=ALL):
 #   SWANKI_EDIT_MANIFEST  path to the live chunk_manifest.json   (required)
 #   SWANKI_EDIT_IDX       audio-type-local chunk index           (required)
-#   SWANKI_EDIT_MODE      speech_only | comment | new_text       (default speech_only)
+#   SWANKI_EDIT_MODE      speech_only | collapse_pauses | verbalize_numbers |
+#                         comment | new_text                     (default speech_only)
 #   SWANKI_EDIT_VOICE     models config name                     (default fish_speech_hamming)
 #   SWANKI_EDIT_SPEED     render speed; MUST match the original   (default 1.0)
 #   SWANKI_EDIT_PAYLOAD   comment text / new_text                 (modes comment|new_text)
@@ -91,6 +92,7 @@ edit=(python scripts/swanki_audio_edit.py --manifest "$manifest" --idx "$idx"
 case "$mode" in
     speech_only) edit+=(--speech-only) ;;
     collapse_pauses) edit+=(--collapse-pauses) ;;
+    verbalize_numbers) edit+=(--verbalize-numbers) ;;
     comment)     edit+=(--comment "$payload"); [ -n "$model" ] && edit+=(--model "$model") ;;
     new_text)    edit+=(--new-text "$payload"); [ -n "$model" ] && edit+=(--model "$model") ;;
     *) echo "ERROR: bad SWANKI_EDIT_MODE: $mode" >&2; exit 2 ;;
