@@ -21,12 +21,12 @@ so re-preprocessing would inject a spurious `[short pause]`). Speed auto-resolve
 via the new manifest/audio-type resolution (PR #43). Originals backed up to
 `lecture_chunks/_pre_number_fix_backup.json`.
 
-| Chunk | Bookmark | Fix |
-| --- | --- | --- |
-| 1  | 1:08  | "one-zero to one-zero-zero micrometers" -> "10 to 100 micrometers" |
-| 3  | (bonus) | "one-zero to 15 percent" -> "10 to 15 percent" |
-| 22 | 13:39 | "one-zero percent" -> "10 percent" |
-| 11 | 6:53  | speech-only re-roll (Fish said "zero" as "deero" reading 0.004) — stochastic, spot-check |
+| Chunk | Bookmark | Fix                                                                                      |
+|-------|----------|------------------------------------------------------------------------------------------|
+| 1     | 1:08     | "one-zero to one-zero-zero micrometers" -> "10 to 100 micrometers"                       |
+| 3     | (bonus)  | "one-zero to 15 percent" -> "10 to 15 percent"                                           |
+| 22    | 13:39    | "one-zero percent" -> "10 percent"                                                       |
+| 11    | 6:53     | speech-only re-roll (Fish said "zero" as "deero" reading 0.004) — stochastic, spot-check |
 
 Published Zotero (source of truth) -> ABS via `sync_to_zotero` + `swanki.abs.targeted_refresh`.
 ABS chunk times shifted, so CH01 bookmarks need clear + re-mark. See
@@ -57,3 +57,31 @@ Affected chunks (fix count): 2(2), 4, 9, 10, 48, 52, 53, 54(2), 56, 59(3), 62, 6
 
 Published Zotero -> ABS same as CH01. ABS chunk times shifted, so CH05 bookmarks need
 clear + re-mark.
+
+## Kuchel CH03 reading + lecture — number-verbalization fix (2026.07.20)
+
+Same pre-PR#39 root cause found in **CH03** (`building-blocks-of-life`), which had
+NEVER been remediated: audio rendered 2026-06-04, two days before PR#39 (3893cc9)
+demoted `verbalize_bit_strings` to opt-in and de-fanged the "10" prompt example.
+Scan: summary CLEAN; **reading 30 artifacts / 23 chunks**, **lecture 2 / 2 chunks**.
+Four ABS bookmarks on the parent item (`7b7b2d9e`) flagged it: 1:08, 6:53 ("deero"
+= Fish saying "zero" oddly, stochastic — not a number bug), 13:39, and 55:52 ("100
+Dolphins red as binary").
+
+Fix mirrors CH05: deterministic digit-word -> numeral swap on stored chunk text,
+verbatim `speech_only` re-TTS per affected chunk (no re-preprocess), then ONE
+`restitch_from_chunks` per track. Guard regex fixed vs CH05's: hyphen neighbours
+are IN scope (`Fig. 3-one-zero` -> `Fig. 3-10`, `one-zero-methyl` -> `10-methyl`),
+only letter-abutting runs rejected. Ran serverless on SLURM (job 972,
+`--dependency=afterany:971`) to avoid the epilog cross-kill of the live pipeline's
+Fish. Verified: 0 verbalized runs remain across all three tracks; baselines in
+`{reading,lecture}_chunks/_edits/`. Speed auto-resolved 1.2 reading / 1.0 lecture.
+
+Reading chunks fixed: 2(2), 3, 35, 37, 60, 62(2), 65, 79, 80, 93(2), 147, 157,
+159, 160, 186, 215, 222, 260, 277, 278(4), 284, 297(2). Lecture: 1, 40.
+
+Delivery (2026.07.20): commit -> `sync_to_zotero` (prunes prior attachments, re-tag
+🦊) -> stamp local mp3s -> `swanki.abs.refresh.targeted_refresh` (windowed-wipes
+stale ABS file). ALL four Kuchel ABS bookmarks cleared whole-item via
+`scripts/abs_clear_bookmarks.py` (this also swept the stale CH01 bookmarks that
+were never cleared after the 2026-06-09 fix).
