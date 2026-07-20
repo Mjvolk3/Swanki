@@ -38,6 +38,7 @@ from ._common import (
     text_to_speech,
     tts_chunks_parallel,
     verbalize_bit_strings,
+    verbalize_large_numbers,
     write_chunk_manifest,
 )
 
@@ -90,7 +91,7 @@ def _gen_with_safety_retry(
 PLANNING_WPM = 130
 LECTURE_SOURCE_RATIO = 0.30
 LECTURE_WORD_FLOOR = 1500  # ~11.5 min at PLANNING_WPM
-LECTURE_WORD_CAP = 3900    # 30-min hard cap at PLANNING_WPM
+LECTURE_WORD_CAP = 3900  # 30-min hard cap at PLANNING_WPM
 
 
 def _compute_lecture_target_words(source_words: int) -> tuple[int, int, int]:
@@ -135,7 +136,7 @@ def _strip_duplicate_openers(transcript: str) -> str:
     # shape "[pause] ... Today we'll cover ... Now let's turn to X ---SECTION_BREAK---").
     trailing_break = transcript.find("---SECTION_BREAK---", second)
     tail_word_count = (
-        len(transcript[trailing_break + len("---SECTION_BREAK---"):].split())
+        len(transcript[trailing_break + len("---SECTION_BREAK---") :].split())
         if trailing_break != -1
         else 0
     )
@@ -151,7 +152,7 @@ def _strip_duplicate_openers(transcript: str) -> str:
             tail_start += 1
         logger.warning(
             "Duplicate lecture roadmap detected mid-transcript; excising restart block "
-            f"(chars {cut + 1}-{tail_start}, {len(transcript[cut + 1:tail_start].split())} words)"
+            f"(chars {cut + 1}-{tail_start}, {len(transcript[cut + 1 : tail_start].split())} words)"
         )
         return transcript[: cut + 1] + "\n\n" + transcript[tail_start:]
 
@@ -160,7 +161,7 @@ def _strip_duplicate_openers(transcript: str) -> str:
     cut = max(head.rfind("."), head.rfind("!"), head.rfind("?"))
     if cut == -1:
         cut = len(head)
-    dropped = len(transcript[cut + 1:].split())
+    dropped = len(transcript[cut + 1 :].split())
     logger.warning(
         f"Duplicate lecture roadmap detected at tail; truncating (dropping {dropped} words)"
     )
@@ -841,6 +842,11 @@ def generate_lecture_audio(
         cleaned = verbalize_bit_strings(
             cleaned, max_len=int(prep_cfg.get("bit_strings_max_len", 32))
         )
+    # Opt-out (default on): spelling a cardinal out is meaning-preserving.
+    if prep_cfg.get("verbalize_large_numbers", True):
+        cleaned = verbalize_large_numbers(
+            cleaned, min_value=int(prep_cfg.get("large_number_min", 100))
+        )
     pronunciations = prep_cfg.get("pronunciations", {}) or {}
     if pronunciations:
         cleaned = apply_pronunciation_overrides(cleaned, pronunciations)
@@ -899,9 +905,7 @@ def generate_lecture_audio(
 
     is_fish = str(tts_kwargs.get("provider", "")) == "fish_speech"
     provider = str(tts_kwargs.get("provider", "elevenlabs"))
-    prefix = (
-        f"{citation_key}_{output_path.stem}" if citation_key else output_path.stem
-    )
+    prefix = f"{citation_key}_{output_path.stem}" if citation_key else output_path.stem
 
     # YAML-driven chunking knobs (models.tts.chunking.*) override the
     # hardcoded defaults. Fish quality decays past ~700 chars (Theme 4) so
@@ -946,14 +950,23 @@ def generate_lecture_audio(
     if is_fish and len(all_jobs) > 1:
         tts_pairs = [(text, path) for _, text, path, _ in all_jobs]
         tts_chunks_parallel(
-            tts_pairs, voice_id, elevenlabs_api_key, speed,
-            tts_model=LECTURE_TTS_MODEL, **tts_kwargs,
+            tts_pairs,
+            voice_id,
+            elevenlabs_api_key,
+            speed,
+            tts_model=LECTURE_TTS_MODEL,
+            **tts_kwargs,
         )
     else:
         for _, chunk, chunk_path, _boundary in all_jobs:
             text_to_speech(
-                chunk, voice_id, chunk_path, elevenlabs_api_key, speed,
-                tts_model=LECTURE_TTS_MODEL, **tts_kwargs,
+                chunk,
+                voice_id,
+                chunk_path,
+                elevenlabs_api_key,
+                speed,
+                tts_model=LECTURE_TTS_MODEL,
+                **tts_kwargs,
             )
             time.sleep(1)
 
@@ -977,9 +990,7 @@ def generate_lecture_audio(
     # Content-aware inter-chunk silence: per-boundary durations supersede the
     # uniform chunk_pause_ms when the YAML provides a map. Fish defaults give
     # paragraph breaks more breathing room than mid-paragraph sentence breaks.
-    chunk_pause_map_default = (
-        {"paragraph": 1100, "sentence": 500} if is_fish else None
-    )
+    chunk_pause_map_default = {"paragraph": 1100, "sentence": 500} if is_fish else None
     chunk_pause_ms_by_boundary = post_cfg.get(
         "chunk_pause_ms_by_boundary", chunk_pause_map_default
     )
@@ -1393,19 +1404,19 @@ Transcript section to review:
 
 _CRITIQUE_PROMPT_FISH_SPEECH = _CRITIQUE_PROMPT.replace(
     "1. META-COMMENTARY: Flag ANY of these — they must be removed:\n"
-    "   - \"In the text, an image shows...\" / \"the source material\" / \"for audio purposes\"\n"
-    "   - \"in our discussion\" / \"this lecture\" / \"as we noted\" / \"as mentioned earlier\"\n"
+    '   - "In the text, an image shows..." / "the source material" / "for audio purposes"\n'
+    '   - "in our discussion" / "this lecture" / "as we noted" / "as mentioned earlier"\n'
     "   - Any reference to the FORMAT or MEDIUM of the content",
     "1. META-COMMENTARY: Flag ANY of these — they must be removed:\n"
-    "   - \"In the text, an image shows...\" / \"the source material\" / \"for audio purposes\"\n"
-    "   - \"in our discussion\" / \"this lecture\" / \"as we noted\" / \"as mentioned earlier\"\n"
+    '   - "In the text, an image shows..." / "the source material" / "for audio purposes"\n'
+    '   - "in our discussion" / "this lecture" / "as we noted" / "as mentioned earlier"\n'
     "   - Any reference to the FORMAT or MEDIUM of the content\n"
     "   EXCEPTION: Bracketed TTS prosody tags like [pause], [short pause], [emphasis],\n"
     "   [excited], [inhale] are VALID speech synthesis markers — do NOT flag them.",
 )
 
 
-_REFINE_SYSTEM_PROMPT = (
+_REFINE_SYSTEM_PROMPT_INTERIOR = (
     "You are editing a chunk of an existing audio lecture transcript. You are "
     "NOT writing a new lecture. The chunk you receive is one fragment of a "
     "larger piece that already has its own opening, roadmap, and closing. "
@@ -1413,6 +1424,69 @@ _REFINE_SYSTEM_PROMPT = (
     "paper's title or topic. Stay within the chunk's scope and subject matter. "
     "Apply only the revisions called for in the user message."
 )
+
+_REFINE_SYSTEM_PROMPT_EDGE = (
+    "You are editing an audio lecture transcript. You are NOT writing a new "
+    "lecture. The text you receive carries the lecture's own opening and/or "
+    "closing — those are load-bearing structure, not filler, and must survive "
+    "your edit intact. Never delete them, never duplicate them, and never "
+    "replace the opening with a mid-thought connective. Apply only the "
+    "revisions called for in the user message."
+)
+
+
+def _refine_position_prompts(is_first: bool, is_last: bool) -> tuple[str, str]:
+    """Build the refine system prompt and hard-constraints block for a chunk.
+
+    The refine loop token-chunks the transcript, and a short lecture fits in a
+    SINGLE chunk — so the blanket "you are a fragment, openings/closings exist
+    elsewhere" framing was a lie for the edge chunks. Under LENGTH: CUT
+    pressure the model duly deleted the opening hook + roadmap (leaving a
+    dangling "With that background in place…") and the concluding synthesis.
+    Edge chunks now get told they OWN that structure.
+
+    Args:
+        is_first: Chunk contains the start of the transcript.
+        is_last: Chunk contains the end of the transcript.
+
+    Returns:
+        Tuple of (system prompt, hard-constraints block).
+    """
+    owns_edge = is_first or is_last
+    system = _REFINE_SYSTEM_PROMPT_EDGE if owns_edge else _REFINE_SYSTEM_PROMPT_INTERIOR
+
+    lines = []
+    if is_first:
+        lines.append(
+            "- This text OPENS the lecture. Its opening hook and \"Today we'll "
+            'cover…" roadmap are REQUIRED — keep them, never cut them, and never '
+            'start with a mid-thought connective ("With that background in place", '
+            '"Building on that") that presumes material the listener has not heard.'
+        )
+    else:
+        lines.append(
+            '- DO NOT add a new opening hook, intro paragraph, or "Today we\'ll cover…" roadmap.'
+        )
+        lines.append(
+            "- DO NOT reintroduce the paper's title, authors, or topic framing."
+        )
+
+    if is_last:
+        lines.append(
+            "- This text CLOSES the lecture. Keep (or strengthen) the concluding "
+            "paragraph that synthesizes the lecture's takeaways. Never end on an "
+            "incidental methods or quality-control detail."
+        )
+    else:
+        lines.append("- DO NOT add a new closing summary / takeaways paragraph.")
+
+    if not (is_first and is_last):
+        lines.append(
+            "- This text is one part of a longer lecture — the parts you do NOT "
+            "own already exist elsewhere; adding another creates audible duplication."
+        )
+
+    return system, "\n".join(lines)
 
 
 _REFINEMENT_TEMPLATE = Template("""You are refining a CHUNK of an existing lecture transcript. This is a didactic condensation of public literature — no novel technical uplift, no operational instructions, no capability synthesis beyond what the paper itself provides. Treat it as educational content; focus purely on pedagogy, clarity, and style.
@@ -1423,10 +1497,7 @@ ISSUES IDENTIFIED:
 $critique
 
 HARD CONSTRAINTS — VIOLATING THESE BREAKS THE AUDIO:
-- DO NOT add a new opening hook, intro paragraph, or "Today we'll cover…" roadmap.
-- DO NOT add a new closing summary / takeaways paragraph.
-- DO NOT reintroduce the paper's title, authors, or topic framing.
-- A chunk is a FRAGMENT of a longer lecture — openings and closings already exist elsewhere; adding another creates audible duplication.
+$position_constraints
 
 REVISION INSTRUCTIONS:
 1. Convert ALL lists to flowing narrative prose.
@@ -1436,13 +1507,54 @@ REVISION INSTRUCTIONS:
 5. Remove meta-commentary that points at the medium/format ONLY ("in the text, an image shows", "for audio purposes"). DO NOT remove first-person speaker framings ("I think", "in my view", "we will see", "as I have already said") — those are INTENTIONAL author-voice and must be preserved verbatim.
 6. Convert markdown headers to spoken transitions ("Now let's turn to…").
 7. Remove ANY re-explanation of concepts already covered. One pass only.
-8. LENGTH: honor any LENGTH feedback above; cut or expand WITHIN the chunk's scope. Never satisfy a shortage by appending a new intro/roadmap/closing.
+8. LENGTH: honor any LENGTH feedback above; cut or expand WITHIN the chunk's scope. Cut body material — never the opening or the closing. Never satisfy a shortage by appending a new intro/roadmap/closing.
 9. Maintain Great Courses lecture style: authoritative, modest, never salesman-like.
+10. Keep paragraph structure: return prose separated by blank lines at topic shifts, never one unbroken wall of text (the TTS chunker splits on paragraph boundaries).
 
 ORIGINAL CHUNK:
 $transcript
 
 PROVIDE THE REVISED CHUNK (same scope, same position in the lecture):""")
+
+
+def _truncate_preserving_closing(
+    transcript: str, cap: int, closing_words: int = 160
+) -> str:
+    """Cut an over-long transcript from the body, keeping its written closing.
+
+    The previous behaviour kept the first ``cap`` words and threw the rest
+    away, which guillotines the concluding synthesis — the jakobson lecture
+    ended mid-way through a methods quality-control paragraph. Cut the body
+    instead and re-attach the closing so the lecture always lands on its
+    conclusion.
+
+    Args:
+        transcript: Full transcript.
+        cap: Maximum word count.
+        closing_words: Words at the tail treated as the closing.
+
+    Returns:
+        Transcript at or under ``cap`` words, ending on its closing.
+    """
+    words = list(re.finditer(r"\S+", transcript))
+    if len(words) <= cap:
+        return transcript
+
+    # Never let the reserved closing eat more than an eighth of the budget.
+    closing_words = min(closing_words, cap // 8)
+
+    # Snap the tail forward to a sentence boundary so the closing starts clean.
+    tail = transcript[words[-closing_words].start() :]
+    boundary = re.search(r"(?<=[.!?])\s+", tail)
+    closing = (tail[boundary.end() :] if boundary else tail).strip()
+
+    body_cap = cap - len(closing.split())
+    body = transcript[: words[body_cap - 1].end()]
+    last_period = body.rfind(".")
+    if last_period > len(body) * 0.7:
+        body = body[: last_period + 1]
+
+    return f"{body.rstrip()}\n\n{closing}"
 
 
 def _refine_transcript(
@@ -1518,7 +1630,9 @@ def _refine_transcript(
             current_transcript, n=5, threshold=3
         )
         if deterministic_repeats:
-            merged = sorted(set(critique_feedback.repeated_phrases) | set(deterministic_repeats))
+            merged = sorted(
+                set(critique_feedback.repeated_phrases) | set(deterministic_repeats)
+            )
             critique_feedback = LectureTranscriptFeedback.model_validate(
                 critique_feedback.model_dump() | {"repeated_phrases": merged}
             )
@@ -1547,6 +1661,11 @@ def _refine_transcript(
 
             for start in range(0, len(transcript_tokens), chunk_size):
                 chunk = enc.decode(transcript_tokens[start : start + chunk_size])
+                is_first = start == 0
+                is_last = start + chunk_size >= len(transcript_tokens)
+                refine_system, position_constraints = _refine_position_prompts(
+                    is_first, is_last
+                )
 
                 feedback_items = list(critique_feedback.feedback)
                 cur_words = len(current_transcript.split())
@@ -1584,12 +1703,13 @@ def _refine_transcript(
                 refinement_prompt = _REFINEMENT_TEMPLATE.substitute(
                     critique=feedback_text,
                     transcript=chunk,
+                    position_constraints=position_constraints,
                 )
 
                 try:
                     refine_result = text_agent.run_sync(
                         refinement_prompt,
-                        instructions=_REFINE_SYSTEM_PROMPT,
+                        instructions=refine_system,
                         model=model,
                         model_settings={"max_tokens": max_output_tokens},
                     )
@@ -1611,15 +1731,12 @@ def _refine_transcript(
     current_words = len(current_transcript.split())
     if current_words > LECTURE_WORD_CAP:
         logger.warning(
-            f"Lecture {current_words}w exceeds cap {LECTURE_WORD_CAP}w, truncating to last sentence"
+            f"Lecture {current_words}w exceeds cap {LECTURE_WORD_CAP}w, truncating body "
+            "and re-attaching the closing"
         )
-        words = current_transcript.split()
-        truncated = " ".join(words[:LECTURE_WORD_CAP])
-        last_period = truncated.rfind(".")
-        if last_period > len(truncated) * 0.7:
-            current_transcript = truncated[: last_period + 1]
-        else:
-            current_transcript = truncated
+        current_transcript = _truncate_preserving_closing(
+            current_transcript, LECTURE_WORD_CAP
+        )
 
     # Save critique if issues remain
     if critique_feedback and not critique_feedback.done and critique_feedback.feedback:

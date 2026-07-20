@@ -30,6 +30,7 @@ from ._common import (
     text_to_speech,
     tts_chunks_parallel,
     verbalize_bit_strings,
+    verbalize_large_numbers,
     write_chunk_manifest,
 )
 
@@ -108,8 +109,7 @@ def generate_summary_audio(
         "10. BINARY CODEWORDS — when a binary codeword or bit string appears (e.g. 0, "
         "110, 1011), read each digit separately as a word, never as a single number: "
         "'one-one-zero', not '110' or 'one hundred ten'. Ordinary quantities like 10, "
-        "100, 1000 stay as numerals — they are NOT codewords.\n"
-        + acronym_instruction
+        "100, 1000 stay as numerals — they are NOT codewords.\n" + acronym_instruction
     )
 
     user_content = summary_text
@@ -164,6 +164,11 @@ def generate_summary_audio(
     if prep_cfg.get("verbalize_bit_strings", False):
         cleaned = verbalize_bit_strings(
             cleaned, max_len=int(prep_cfg.get("bit_strings_max_len", 32))
+        )
+    # Opt-out (default on): spelling a cardinal out is meaning-preserving.
+    if prep_cfg.get("verbalize_large_numbers", True):
+        cleaned = verbalize_large_numbers(
+            cleaned, min_value=int(prep_cfg.get("large_number_min", 100))
         )
     pronunciations = prep_cfg.get("pronunciations", {}) or {}
     if pronunciations:
@@ -226,9 +231,7 @@ def generate_summary_audio(
 
     is_fish = str(tts_kwargs.get("provider", "")) == "fish_speech"
     provider = str(tts_kwargs.get("provider", "elevenlabs"))
-    prefix = (
-        f"{citation_key}_{output_path.stem}" if citation_key else output_path.stem
-    )
+    prefix = f"{citation_key}_{output_path.stem}" if citation_key else output_path.stem
 
     # YAML-driven chunking (models.tts.chunking.max_chars) overrides the
     # legacy hardcoded cap; fish_speech*.yaml ships max_chars=700 to keep
@@ -264,10 +267,14 @@ def generate_summary_audio(
     # TTS all chunks — parallel for Fish Speech, sequential for ElevenLabs
     if is_fish and len(all_jobs) > 1:
         tts_pairs = [(text, path) for _, text, path, _ in all_jobs]
-        tts_chunks_parallel(tts_pairs, voice_id, elevenlabs_api_key, speed, **tts_kwargs)
+        tts_chunks_parallel(
+            tts_pairs, voice_id, elevenlabs_api_key, speed, **tts_kwargs
+        )
     else:
         for _, chunk, chunk_path, _b in all_jobs:
-            text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed, **tts_kwargs)
+            text_to_speech(
+                chunk, voice_id, chunk_path, elevenlabs_api_key, speed, **tts_kwargs
+            )
             time.sleep(1)
 
     # Reassemble by section
@@ -289,9 +296,7 @@ def generate_summary_audio(
     chunk_pause_ms = int(post_cfg.get("chunk_pause_ms", 700 if is_fish else 0))
     chunk_crossfade_ms = int(post_cfg.get("chunk_crossfade_ms", 50 if is_fish else 0))
     gain_match = post_cfg.get("gain_match_target_dbfs", -25.0 if is_fish else None)
-    chunk_pause_map_default = (
-        {"paragraph": 1100, "sentence": 500} if is_fish else None
-    )
+    chunk_pause_map_default = {"paragraph": 1100, "sentence": 500} if is_fish else None
     chunk_pause_ms_by_boundary = post_cfg.get(
         "chunk_pause_ms_by_boundary", chunk_pause_map_default
     )

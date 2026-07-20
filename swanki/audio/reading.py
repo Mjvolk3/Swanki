@@ -14,6 +14,10 @@ import tiktoken
 
 from ..llm.agents import text_agent
 from ..llm.safety import with_safety_retry
+from ..processing.reading_reorder import (
+    reorder_figures_to_referencing_section,
+    strip_reference_cruft,
+)
 from ..utils.formatting import humanize_citation_key
 from ._common import (
     DEFAULT_VOICE_ID,
@@ -35,6 +39,7 @@ from ._common import (
     text_to_speech,
     tts_chunks_parallel,
     verbalize_bit_strings,
+    verbalize_large_numbers,
     write_chunk_manifest,
 )
 
@@ -109,8 +114,7 @@ def _pass2_chunk_with_completeness(
         instructions = system_prompt
         if attempt > 0:
             instructions = (
-                system_prompt
-                + "\n\nRETRY -- A previous attempt omitted source prose. "
+                system_prompt + "\n\nRETRY -- A previous attempt omitted source prose. "
                 "Deliver every sentence of this chunk verbatim. Do not skip, "
                 "summarize, or condense even sentences that feel repetitive. "
                 "Rule #9 (no repetition) applies only WITHIN this chunk; do "
@@ -189,6 +193,14 @@ def generate_reading_audio(
         raise ValueError("model is required; pass the LLM from config")
     voice_id = voice_id or DEFAULT_VOICE_ID
 
+    # Reading-flow fixups on the FULL source before chunking: defer each figure
+    # to the end of the section that references it most (a page-top/two-column
+    # OCR artifact otherwise reads figures mid-section or one section away), and
+    # drop bare URLs / "accessed <date>" citation tails. Both are content-safe
+    # (the reorder is a strict block permutation with a no-op fallback).
+    full_content = reorder_figures_to_referencing_section(full_content)
+    full_content = strip_reference_cruft(full_content)
+
     # Extract acronyms for injection into prompt
     acronym_map = extract_acronyms(full_content)
     acronym_instruction = ""
@@ -248,8 +260,7 @@ def generate_reading_audio(
         "10. BINARY CODEWORDS — when a binary codeword or bit string appears (e.g. 0, "
         "110, 1011), read each digit separately as a word, never as a single number: "
         "'one-one-zero', not '110' or 'one hundred ten'. Ordinary quantities like 10, "
-        "100, 1000 stay as numerals — they are NOT codewords.\n"
-        + acronym_instruction
+        "100, 1000 stay as numerals — they are NOT codewords.\n" + acronym_instruction
     )
 
     # RC3: optional per-paper prosody addendum, appended verbatim. Carried in
@@ -346,6 +357,11 @@ def generate_reading_audio(
         cleaned = verbalize_bit_strings(
             cleaned, max_len=int(prep_cfg.get("bit_strings_max_len", 32))
         )
+    # Opt-out (default on): spelling a cardinal out is meaning-preserving.
+    if prep_cfg.get("verbalize_large_numbers", True):
+        cleaned = verbalize_large_numbers(
+            cleaned, min_value=int(prep_cfg.get("large_number_min", 100))
+        )
     pronunciations = prep_cfg.get("pronunciations", {}) or {}
     if pronunciations:
         cleaned = apply_pronunciation_overrides(cleaned, pronunciations)
@@ -401,9 +417,7 @@ def generate_reading_audio(
 
     is_fish = str(tts_kwargs.get("provider", "")) == "fish_speech"
     provider = str(tts_kwargs.get("provider", "elevenlabs"))
-    prefix = (
-        f"{citation_key}_{output_path.stem}" if citation_key else output_path.stem
-    )
+    prefix = f"{citation_key}_{output_path.stem}" if citation_key else output_path.stem
 
     # Collect all chunks across all sections with section index
     # YAML-driven chunking (models.tts.chunking.max_chars) overrides the
@@ -424,7 +438,9 @@ def generate_reading_audio(
         if is_fish:
             audio_chunks = chunk_text_paragraphs(section, max_chars=chunk_max_chars)
         else:
-            audio_chunks = [(c, "paragraph") for c in chunk_text(section, max_chars=chunk_max_chars)]
+            audio_chunks = [
+                (c, "paragraph") for c in chunk_text(section, max_chars=chunk_max_chars)
+            ]
         for chunk_text_, boundary in audio_chunks:
             # Never send an empty / whitespace-only chunk to TTS: Fish
             # hallucinates breathing/noise artifacts on empty input (this is the
@@ -444,10 +460,14 @@ def generate_reading_audio(
 
     if is_fish and len(all_jobs) > 1:
         tts_pairs = [(text, path) for _, text, path, _ in all_jobs]
-        tts_chunks_parallel(tts_pairs, voice_id, elevenlabs_api_key, speed, **tts_kwargs)
+        tts_chunks_parallel(
+            tts_pairs, voice_id, elevenlabs_api_key, speed, **tts_kwargs
+        )
     else:
         for _, chunk, chunk_path, _b in all_jobs:
-            text_to_speech(chunk, voice_id, chunk_path, elevenlabs_api_key, speed, **tts_kwargs)
+            text_to_speech(
+                chunk, voice_id, chunk_path, elevenlabs_api_key, speed, **tts_kwargs
+            )
             time.sleep(1)
 
     all_section_chunks: list[list[Path]] = [[] for _ in sections_text]
@@ -467,9 +487,7 @@ def generate_reading_audio(
     chunk_pause_ms = int(post_cfg.get("chunk_pause_ms", 700 if is_fish else 0))
     chunk_crossfade_ms = int(post_cfg.get("chunk_crossfade_ms", 50 if is_fish else 0))
     gain_match = post_cfg.get("gain_match_target_dbfs", -25.0 if is_fish else None)
-    chunk_pause_map_default = (
-        {"paragraph": 1100, "sentence": 500} if is_fish else None
-    )
+    chunk_pause_map_default = {"paragraph": 1100, "sentence": 500} if is_fish else None
     chunk_pause_ms_by_boundary = post_cfg.get(
         "chunk_pause_ms_by_boundary", chunk_pause_map_default
     )
@@ -534,5 +552,3 @@ def generate_reading_audio(
     )
 
     return output_path.name
-
-

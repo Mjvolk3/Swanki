@@ -174,6 +174,11 @@ def preprocess_for_tts(
         out = verbalize_bit_strings(
             out, max_len=int(prep_cfg.get("bit_strings_max_len", 32))
         )
+    # Opt-out (default on): spelling a cardinal out is meaning-preserving.
+    if prep_cfg.get("verbalize_large_numbers", True):
+        out = verbalize_large_numbers(
+            out, min_value=int(prep_cfg.get("large_number_min", 100))
+        )
     pronunciations = prep_cfg.get("pronunciations", {}) or {}
     if pronunciations:
         out = apply_pronunciation_overrides(out, pronunciations)
@@ -186,12 +191,8 @@ def preprocess_for_tts(
     return out
 
 
-_CHUNK_BOUNDARY_PAUSE_RE = re.compile(
-    r"(\s*\[(?:pause|short pause|long pause)\])+\s*$"
-)
-_CHUNK_LEADING_PAUSE_RE = re.compile(
-    r"^(\s*\[(?:pause|short pause|long pause)\])+\s*"
-)
+_CHUNK_BOUNDARY_PAUSE_RE = re.compile(r"(\s*\[(?:pause|short pause|long pause)\])+\s*$")
+_CHUNK_LEADING_PAUSE_RE = re.compile(r"^(\s*\[(?:pause|short pause|long pause)\])+\s*")
 
 
 def strip_chunk_boundary_pause_tags(text: str) -> str:
@@ -297,9 +298,7 @@ def _split_sentences(paragraph: str) -> list[str]:
     return [s for s in re.split(r"(?<=[.!?])\s+", paragraph.strip()) if s.strip()]
 
 
-def _balanced_sentence_groups(
-    sentences: list[str], k: int
-) -> list[list[str]]:
+def _balanced_sentence_groups(sentences: list[str], k: int) -> list[list[str]]:
     """Distribute sentences into ``k`` contiguous near-equal-char groups.
 
     Greedy by running char count against ``total / k``; closes the current
@@ -320,11 +319,7 @@ def _balanced_sentence_groups(
     current: list[str] = []
     current_len = 0
     for s in sentences:
-        if (
-            current
-            and len(groups) < k - 1
-            and current_len + len(s) > target * 1.15
-        ):
+        if current and len(groups) < k - 1 and current_len + len(s) > target * 1.15:
             groups.append(current)
             current = []
             current_len = 0
@@ -430,9 +425,7 @@ def _chunk_balanced(
                 changed = True
                 break
 
-    return [
-        (_chunk_text(u), b) for u, b in zip(chunk_units, chunk_bounds)
-    ]
+    return [(_chunk_text(u), b) for u, b in zip(chunk_units, chunk_bounds)]
 
 
 def chunk_text_paragraphs(
@@ -503,15 +496,11 @@ def chunk_text_paragraphs(
             elif len(current_sent) + len(s) + 1 <= max_chars:
                 current_sent = current_sent + " " + s
             else:
-                items.append(
-                    (current_sent, "paragraph" if first_sub else "sentence")
-                )
+                items.append((current_sent, "paragraph" if first_sub else "sentence"))
                 first_sub = False
                 current_sent = s
         if current_sent:
-            items.append(
-                (current_sent, "paragraph" if first_sub else "sentence")
-            )
+            items.append((current_sent, "paragraph" if first_sub else "sentence"))
 
     # Second-level split: greedy-pack items into chunks. The boundary
     # preceding each chunk is the boundary of its FIRST item -- once items
@@ -539,22 +528,22 @@ def chunk_text_paragraphs(
 
 def _strip_ssml(text: str) -> str:
     """Remove SSML break tags that Fish Speech cannot handle."""
-    return re.sub(r'<break[^>]*/?\s*>', '', text)
+    return re.sub(r"<break[^>]*/?\s*>", "", text)
 
 
 _FISH_SPEECH_PUNCT_MAP = {
-    "\u2014": ", ",   # em dash → comma + space (reads as a natural pause)
-    "\u2013": "-",    # en dash → ASCII hyphen
-    "\u2212": "-",    # minus sign → ASCII hyphen
-    "\u2018": "'",    # left single quote
-    "\u2019": "'",    # right single quote / apostrophe
-    "\u201A": "'",    # single low-9 quote
-    "\u201B": "'",    # single high-reversed-9 quote
-    "\u201C": '"',    # left double quote
-    "\u201D": '"',    # right double quote
-    "\u201E": '"',    # double low-9 quote
+    "\u2014": ", ",  # em dash → comma + space (reads as a natural pause)
+    "\u2013": "-",  # en dash → ASCII hyphen
+    "\u2212": "-",  # minus sign → ASCII hyphen
+    "\u2018": "'",  # left single quote
+    "\u2019": "'",  # right single quote / apostrophe
+    "\u201a": "'",  # single low-9 quote
+    "\u201b": "'",  # single high-reversed-9 quote
+    "\u201c": '"',  # left double quote
+    "\u201d": '"',  # right double quote
+    "\u201e": '"',  # double low-9 quote
     "\u2026": "...",  # horizontal ellipsis
-    "\u00A0": " ",    # non-breaking space
+    "\u00a0": " ",  # non-breaking space
 }
 
 
@@ -576,10 +565,27 @@ def _normalize_fish_speech_punct(text: str) -> str:
 # and by the lecture critic prompt; the deterministic stripper below is the
 # safety net that catches LLM-emitted forbidden tags before TTS.
 FISH_SPEECH_FORBIDDEN_TAGS: tuple[str, ...] = (
-    "inhale", "exhale", "sigh", "clearing throat", "tsk", "panting", "moaning",
-    "whisper", "soft tone", "shouting", "screaming",
-    "sad", "depressed", "crying", "sobbing",
-    "angry", "furious", "panicked", "anxious", "scared", "worried",
+    "inhale",
+    "exhale",
+    "sigh",
+    "clearing throat",
+    "tsk",
+    "panting",
+    "moaning",
+    "whisper",
+    "soft tone",
+    "shouting",
+    "screaming",
+    "sad",
+    "depressed",
+    "crying",
+    "sobbing",
+    "angry",
+    "furious",
+    "panicked",
+    "anxious",
+    "scared",
+    "worried",
 )
 
 _FISH_SPEECH_FORBIDDEN_TAG_RE = re.compile(
@@ -625,10 +631,21 @@ _STANDALONE_ACRONYM_RE = re.compile(r"(?<![A-Za-z])([A-Z]{2,6})(?![A-Za-z])")
 # EXCLUDED, so they behave exactly as before (no regression). Single-letter
 # I/V/X never reach the expander (its floor is 2 letters).
 _ROMAN_NUMERAL_WORDS = {
-    "II": "two", "III": "three", "VII": "seven", "VIII": "eight", "IX": "nine",
-    "XI": "eleven", "XII": "twelve", "XIII": "thirteen", "XIV": "fourteen",
-    "XV": "fifteen", "XVI": "sixteen", "XVII": "seventeen", "XVIII": "eighteen",
-    "XIX": "nineteen", "XX": "twenty",
+    "II": "two",
+    "III": "three",
+    "VII": "seven",
+    "VIII": "eight",
+    "IX": "nine",
+    "XI": "eleven",
+    "XII": "twelve",
+    "XIII": "thirteen",
+    "XIV": "fourteen",
+    "XV": "fifteen",
+    "XVI": "sixteen",
+    "XVII": "seventeen",
+    "XVIII": "eighteen",
+    "XIX": "nineteen",
+    "XX": "twenty",
 }
 
 # Opaque mask for the section-break sentinel during acronym expansion.
@@ -641,9 +658,7 @@ _ROMAN_NUMERAL_WORDS = {
 _SECTION_BREAK_TTS_MASK = "\x00\x00swanki-section-break\x00\x00"
 
 
-def expand_acronyms_for_tts(
-    text: str, allowlist: set[str] | None = None
-) -> str:
+def expand_acronyms_for_tts(text: str, allowlist: set[str] | None = None) -> str:
     """Rewrite standalone uppercase tokens as letter-by-letter for Fish Speech.
 
     Fish reads ``S-A-R`` cleanly as letters (per the existing
@@ -681,9 +696,7 @@ def expand_acronyms_for_tts(
     return expanded.replace(_SECTION_BREAK_TTS_MASK, SECTION_BREAK_MARKER)
 
 
-def apply_pronunciation_overrides(
-    text: str, overrides: dict[str, str]
-) -> str:
+def apply_pronunciation_overrides(text: str, overrides: dict[str, str]) -> str:
     """Whole-word case-sensitive substitutions applied before TTS.
 
     The override key wins over `expand_acronyms_for_tts`: callers should run
@@ -748,13 +761,164 @@ def verbalize_bit_strings(text: str, max_len: int = 32) -> str:
     return re.sub(pattern, _sub, text)
 
 
+_CARDINAL_ONES = (
+    "zero",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
+)
+_CARDINAL_TENS = (
+    "",
+    "",
+    "twenty",
+    "thirty",
+    "forty",
+    "fifty",
+    "sixty",
+    "seventy",
+    "eighty",
+    "ninety",
+)
+_CARDINAL_SCALES = (
+    (1_000_000_000, "billion"),
+    (1_000_000, "million"),
+    (1_000, "thousand"),
+)
+
+
+def _cardinal_words(n: int) -> str:
+    """Spell a non-negative integer as English cardinal words.
+
+    Args:
+        n: Integer in ``[0, 10**12)``.
+
+    Returns:
+        The number spelled out, e.g. ``1225`` -> "one thousand two hundred twenty-five".
+    """
+    if n < 20:
+        return _CARDINAL_ONES[n]
+    if n < 100:
+        tens, ones = divmod(n, 10)
+        return _CARDINAL_TENS[tens] + (f"-{_CARDINAL_ONES[ones]}" if ones else "")
+    if n < 1000:
+        hundreds, rest = divmod(n, 100)
+        head = f"{_CARDINAL_ONES[hundreds]} hundred"
+        return f"{head} {_cardinal_words(rest)}" if rest else head
+    for value, name in _CARDINAL_SCALES:
+        if n >= value:
+            count, rest = divmod(n, value)
+            head = f"{_cardinal_words(count)} {name}"
+            return f"{head} {_cardinal_words(rest)}" if rest else head
+    raise ValueError(f"number out of cardinal range: {n}")
+
+
+_LARGE_NUMBER_RE = re.compile(
+    r"(?<![A-Za-z0-9_/:.,-])"  # not inside an identifier, path, time, decimal, or range
+    r"(\d{1,3}(?:,\d{3})+|\d+)"
+    r"(?![A-Za-z0-9_/:]|[.,]\d)"  # not continuing into an identifier or a decimal
+)
+
+
+def verbalize_large_numbers(text: str, min_value: int = 100) -> str:
+    """Spell out large bare integers so TTS cannot mis-read them.
+
+    Fish renders big numerals unreliably -- a listener bookmark on the jakobson
+    lecture reported "a lot of the numbers being read off are botched,
+    especially the larger numbers" (851, 1,225, 6476 and friends), and the
+    Kuchel reading track needed the same fix by hand across 26 chunks. Spelling
+    the cardinal out is meaning-preserving, so unlike ``verbalize_bit_strings``
+    (which imposes per-digit semantics and must stay opt-in) this is safe to run
+    by default.
+
+    Small numbers are left alone -- engines read 1..99 correctly and the numeral
+    is easier to proofread in the transcript. Bare four-digit numbers that look
+    like years (1500-2099) are also skipped: TTS already says "twenty
+    twenty-five" naturally, which "two thousand twenty-five" would replace.
+    Comma-grouped numbers are always spelled out regardless of magnitude, since
+    the comma itself is a mis-read risk. Identifiers (``ERG11``), decimals
+    (``1.5``), times (``10:30``), and hyphenated ranges (``5-11``) never match.
+    The substitution is idempotent: the output contains no digits.
+
+    Args:
+        text: Transcript bound for TTS.
+        min_value: Smallest bare integer to spell out.
+
+    Returns:
+        Text with large integers replaced by their cardinal words.
+    """
+
+    def _sub(m: re.Match) -> str:
+        token = m.group(1)
+        digits = token.replace(",", "")
+        if len(digits) > 12:  # long numeric IDs are not cardinals
+            return token
+        value = int(digits)
+        if "," not in token:
+            if value < min_value:
+                return token
+            if len(digits) == 4 and 1500 <= value <= 2099:  # year-like
+                return token
+        return _cardinal_words(value)
+
+    return _LARGE_NUMBER_RE.sub(_sub, text)
+
+
 _REPEATED_PHRASE_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'-]*")
-_REPEATED_PHRASE_STOPWORDS = frozenset({
-    "the", "a", "an", "of", "to", "and", "or", "but", "is", "are", "was",
-    "were", "be", "been", "being", "in", "on", "at", "by", "for", "with",
-    "that", "this", "it", "its", "as", "from", "we", "you", "i", "he", "she",
-    "they", "them", "our",
-})
+_REPEATED_PHRASE_STOPWORDS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "of",
+        "to",
+        "and",
+        "or",
+        "but",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "in",
+        "on",
+        "at",
+        "by",
+        "for",
+        "with",
+        "that",
+        "this",
+        "it",
+        "its",
+        "as",
+        "from",
+        "we",
+        "you",
+        "i",
+        "he",
+        "she",
+        "they",
+        "them",
+        "our",
+    }
+)
 
 
 def detect_repeated_phrases(
@@ -952,7 +1116,11 @@ def _discover_fish_speech_servers(base_url: str, force: bool = False) -> list[st
     """
     global _healthy_servers, _servers_discovered
 
-    if _servers_discovered and not force and len(_healthy_servers) >= len(_FISH_SPEECH_PORTS):
+    if (
+        _servers_discovered
+        and not force
+        and len(_healthy_servers) >= len(_FISH_SPEECH_PORTS)
+    ):
         return _healthy_servers
 
     from urllib.parse import urlparse
@@ -1033,9 +1201,7 @@ def _tts_fish_speech(
         else:
             url = _discover_fish_speech_servers(server_url, force=True)[0]
         try:
-            with httpx.Client(
-                timeout=httpx.Timeout(1800.0, connect=60.0)
-            ) as client:
+            with httpx.Client(timeout=httpx.Timeout(1800.0, connect=60.0)) as client:
                 response = client.post(f"{url}/v1/tts", json=payload)
             if response.status_code == 200:
                 _apply_speed(response.content, output_path, speed)
@@ -1045,9 +1211,7 @@ def _tts_fish_speech(
             last_err = f"{type(e).__name__}: {e}"
 
         if attempt < _FISH_TTS_MAX_ATTEMPTS - 1:
-            backoff = _FISH_TTS_BACKOFF_S[
-                min(attempt, len(_FISH_TTS_BACKOFF_S) - 1)
-            ]
+            backoff = _FISH_TTS_BACKOFF_S[min(attempt, len(_FISH_TTS_BACKOFF_S) - 1)]
             logger.warning(
                 f"Fish TTS attempt {attempt + 1}/{_FISH_TTS_MAX_ATTEMPTS} "
                 f"failed ({last_err}); re-discovering and retrying in "
@@ -1056,8 +1220,7 @@ def _tts_fish_speech(
             time.sleep(backoff)
 
     raise RuntimeError(
-        f"Fish Speech TTS failed after {_FISH_TTS_MAX_ATTEMPTS} attempts: "
-        f"{last_err}"
+        f"Fish Speech TTS failed after {_FISH_TTS_MAX_ATTEMPTS} attempts: {last_err}"
     )
 
 
@@ -1177,20 +1340,26 @@ def tts_chunks_parallel(
     """
     from concurrent.futures import ThreadPoolExecutor
 
-    num_servers = len(_discover_fish_speech_servers(
-        str(tts_kwargs.get("server_url", "http://localhost:8080"))
-    ))
+    num_servers = len(
+        _discover_fish_speech_servers(
+            str(tts_kwargs.get("server_url", "http://localhost:8080"))
+        )
+    )
     max_workers = min(len(chunks), num_servers)
 
     def _process(args: tuple[str, Path]) -> Path:
         text, output_path = args
-        text_to_speech(text, voice_id, output_path, api_key, speed, tts_model, **tts_kwargs)
+        text_to_speech(
+            text, voice_id, output_path, api_key, speed, tts_model, **tts_kwargs
+        )
         return output_path
 
     if max_workers <= 1:
         return [_process(c) for c in chunks]
 
-    logger.info(f"Processing {len(chunks)} TTS chunks in parallel across {max_workers} servers")
+    logger.info(
+        f"Processing {len(chunks)} TTS chunks in parallel across {max_workers} servers"
+    )
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         results = list(pool.map(_process, chunks))
 
@@ -1352,8 +1521,7 @@ def filter_metadata(content: str) -> str:
     for line in lines:
         # Section-level triggers enter persistent skip-mode.
         if any(
-            re.search(pattern, line, re.IGNORECASE)
-            for pattern in section_skip_patterns
+            re.search(pattern, line, re.IGNORECASE) for pattern in section_skip_patterns
         ):
             skip_mode = True
             continue
@@ -1527,10 +1695,7 @@ def _accumulate_timeline(
                 silence_start_in_scan = trailing[-1][0]
                 tail_buffer_ms = 350
                 abs_cut = min(
-                    len(seg)
-                    - scan_window_ms
-                    + silence_start_in_scan
-                    + tail_buffer_ms,
+                    len(seg) - scan_window_ms + silence_start_in_scan + tail_buffer_ms,
                     len(seg),
                 )
                 seg = seg[:abs_cut]
@@ -1574,9 +1739,7 @@ def _accumulate_timeline(
         local: list[tuple[int, int, str]] = []  # (offset_in_sec, dur, file)
         section_audio = _load(section_chunks[0])
         local.append((0, len(section_audio), section_chunks[0].name))
-        for chunk_idx_in_section, chunk_path in enumerate(
-            section_chunks[1:], start=1
-        ):
+        for chunk_idx_in_section, chunk_path in enumerate(section_chunks[1:], start=1):
             gap_ms = _gap_ms_for(sec_idx, chunk_idx_in_section)
             if gap_ms > 0:
                 section_audio += AudioSegment.silent(duration=gap_ms)
@@ -1722,9 +1885,7 @@ def combine_audio_with_section_pauses(
     )
     if combined is None:
         if not sections:
-            logger.error(
-                "No sections provided to combine_audio_with_section_pauses"
-            )
+            logger.error("No sections provided to combine_audio_with_section_pauses")
         else:
             logger.error("No audio content to combine")
         return timeline
@@ -1828,11 +1989,7 @@ def _manifest_combine_inputs(manifest_path: Path) -> _CombineInputs:
         if manifest.get("bookend_start")
         else None
     )
-    be = (
-        chunks_dir / manifest["bookend_end"]
-        if manifest.get("bookend_end")
-        else None
-    )
+    be = chunks_dir / manifest["bookend_end"] if manifest.get("bookend_end") else None
     return _CombineInputs(
         manifest=manifest,
         section_lists=[sections[k] for k in keys],
@@ -1841,9 +1998,7 @@ def _manifest_combine_inputs(manifest_path: Path) -> _CombineInputs:
         bookend_end=be,
         post=manifest.get("postprocessor") or {},
         audio_type=manifest.get("audio_type", ""),
-        file_to_index={
-            c["file"]: int(c["index"]) for c in manifest["chunks"]
-        },
+        file_to_index={c["file"]: int(c["index"]) for c in manifest["chunks"]},
     )
 
 
@@ -2029,9 +2184,7 @@ def chunk_time_window(
                 c.offset_ms + absolute_offset_ms,
                 c.end_ms + absolute_offset_ms,
             )
-    raise AssertionError(
-        f"chunk_index {chunk_index} not in timeline {sidecar}"
-    )
+    raise AssertionError(f"chunk_index {chunk_index} not in timeline {sidecar}")
 
 
 def time_to_chunk(
@@ -2126,7 +2279,11 @@ def build_bookend_text(
     parsed_chapter = parse_chapter_key(citation_key)
     humanized_full = humanize_citation_key(citation_key)
 
-    if parsed_chapter is not None and audio_type in ("lecture", "summary", "transcript"):
+    if parsed_chapter is not None and audio_type in (
+        "lecture",
+        "summary",
+        "transcript",
+    ):
         # Simple chapter bookend (2026.05.19a). The earlier "Let's begin chapter
         # N, <slug>" / "This concludes chapter N, <slug>, which is posted as ..."
         # form said the slug twice and Fish garbled roman-numeral suffixes; the
@@ -2375,6 +2532,7 @@ def _humanize_chunk_with_completeness(chunk: str, model: str) -> str:
         # retries are also refused, which is the correct terminal -- this
         # chunk's CONTENT is unrenderable, not a token-count problem.
         from ..llm.safety import with_safety_retry
+
         result = with_safety_retry(
             text_agent,
             chunk,

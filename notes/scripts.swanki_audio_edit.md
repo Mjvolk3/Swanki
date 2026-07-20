@@ -95,3 +95,14 @@ survivor per scheduling wave. The same workloads rerun strictly sequentially
 edit jobs ONE AT A TIME. Recovery note: stdout is block-buffered, so a killed
 job's log under-reports progress; the collapse/text state on disk is ahead of
 the log.
+
+## 2026.07.20 - `--verbalize-numbers` retrofit mode
+
+Fourth edit mode, the same shape as `--collapse-pauses`: rewrite the STORED
+(post-preprocessor) chunk text deterministically, skip chunks the transform
+leaves unchanged, then re-roll verbatim through the `speech_only` path. Applies
+`verbalize_large_numbers` (see [[swanki.audio._common]] 2026.07.20), which
+retrofits the scrubber onto a lecture rendered before it existed — no LLM
+re-run, no re-chunking, and no risk of the `add_tts_pauses` double-stacking that
+the `new_text` path would cause. Pass the full index range and let it skip the
+clean chunks.

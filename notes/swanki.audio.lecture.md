@@ -83,7 +83,7 @@ The ratio-of-source budget was producing too-short lectures for small papers (me
 
 ### Word-count budget
 
-- New module constants: `PLANNING_WPM = 130` (measured fish_speech@1.1x rate), `LECTURE_SOURCE_RATIO = 0.30`, `LECTURE_WORD_FLOOR = 1500` (~11.5 min), `LECTURE_WORD_CAP = 3900` (30 min hard cap).
+- New module constants: `PLANNING_WPM = 130` (measured <fish_speech@1.1x> rate), `LECTURE_SOURCE_RATIO = 0.30`, `LECTURE_WORD_FLOOR = 1500` (~11.5 min), `LECTURE_WORD_CAP = 3900` (30 min hard cap).
 - `_compute_lecture_target_words(source_words)` returns `(target, floor, ceiling)` where target = `clamp(source * 0.30, 1500, 3900)` and the band is `[0.85·target, 1.15·target]` clamped to the same limits.
 - `_DEFAULT_LECTURE_SYSTEM_PROMPT` LENGTH rule rewritten with `${target_floor}`, `${target_ceiling}`, `${target_words}` Template placeholders; injected via `Template(system_instructions).safe_substitute(...)` at call time.
 - `_refine_transcript` length checks switched from ratio bands (`0.20-0.45`) to absolute word-count bands. Same shape: force `done = False` and inject `LENGTH: EXPAND`/`CUT` feedback when outside band.
@@ -141,7 +141,6 @@ After this, ch01 v3 came back with 36 "I" markers and 6 "my", reading recognizab
 ### Companion changes
 
 `swanki/conf/prompts/book_voice.yaml` is a sibling config selectable via `prompts=book_voice +author="<name>"` — copies the full default.yaml schema (Hydra config groups don't merge) and overrides only `prompts.audio.lecture_system` to put the writer in first-person author voice. Hydra's `${author}` interpolation injects the speaker's name. The book_voice prompt also lifts `[long pause]` from "section boundaries only" to rhetorical turns, raises the semantic tag cap from ~10 to ~15-20 per chapter, and adds rules for storytelling connectives ("and then", "now here is the part I want you to see") and against splicing distinct source claims into one sentence.
-
 
 ## 2026.05.14 - YAML-driven chunking/postprocessor knobs + new critic dimensions
 
@@ -212,3 +211,52 @@ codeword prompt rule (rule 17) lives in `swanki/conf/prompts/default.yaml` and
 `book_voice.yaml` — both had their `(e.g. 0, 10, ...)` example trimmed (and book_voice,
 which had no rule, gained the scoped one). Rationale + CH10 evidence in
 [[swanki.audio._common]] (same date) and [[plan.scope-binary-codeword-tts.2026.06.06]].
+
+## 2026.07.20 - Refine loop no longer eats the lecture's opening and closing
+
+The jakobson (genome-to-proteome) lecture opened on a dangling connective —
+"With that background in place, the central puzzle is…" with no background ever
+given — and ended mid-way through a methods quality-control paragraph. An ABS
+bookmark at 0:24 (2026-07-19) flagged the opening; the saved critique had
+already flagged the missing conclusion and nobody could fix it, because the
+refiner was structurally forbidden from producing one.
+
+Root cause is one bug with two symptoms. `_refine_transcript` token-chunks the
+transcript at 8000 tokens and hands every chunk the same framing:
+`_REFINE_SYSTEM_PROMPT` ("the chunk you receive is one fragment of a larger
+piece that already has its own opening, roadmap, and closing") plus
+`_REFINEMENT_TEMPLATE`'s HARD CONSTRAINTS ("DO NOT add a new opening hook…DO NOT
+add a new closing summary"). For an interior chunk that is correct. For the
+FIRST chunk — which owns the opening — and the LAST — which owns the closing —
+it is a lie, and jakobson's 26.5k-char transcript was a **single** refine chunk,
+i.e. the whole lecture told it was an interior fragment. The transcript was over
+the word band, so `LENGTH: CUT` was injected too; the model cut exactly the
+material it had just been told belonged to someone else. The final transcript
+contains zero `Today we'll cover` roadmap markers despite the system prompt
+mandating one.
+
+- New `_refine_position_prompts(is_first, is_last)` returns the system prompt
+  and the HARD CONSTRAINTS block for a chunk's position. Edge chunks get
+  `_REFINE_SYSTEM_PROMPT_EDGE` ("those are load-bearing structure…must survive
+  your edit intact"); interior chunks keep the prior
+  `_REFINE_SYSTEM_PROMPT_INTERIOR` verbatim, so interior behavior is unchanged.
+  The first chunk is told the opening hook + roadmap are REQUIRED and must not
+  be replaced by a mid-thought connective; the last is told to keep or
+  strengthen the concluding synthesis and never end on an incidental detail.
+  The "you are a fragment" line is dropped when one chunk is both first and last.
+- `_REFINEMENT_TEMPLATE` takes a `$position_constraints` placeholder in place of
+  the old fixed block. Revision instruction 8 now says to cut body material,
+  never the opening or closing. New instruction 10 asks for blank-line paragraph
+  breaks — jakobson's transcript came back as one unbroken 26,515-char line,
+  which starves the fish `paragraph_priority` chunker of boundaries.
+- The hard word cap no longer guillotines the ending. `_truncate_preserving_closing`
+  cuts the body at a sentence boundary and re-attaches the last ~160 words
+  (snapped forward to a sentence boundary), so an over-cap lecture still lands on
+  its conclusion. jakobson landed at 3898w against `LECTURE_WORD_CAP = 3900` —
+  the old keep-the-first-3900-words truncation is what removed the conclusion.
+
+Note the second jakobson bookmark ("a lot of the numbers being read off are
+botched, especially the larger numbers", 2026-07-09 20:02) predates the surgical
+numeral->words `edit_chunk` pass run at 21:05 the same evening (chunks 3/5/10/12)
+and is already addressed; only `200` and `66` remain as numerals in that
+lecture's chunk manifest.
