@@ -23,6 +23,7 @@ import yaml
 from swanki.audio._common import (
     _discover_fish_speech_servers,
     collapse_stacked_pause_tags,
+    verbalize_large_numbers,
 )
 from swanki.audio.comment_edit import edit_chunk
 
@@ -79,6 +80,11 @@ def main() -> None:
         action="store_true",
         help="collapse stacked pause tags in stored text, then re-roll (skips clean chunks)",
     )
+    grp.add_argument(
+        "--verbalize-numbers",
+        action="store_true",
+        help="spell large numerals out in stored text, then re-roll (skips clean chunks)",
+    )
     ap.add_argument("--voice", required=True, help="models config name, e.g. fish_speech_hamming")
     ap.add_argument("--speed", type=float, default=1.0, help="must match the original render speed")
     ap.add_argument("--model", default=None, help="pydantic-ai llm string (comment path only)")
@@ -95,7 +101,7 @@ def main() -> None:
     tts_kwargs = build_fish_tts_kwargs(voice_cfg, server_url)
 
     kw: dict = {}
-    if args.speech_only or args.collapse_pauses:
+    if args.speech_only or args.collapse_pauses or args.verbalize_numbers:
         kw["speech_only"] = True
     elif args.comment is not None:
         kw["comment"] = args.comment
@@ -120,6 +126,19 @@ def main() -> None:
                 print(f"[swanki_audio_edit] idx={idx} no stacked tags; skipping")
                 continue
             chunk["text"] = collapsed
+            manifest.write_text(json.dumps(manifest_data, indent=2) + "\n")
+        if args.verbalize_numbers:
+            # Same shape as --collapse-pauses: repair the STORED (post-preprocessor)
+            # text deterministically, then re-roll verbatim. Retrofits the
+            # verbalize_large_numbers scrubber onto a lecture rendered before it
+            # existed, without re-running the LLM or re-chunking.
+            manifest_data = json.loads(manifest.read_text())
+            chunk = manifest_data["chunks"][idx]
+            spelled = verbalize_large_numbers(chunk["text"])
+            if spelled == chunk["text"]:
+                print(f"[swanki_audio_edit] idx={idx} no large numerals; skipping")
+                continue
+            chunk["text"] = spelled
             manifest.write_text(json.dumps(manifest_data, indent=2) + "\n")
         res = edit_chunk(
             manifest,

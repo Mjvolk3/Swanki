@@ -41,6 +41,16 @@ models:
       # coding-theory). The cap leaves long numeric IDs alone.
       verbalize_bit_strings: false
       bit_strings_max_len: 32
+      # Spell large bare integers as cardinal words ("851" -> "eight hundred
+      # fifty-one") so Fish cannot mis-read them -- listener bookmarks on the
+      # jakobson lecture and the Kuchel reading both reported botched large
+      # numbers. OPT-OUT (default on, mirrors the in-code default): unlike the
+      # bit-string verbalizer above this is meaning-preserving, so it is safe
+      # everywhere. Numbers below large_number_min, year-like bare 4-digit
+      # numbers (1500-2099), decimals, times, and identifiers are left alone.
+      # Runs AFTER verbalize_bit_strings, so a codeword paper still wins.
+      verbalize_large_numbers: true
+      large_number_min: 100
     chunking:
       # Hard cap -- no chunk ever exceeds this. Fish quality decays past ~700
       # chars (Theme 4); 650 keeps margin and kills the tail-rush monsters.

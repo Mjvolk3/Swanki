@@ -602,3 +602,46 @@ summary}_audio` (each already had `speed` in scope). It is the source of truth a
 surgical edit uses to re-TTS the replacement chunk at the SAME speed instead of guessing
 (see [[swanki.audio.comment_edit]], same date). `None` when a caller omits it; legacy
 manifests without the field fall back to `edit_chunk`'s per-audio-type map.
+
+## 2026.07.20 - `verbalize_large_numbers`: spell big cardinals out for TTS
+
+Second listener report of the same defect. A jakobson ABS bookmark at 7:27
+(2026-07-09) said "a lot of the numbers being read off are botched, especially
+the larger numbers" — 851, 1,225, 826, 6400, 6476, 923, 1200, 1000 — and it was
+patched by hand that evening with four `edit_chunk` calls. The Kuchel CH05
+reading track needed the same repair across 26 chunks. Regenerating the
+jakobson lecture reproduced it immediately (15 numerals across 8 of 64 chunks),
+which is the signal that this belongs in the pipeline, not in a runbook.
+
+`verbalize_large_numbers(text, min_value=100)` rewrites bare integers as cardinal
+words via a local `_cardinal_words` helper (no new dependency; `num2words` is not
+in the env). It is **opt-out, default on**, which is a deliberate departure from
+`verbalize_bit_strings` sitting right above it in the chain. That one imposes
+per-digit semantics and genuinely cannot tell a codeword from a decimal, so it
+had to be demoted to opt-in (2026.06.06). Spelling a cardinal out is
+meaning-preserving, so it carries no equivalent risk.
+
+Guards, all covered by tests:
+
+- Numbers below `min_value` are left as numerals — engines read 1..99 correctly
+  and the numeral is easier to proofread in the saved transcript.
+- Bare four-digit numbers in 1500-2099 are skipped as year-like; TTS already
+  says "twenty twenty-five", which "two thousand twenty-five" would replace.
+- Comma-grouped numbers are always spelled out regardless of magnitude — the
+  comma is itself a mis-read risk.
+- The regex refuses identifiers (`ERG11`), decimals (`1.5`), times (`10:30`),
+  hyphenated ranges (`Fig. 5-11`), and digit-suffixed words (`1990s`).
+- Idempotent: the output contains no digits.
+
+Ordering matters and is asserted by
+`test_preprocess_for_tts_bit_strings_win_over_large_numbers`: the scrubber runs
+directly AFTER `verbalize_bit_strings`, so on a dense-codeword paper (Hamming)
+`110` has already become `one-one-zero` and cannot be re-read as "one hundred
+ten". Wired identically into `preprocess_for_tts` (card path) and the duplicated
+chains in `lecture.py`, `reading.py`, and `summary.py`. Knob documented in
+`swanki/conf/models/fish_speech.yaml` as `verbalize_large_numbers` /
+`large_number_min`.
+
+Two `preprocess_for_tts` tests that asserted on `110` were switched to the
+sub-100 codeword `11` so they still test bit-string opt-in without the new
+default-on scrubber confounding them.

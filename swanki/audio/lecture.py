@@ -38,6 +38,7 @@ from ._common import (
     text_to_speech,
     tts_chunks_parallel,
     verbalize_bit_strings,
+    verbalize_large_numbers,
     write_chunk_manifest,
 )
 
@@ -840,6 +841,11 @@ def generate_lecture_audio(
     if prep_cfg.get("verbalize_bit_strings", False):
         cleaned = verbalize_bit_strings(
             cleaned, max_len=int(prep_cfg.get("bit_strings_max_len", 32))
+        )
+    # Opt-out (default on): spelling a cardinal out is meaning-preserving.
+    if prep_cfg.get("verbalize_large_numbers", True):
+        cleaned = verbalize_large_numbers(
+            cleaned, min_value=int(prep_cfg.get("large_number_min", 100))
         )
     pronunciations = prep_cfg.get("pronunciations", {}) or {}
     if pronunciations:

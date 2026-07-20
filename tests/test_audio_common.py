@@ -37,6 +37,7 @@ from swanki.audio._common import (
     strip_forbidden_fish_tags,
     validate_audio_file,
     verbalize_bit_strings,
+    verbalize_large_numbers,
     write_chunk_manifest,
 )
 
@@ -301,19 +302,28 @@ def test_combine_audio_bookend_pauses_are_asymmetric(tmp_path):
     small = tmp_path / "small.mp3"
     big = tmp_path / "big.mp3"
     combine_audio_with_section_pauses(
-        [[chunk]], small, bookend_start=start, bookend_end=end,
-        bookend_start_pause_ms=300, bookend_end_pause_ms=300,
+        [[chunk]],
+        small,
+        bookend_start=start,
+        bookend_end=end,
+        bookend_start_pause_ms=300,
+        bookend_end_pause_ms=300,
         bookend_trailing_pause_ms=0,
     )
     combine_audio_with_section_pauses(
-        [[chunk]], big, bookend_start=start, bookend_end=end,
-        bookend_start_pause_ms=300, bookend_end_pause_ms=2000,
+        [[chunk]],
+        big,
+        bookend_start=start,
+        bookend_end=end,
+        bookend_start_pause_ms=300,
+        bookend_end_pause_ms=2000,
         bookend_trailing_pause_ms=1500,
     )
     # big has 1700 extra end-pause + 1500 trailing = ~3200ms more.
-    assert len(AudioSegment.from_mp3(str(big))) - len(
-        AudioSegment.from_mp3(str(small))
-    ) > 3000
+    assert (
+        len(AudioSegment.from_mp3(str(big))) - len(AudioSegment.from_mp3(str(small)))
+        > 3000
+    )
 
 
 def test_combine_audio_trailing_pause_only_with_end_bookend(tmp_path):
@@ -323,9 +333,13 @@ def test_combine_audio_trailing_pause_only_with_end_bookend(tmp_path):
     _silence(start, 500)
     out = tmp_path / "o.mp3"
     combine_audio_with_section_pauses(
-        [[chunk]], out, section_pause_ms=0,
-        bookend_start=start, bookend_end=None,
-        bookend_start_pause_ms=300, bookend_end_pause_ms=2000,
+        [[chunk]],
+        out,
+        section_pause_ms=0,
+        bookend_start=start,
+        bookend_end=None,
+        bookend_start_pause_ms=300,
+        bookend_end_pause_ms=2000,
         bookend_trailing_pause_ms=1500,
     )
     audio = AudioSegment.from_mp3(str(out))
@@ -424,8 +438,19 @@ def test_verbalize_bit_strings_idempotent():
 def test_verbalize_bit_strings_protects_numbers_and_identifiers():
     # Decimals, thousands-commas, years, identifiers, paths, and times must
     # pass through unchanged.
-    for token in ["1.5", "0.01", "1,000", "10,000", "2020", "2011",
-                  "v01", "chunk0", "chunk01", "10:01", "a/01"]:
+    for token in [
+        "1.5",
+        "0.01",
+        "1,000",
+        "10,000",
+        "2020",
+        "2011",
+        "v01",
+        "chunk0",
+        "chunk01",
+        "10:01",
+        "a/01",
+    ]:
         assert verbalize_bit_strings(token) == token, token
 
 
@@ -453,9 +478,7 @@ def test_verbalize_bit_strings_mixed_sentence():
 
 def test_verbalize_bit_strings_empty():
     assert verbalize_bit_strings("") == ""
-    assert verbalize_bit_strings("no binary here at all") == (
-        "no binary here at all"
-    )
+    assert verbalize_bit_strings("no binary here at all") == ("no binary here at all")
 
 
 # ---------------------------------------------------------------------------
@@ -480,31 +503,49 @@ def test_preprocess_for_tts_no_pauses_matches_card_behavior():
 
 def test_preprocess_for_tts_bit_strings_opt_in():
     # Bit-string verbalize is OPT-IN (default off): a 0/1-only token survives
-    # untouched so ordinary decimals are not mangled...
-    out = preprocess_for_tts("code 110 here", _FISH, add_pauses=False)
-    assert "110" in out and "one-one-zero" not in out
+    # untouched so ordinary decimals are not mangled. Uses a sub-100 codeword so
+    # the default-on large-number scrubber does not confound the assertion.
+    out = preprocess_for_tts("code 11 here", _FISH, add_pauses=False)
+    assert "11" in out and "one-one" not in out
     # ...and the per-paper opt-in (verbalize_bit_strings: true) re-enables it.
-    fish_on = {"provider": "fish_speech",
-               "preprocessor": {"verbalize_bit_strings": True}}
-    out_on = preprocess_for_tts("code 110 here", fish_on, add_pauses=False)
-    assert "one-one-zero" in out_on and "110" not in out_on
+    fish_on = {
+        "provider": "fish_speech",
+        "preprocessor": {"verbalize_bit_strings": True},
+    }
+    out_on = preprocess_for_tts("code 11 here", fish_on, add_pauses=False)
+    assert "one-one" in out_on and "11" not in out_on
+
+
+def test_preprocess_for_tts_bit_strings_win_over_large_numbers():
+    # Order matters for a dense-codeword paper: verbalize_bit_strings runs FIRST
+    # and leaves no digits, so the default-on cardinal scrubber cannot re-read a
+    # codeword as "one hundred ten".
+    cfg = {"provider": "fish_speech", "preprocessor": {"verbalize_bit_strings": True}}
+    out = preprocess_for_tts("code 110 here", cfg, add_pauses=False)
+    assert "one-one-zero" in out
+    assert "one hundred ten" not in out
+
+
+def test_preprocess_for_tts_spells_large_numbers_by_default():
+    out = preprocess_for_tts("measured 851 progeny", _FISH, add_pauses=False)
+    assert "eight hundred fifty-one" in out and "851" not in out
 
 
 def test_preprocess_for_tts_fish_only_steps_noop_for_elevenlabs():
     # No provider -> acronym + forbidden-tag steps are skipped. Bit-string
-    # verbalize is opt-in (default off), so 110 survives here too.
+    # verbalize is opt-in (default off), so 11 survives here too.
     el = {"preprocessor": {}}
-    out = preprocess_for_tts("SAR code 110", el, add_pauses=False)
+    out = preprocess_for_tts("SAR code 11", el, add_pauses=False)
     assert "S-A-R" not in out  # acronym expansion is fish-only
-    assert "110" in out and "one-one-zero" not in out  # verbalize off by default
+    assert "11" in out and "one-one" not in out  # verbalize off by default
     # When opted in, verbalize is provider-agnostic (runs even for elevenlabs).
     el_on = {"preprocessor": {"verbalize_bit_strings": True}}
-    out_on = preprocess_for_tts("SAR code 110", el_on, add_pauses=False)
-    assert "one-one-zero" in out_on
+    out_on = preprocess_for_tts("SAR code 11", el_on, add_pauses=False)
+    assert "one-one" in out_on
 
 
 def test_preprocess_for_tts_scrubber_idempotent_without_pauses():
-    text = "code 110 and SAR"
+    text = "code 11 and SAR"
     once = preprocess_for_tts(text, _FISH, add_pauses=False)
     twice = preprocess_for_tts(once, _FISH, add_pauses=False)
     assert once == twice
@@ -515,8 +556,7 @@ def test_preprocess_for_tts_ch10_codewords_when_opted_in():
     # back on. With verbalize_bit_strings: true, bare codewords still read
     # digit-by-digit through the full preprocess chain. Guards the opt-in path
     # against future regex regressions.
-    cfg = {"provider": "fish_speech",
-           "preprocessor": {"verbalize_bit_strings": True}}
+    cfg = {"provider": "fish_speech", "preprocessor": {"verbalize_bit_strings": True}}
     text = "The codewords are 0, 10, 110, and 111 in order."
     out = preprocess_for_tts(text, cfg, add_pauses=False)
     assert "one-zero, one-one-zero, and one-one-one" in out
@@ -577,8 +617,7 @@ def test_append_chunk_pause_fish_speech_no_append():
 def test_append_chunk_pause_fish_strips_existing_trailing_pause():
     assert append_chunk_pause("Hello. [pause]", "fish_speech") == "Hello."
     assert (
-        append_chunk_pause("Hello.\n[short pause]\n[pause]", "fish_speech")
-        == "Hello."
+        append_chunk_pause("Hello.\n[short pause]\n[pause]", "fish_speech") == "Hello."
     )
     assert (
         append_chunk_pause("Hello. [short pause] [pause] [long pause]", "fish_speech")
@@ -602,10 +641,7 @@ def test_append_chunk_pause_fish_preserves_mid_chunk_pause():
 
 def test_append_chunk_pause_elevenlabs():
     assert append_chunk_pause("Hello.") == 'Hello. <break time="1.0s" />'
-    assert (
-        append_chunk_pause("Hello.", "elevenlabs")
-        == 'Hello. <break time="1.0s" />'
-    )
+    assert append_chunk_pause("Hello.", "elevenlabs") == 'Hello. <break time="1.0s" />'
 
 
 def test_append_chunk_pause_idempotent_fish():
@@ -722,7 +758,8 @@ def test_restitch_from_chunks_with_bookends(tmp_path):
 
     out = tmp_path / "restitched.mp3"
     restitch_from_chunks(
-        manifest_path, out,
+        manifest_path,
+        out,
         bookend_start_pause_ms=300,
         bookend_end_pause_ms=2000,
         bookend_trailing_pause_ms=1500,
@@ -768,7 +805,11 @@ def test_write_chunk_manifest_records_postprocessor(tmp_path):
         "gain_match_target_dbfs": -25.0,
     }
     path = write_chunk_manifest(
-        tmp_path, "lecture", "out.mp3", [], postprocessor=post,
+        tmp_path,
+        "lecture",
+        "out.mp3",
+        [],
+        postprocessor=post,
     )
     data = json.loads(path.read_text())
     assert data["postprocessor"] == post
@@ -926,10 +967,14 @@ def test_build_bookend_text_uses_chapter_word_not_o_form():
 
 
 def test_build_bookend_text_non_chapter_lecture_keeps_legacy_form():
-    assert build_bookend_text("bishopDeepLearning2024", "lecture", "start") == \
-        "Today's lecture is posted as: Bishop, Deep Learning, 2024."
-    assert build_bookend_text("bishopDeepLearning2024", "lecture", "end") == \
-        "And with that we conclude: Bishop, Deep Learning, 2024."
+    assert (
+        build_bookend_text("bishopDeepLearning2024", "lecture", "start")
+        == "Today's lecture is posted as: Bishop, Deep Learning, 2024."
+    )
+    assert (
+        build_bookend_text("bishopDeepLearning2024", "lecture", "end")
+        == "And with that we conclude: Bishop, Deep Learning, 2024."
+    )
 
 
 def test_build_bookend_text_non_chapter_lecture_with_title():
@@ -945,10 +990,14 @@ def test_build_bookend_text_non_chapter_lecture_with_title():
 def test_build_bookend_text_non_chapter_summary_keeps_label_form():
     # No natural "Here is the summary of ..." opener without a chapter number,
     # so non-chapter summary / transcript stays on the simple START:/END: label.
-    assert build_bookend_text("bishopDeepLearning2024", "summary", "start") == \
-        "START: Bishop, Deep Learning, 2024."
-    assert build_bookend_text("bishopDeepLearning2024", "transcript", "end") == \
-        "END: Bishop, Deep Learning, 2024."
+    assert (
+        build_bookend_text("bishopDeepLearning2024", "summary", "start")
+        == "START: Bishop, Deep Learning, 2024."
+    )
+    assert (
+        build_bookend_text("bishopDeepLearning2024", "transcript", "end")
+        == "END: Bishop, Deep Learning, 2024."
+    )
 
 
 def test_restitch_from_chunks_uses_per_boundary_silence(tmp_path):
@@ -963,9 +1012,27 @@ def test_restitch_from_chunks_uses_per_boundary_silence(tmp_path):
         "lecture",
         "out.mp3",
         [
-            {"index": 0, "section": 0, "text": "a", "file": "c0.mp3", "boundary": "paragraph"},
-            {"index": 1, "section": 0, "text": "b", "file": "c1.mp3", "boundary": "paragraph"},
-            {"index": 2, "section": 0, "text": "c", "file": "c2.mp3", "boundary": "sentence"},
+            {
+                "index": 0,
+                "section": 0,
+                "text": "a",
+                "file": "c0.mp3",
+                "boundary": "paragraph",
+            },
+            {
+                "index": 1,
+                "section": 0,
+                "text": "b",
+                "file": "c1.mp3",
+                "boundary": "paragraph",
+            },
+            {
+                "index": 2,
+                "section": 0,
+                "text": "c",
+                "file": "c2.mp3",
+                "boundary": "sentence",
+            },
         ],
         postprocessor={
             "section_pause_ms": 0,
@@ -995,7 +1062,7 @@ def test_normalize_fish_speech_punct_dashes():
 def test_normalize_fish_speech_punct_quotes_and_ellipsis():
     text = "the cell\u2019s ability \u201cto detour\u201d\u2026 continues"
     out = _normalize_fish_speech_punct(text)
-    assert out == "the cell's ability \"to detour\"... continues"
+    assert out == 'the cell\'s ability "to detour"... continues'
 
 
 def test_normalize_fish_speech_punct_passthrough_ascii():
@@ -1046,17 +1113,12 @@ def test_expand_acronyms_for_tts_letter_by_letter():
 
 
 def test_expand_acronyms_for_tts_skips_allowlist():
-    assert (
-        expand_acronyms_for_tts("USA and SAR", allowlist={"USA"})
-        == "USA and S-A-R"
-    )
+    assert expand_acronyms_for_tts("USA and SAR", allowlist={"USA"}) == "USA and S-A-R"
 
 
 def test_expand_acronyms_for_tts_skips_camelcase_lower_prefix():
     # myACRONYM is preceded by a lowercase letter -> not standalone.
-    assert (
-        expand_acronyms_for_tts("myACRONYM stays put") == "myACRONYM stays put"
-    )
+    assert expand_acronyms_for_tts("myACRONYM stays put") == "myACRONYM stays put"
 
 
 def test_expand_acronyms_for_tts_skips_camelcase_lower_suffix():
@@ -1069,7 +1131,9 @@ def test_expand_acronyms_for_tts_no_change_for_lowercase():
 
 
 def test_expand_acronyms_for_tts_skips_single_letter():
-    assert expand_acronyms_for_tts("the X factor and A team") == "the X factor and A team"
+    assert (
+        expand_acronyms_for_tts("the X factor and A team") == "the X factor and A team"
+    )
 
 
 def test_expand_acronyms_for_tts_roman_numerals_become_words():
@@ -1249,10 +1313,7 @@ def test_detect_repeated_phrases_below_threshold_not_flagged():
 
 
 def test_chunk_text_paragraphs_respects_700_char_cap():
-    paragraphs = "\n\n".join(
-        f"Paragraph {i}. " + ("filler. " * 30)
-        for i in range(5)
-    )
+    paragraphs = "\n\n".join(f"Paragraph {i}. " + ("filler. " * 30) for i in range(5))
     chunks = chunk_text_paragraphs(paragraphs, max_chars=700)
     assert all(len(text) <= 700 for text, _b in chunks), [len(t) for t, _ in chunks]
 
@@ -1310,9 +1371,7 @@ def test_balanced_path_is_opt_in_default_byte_identical():
         text, max_chars=200, soft_max_chars=None, min_sentences_per_chunk=2
     )
     assert legacy == explicit_none
-    assert legacy == [
-        ("Para one is short.\n\nPara two is also short.", "paragraph")
-    ]
+    assert legacy == [("Para one is short.\n\nPara two is also short.", "paragraph")]
 
 
 def test_balanced_legacy_cap_paths_match_existing_tests():
@@ -1390,9 +1449,11 @@ def test_balanced_merges_lone_middle_sentence():
 def test_balanced_lone_sentence_kept_when_unmergeable():
     # A single-sentence paragraph longer than the cap cannot merge with any
     # neighbor and is accepted as a lone chunk (the S8-survivor escape hatch).
-    long_sentence = "This one sentence is deliberately very long " + (
-        "and keeps going " * 20
-    ) + "until it stops."
+    long_sentence = (
+        "This one sentence is deliberately very long "
+        + ("and keeps going " * 20)
+        + "until it stops."
+    )
     neighbor = "Short tail. Another short tail."
     text = f"{long_sentence}\n\n{neighbor}"
     chunks = chunk_text_paragraphs(
@@ -1423,7 +1484,10 @@ def test_combine_audio_with_section_pauses_chunk_pause_inserts_silence(tmp_path)
     AudioSegment.silent(duration=1000).export(str(b), format="mp3")
     out = tmp_path / "out.mp3"
     combine_audio_with_section_pauses(
-        [[a, b]], out, section_pause_ms=0, chunk_pause_ms=500,
+        [[a, b]],
+        out,
+        section_pause_ms=0,
+        chunk_pause_ms=500,
     )
     combined = AudioSegment.from_mp3(str(out))
     assert 2400 <= len(combined) <= 2600
@@ -1433,7 +1497,9 @@ def test_combine_audio_with_section_pauses_per_boundary_silence(tmp_path):
     # Three chunks: gap before chunk[1] is "paragraph" (1100ms), gap before
     # chunk[2] is "sentence" (500ms). Total = 1000 + 1100 + 1000 + 500 + 1000
     # = 4600ms. With uniform chunk_pause_ms it would be 1000+x+1000+x+1000.
-    a = tmp_path / "a.mp3"; b = tmp_path / "b.mp3"; c = tmp_path / "c.mp3"
+    a = tmp_path / "a.mp3"
+    b = tmp_path / "b.mp3"
+    c = tmp_path / "c.mp3"
     for p in (a, b, c):
         AudioSegment.silent(duration=1000).export(str(p), format="mp3")
     out = tmp_path / "out.mp3"
@@ -1453,15 +1519,21 @@ def test_combine_audio_with_section_pauses_per_boundary_silence(tmp_path):
     )
 
 
-def test_combine_audio_with_section_pauses_falls_back_to_chunk_pause_ms_without_map(tmp_path):
+def test_combine_audio_with_section_pauses_falls_back_to_chunk_pause_ms_without_map(
+    tmp_path,
+):
     # When chunk_pause_ms_by_boundary is absent, the legacy uniform
     # chunk_pause_ms applies to every gap (no regression for existing callers).
-    a = tmp_path / "a.mp3"; b = tmp_path / "b.mp3"
+    a = tmp_path / "a.mp3"
+    b = tmp_path / "b.mp3"
     for p in (a, b):
         AudioSegment.silent(duration=1000).export(str(p), format="mp3")
     out = tmp_path / "out.mp3"
     combine_audio_with_section_pauses(
-        [[a, b]], out, section_pause_ms=0, chunk_pause_ms=700,
+        [[a, b]],
+        out,
+        section_pause_ms=0,
+        chunk_pause_ms=700,
         # boundaries provided but no map -> uniform behavior preserved
         chunk_boundaries=[["paragraph", "sentence"]],
     )
@@ -1472,7 +1544,8 @@ def test_combine_audio_with_section_pauses_falls_back_to_chunk_pause_ms_without_
 
 def test_combine_audio_with_section_pauses_missing_boundary_key_falls_back(tmp_path):
     # Per-boundary map missing a key -> that gap falls back to chunk_pause_ms.
-    a = tmp_path / "a.mp3"; b = tmp_path / "b.mp3"
+    a = tmp_path / "a.mp3"
+    b = tmp_path / "b.mp3"
     for p in (a, b):
         AudioSegment.silent(duration=1000).export(str(p), format="mp3")
     out = tmp_path / "out.mp3"
@@ -1496,7 +1569,10 @@ def test_combine_audio_with_section_pauses_zero_chunk_pause_no_extra_silence(tmp
     AudioSegment.silent(duration=1000).export(str(b), format="mp3")
     out = tmp_path / "out.mp3"
     combine_audio_with_section_pauses(
-        [[a, b]], out, section_pause_ms=0, chunk_pause_ms=0,
+        [[a, b]],
+        out,
+        section_pause_ms=0,
+        chunk_pause_ms=0,
     )
     combined = AudioSegment.from_mp3(str(out))
     # No inter-chunk silence requested -> ~2 seconds.
@@ -1517,10 +1593,15 @@ def test_combine_audio_with_section_pauses_gain_match_normalizes(tmp_path):
     out_with = tmp_path / "with.mp3"
     out_without = tmp_path / "without.mp3"
     combine_audio_with_section_pauses(
-        [[a, b]], out_with, section_pause_ms=0, gain_match_target_dbfs=-25.0,
+        [[a, b]],
+        out_with,
+        section_pause_ms=0,
+        gain_match_target_dbfs=-25.0,
     )
     combine_audio_with_section_pauses(
-        [[a, b]], out_without, section_pause_ms=0,
+        [[a, b]],
+        out_without,
+        section_pause_ms=0,
     )
     combined_with = AudioSegment.from_mp3(str(out_with))
     combined_without = AudioSegment.from_mp3(str(out_without))
@@ -1536,7 +1617,10 @@ def test_combine_audio_with_section_pauses_chunk_tail_trim_zero_no_op(tmp_path):
     AudioSegment.silent(duration=1000).export(str(b), format="mp3")
     out = tmp_path / "out.mp3"
     combine_audio_with_section_pauses(
-        [[a, b]], out, section_pause_ms=0, chunk_tail_trim_ms=0,
+        [[a, b]],
+        out,
+        section_pause_ms=0,
+        chunk_tail_trim_ms=0,
     )
     combined = AudioSegment.from_mp3(str(out))
     assert 1900 <= len(combined) <= 2100
@@ -1632,3 +1716,46 @@ class TestCollapseStackedPauseTags:
             r"\[(?:short |long )?pause\]\s*\[(?:short |long )?pause\]", out
         )
         assert "[pause]" in out
+
+
+# ---------------------------------------------------------------------------
+# verbalize_large_numbers
+# ---------------------------------------------------------------------------
+
+
+def test_verbalize_large_numbers_spells_out_big_cardinals():
+    out = verbalize_large_numbers("measured 851 progeny and 826 proteins")
+    assert out == (
+        "measured eight hundred fifty-one progeny and eight hundred twenty-six proteins"
+    )
+
+
+def test_verbalize_large_numbers_handles_comma_grouping():
+    assert verbalize_large_numbers("1,225 proteins") == (
+        "one thousand two hundred twenty-five proteins"
+    )
+    # Comma-grouped numbers are spelled out even below min_value.
+    assert verbalize_large_numbers("1,000", min_value=10_000).startswith("one thousand")
+
+
+def test_verbalize_large_numbers_leaves_small_numbers_alone():
+    text = "about 10 to 20 percent, and 76 of them"
+    assert verbalize_large_numbers(text) == text
+
+
+def test_verbalize_large_numbers_skips_years_identifiers_and_decimals():
+    text = "in 2025 the ERG11 gene and Fig. 5-11 at 10:30 with 1.5-fold change"
+    assert verbalize_large_numbers(text) == text
+    assert verbalize_large_numbers("the 1990s") == "the 1990s"
+
+
+def test_verbalize_large_numbers_is_idempotent():
+    once = verbalize_large_numbers("6400 associations across 923 proteins")
+    assert verbalize_large_numbers(once) == once
+    assert not any(ch.isdigit() for ch in once)
+
+
+def test_verbalize_large_numbers_scales():
+    assert verbalize_large_numbers("6476") == "six thousand four hundred seventy-six"
+    assert verbalize_large_numbers("1,000,000") == "one million"
+    assert verbalize_large_numbers("100") == "one hundred"
