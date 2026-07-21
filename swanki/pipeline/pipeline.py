@@ -2369,6 +2369,22 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             # Get reading audio speed from config
             reading_speed = audio_config.get("reading_speed", 1.0)
 
+            # Report-only correctness critic (deterministic modes default on).
+            # Config is double-nested under the Hydra group name (see Gotcha 5);
+            # a single .get would silently disable everything.
+            gate_cfg = self.config.get("audio_correctness_gate", {}).get(
+                "audio_correctness_gate", {}
+            )
+            reading_cfg = gate_cfg.get("reading", {})
+            reading_collector = None
+            if gate_cfg.get("enabled", False) and reading_cfg.get("enabled", True):
+                from ..audio.reading_correctness import ReadingCorrectnessCollector
+
+                reading_collector = ReadingCorrectnessCollector(
+                    clause_diff=reading_cfg.get("clause_diff", True),
+                    acronym_validator=reading_cfg.get("acronym_validator", True),
+                )
+
             generate_reading_audio(
                 full_content=full_content,
                 output_path=reading_audio_path,
@@ -2377,8 +2393,17 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 model=model,
                 citation_key=self.citation_key,
                 speed=reading_speed,
+                correctness=reading_collector,
                 **tts_kwargs,
             )
+            if reading_collector is not None:
+                from ..audio.reading_correctness import write_reading_audit
+
+                write_reading_audit(
+                    reading_collector.chunk_fidelities,
+                    reading_collector.acronym_findings,
+                    self.output_base / "reading-correctness-assessment.json",
+                )
             print(f"Generated reading audio: {reading_audio_path.name}")
 
         # Generate lecture audio (educational style)
@@ -2421,6 +2446,32 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 main_content_files if main_content_files is not None else cleaned_files
             )
 
+            # Report-only lecture factual pass (LLM, default off). Double-nested
+            # config read (see Gotcha 5). Model resolves to the gate override
+            # else the run's main model, mirroring the card gate.
+            gate_cfg = self.config.get("audio_correctness_gate", {}).get(
+                "audio_correctness_gate", {}
+            )
+            lecture_cfg = gate_cfg.get("lecture", {})
+            lecture_collector = None
+            if (
+                gate_cfg.get("enabled", False)
+                and lecture_cfg.get("enabled", True)
+                and lecture_cfg.get("factual_pass", False)
+            ):
+                from ..audio.reading_correctness import LectureCorrectnessCollector
+
+                summary_context = (
+                    f"Title: {summary.title}\n"
+                    f"Main topic: {summary.main_topic}\n"
+                    f"Summary: {summary.summary}"
+                )
+                lecture_collector = LectureCorrectnessCollector(
+                    enabled=True,
+                    model_string=gate_cfg.get("model") or model,
+                    summary_context=summary_context,
+                )
+
             generate_lecture_audio(
                 markdown_files=lecture_source_files,
                 image_summaries=image_summary_strings,
@@ -2432,8 +2483,16 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 lecture_prompt_config=lecture_prompt_config,
                 speed=lecture_speed,
                 si_start_page=si_start_page,
+                correctness=lecture_collector,
                 **tts_kwargs,
             )
+            if lecture_collector is not None:
+                from ..audio.reading_correctness import write_lecture_audit
+
+                write_lecture_audit(
+                    lecture_collector.entries,
+                    self.output_base / "lecture-correctness-assessment.json",
+                )
             print(f"Generated lecture audio: {lecture_audio_path.name}")
 
         # Dispatch audio generation in the configured order. The default

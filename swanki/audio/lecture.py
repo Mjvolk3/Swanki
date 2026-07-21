@@ -41,6 +41,7 @@ from ._common import (
     verbalize_large_numbers,
     write_chunk_manifest,
 )
+from .reading_correctness import LectureCorrectnessCollector
 
 logger = logging.getLogger(__name__)
 
@@ -485,6 +486,7 @@ def generate_lecture_audio(
     speed: float = 1.0,
     si_start_page: int | None = None,
     paper_title: str | None = None,
+    correctness: LectureCorrectnessCollector | None = None,
     **tts_kwargs: object,
 ) -> str:
     """Generate an educational lecture from document content.
@@ -503,6 +505,9 @@ def generate_lecture_audio(
         si_start_page: Page index where SI begins in markdown_files.
             When set, main paper and SI are processed separately.
         paper_title: Paper title for lecture bookend announcements.
+        correctness: Optional report-only factual-pass collector (default off).
+            When enabled, the final transcript's claims are assessed and the
+            pipeline hook writes the audit. Audio is never mutated.
 
     Returns:
         Filename of the generated audio file.
@@ -818,6 +823,12 @@ def generate_lecture_audio(
         if citation_key:
             f.write(f"**Citation Key:** {citation_key}\n\n")
         f.write(f"**Generated Transcript:**\n\n{full_transcript}\n")
+
+    # Report-only lecture factual pass (default off). Assesses the final
+    # human-readable transcript's CLAIMS (not wording); the pipeline hook
+    # writes the audit. Never mutates the transcript or audio.
+    if correctness is not None:
+        correctness.run(full_transcript)
 
     # Pre-TTS deterministic scrubbers. Order matters: clean markdown first so
     # the scrubbers operate on prose, not formatting; slug-stripper before

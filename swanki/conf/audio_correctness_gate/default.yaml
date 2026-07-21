@@ -1,0 +1,30 @@
+audio_correctness_gate:
+  # Report-only audio-path correctness critic. Unlike the card correctness gate
+  # (which fires at generate_outputs and is skipped by audio_only runs), this
+  # critic runs on the audio path and survives audio_only regenerations. It
+  # NEVER mutates audio: each track emits a per-chapter JSON audit
+  # (reading-correctness-assessment.json / lecture-correctness-assessment.json)
+  # and nothing else.
+  enabled: true
+  # Report-only is the contract for this critic; it does not gate or drop audio.
+  # Kept explicit so the intent is discoverable and a future enforcing mode has
+  # a named slot.
+  report_only: true
+  # Optional model override (pydantic-ai string, e.g. "openai:gpt-5.5") for the
+  # lecture factual pass. When null it reuses models.llm.
+  model: null
+  reading:
+    # Reading gets both deterministic checks. They have no API cost and catch
+    # the exact source-fidelity and acronym double-emit failures seen in
+    # production, so they default ON.
+    enabled: true
+    # Normalized clause diff over each Pass-2 input->output pair.
+    clause_diff: true
+    # Acronym double-emit validation on the final tts_transcript.
+    acronym_validator: true
+  lecture:
+    # Lecture receives ONLY the optional LLM factual pass (its reformulated
+    # first-person prose floods a clause-exact diff). The pass is the single
+    # network call and can be noisy, so it defaults OFF.
+    enabled: true
+    factual_pass: false
