@@ -6,6 +6,7 @@ https://github.com/Mjvolk3/Swanki/tree/main/swanki/sync/zotero.py
 Upload Swanki outputs (apkg, audio) to Zotero as timestamped attachments.
 """
 
+import hashlib
 import logging
 import os
 import re
@@ -13,7 +14,7 @@ import subprocess
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from pyzotero import zotero
@@ -202,6 +203,148 @@ def _find_or_create_sync_note(
     return new_item, "<h2>Swanki Sync Log</h2>\n"
 
 
+def upload_attachment(
+    zot: zotero.Zotero, item_key: str, zip_path: Path, zip_name: str
+) -> str:
+    """Upload one imported_file attachment via Zotero's low-level file API.
+
+    Bypasses pyzotero's ``attachment_simple`` (1.11.0 returns a failure dict
+    without raising, even on a 5-byte file) and runs the documented four-step
+    full-upload flow: create the attachment item, request upload
+    authorization, POST the bytes to S3, then register the upload. Every step
+    raises ``RuntimeError`` on an unexpected status (never ``assert`` — those
+    are stripped under ``python -O`` and would silently revive the
+    prune-deletes-good-zips data-loss bug).
+
+    The base URL is built from the pyzotero client's already-pluralized
+    attributes (``zot.library_type`` is ``"users"``/``"groups"``), so group
+    libraries work without re-reading env or hardcoding ``/users/``.
+
+    Args:
+        zot: Authenticated pyzotero client (source of endpoint/library/key).
+        item_key: Parent Zotero item key the attachment is filed under.
+        zip_path: Local path to the zip file to upload.
+        zip_name: Attachment title and filename to register in Zotero.
+
+    Returns:
+        The new attachment item's key.
+
+    Raises:
+        RuntimeError: If any of the four steps returns an unexpected status
+            (create not 200 / no success, auth not 200, S3 not 200|201,
+            register not 204), including a 412 write-token replay on create.
+    """
+    data = zip_path.read_bytes()
+    md5 = hashlib.md5(data).hexdigest()
+    filesize = len(data)
+    # Nonzero milliseconds: a zero mtime yields 400 "File modification time
+    # not provided" from the upload-authorization endpoint.
+    mtime = int(os.stat(zip_path).st_mtime * 1000)
+
+    base = f"{zot.endpoint}/{zot.library_type}/{zot.library_id}"
+    headers: dict[str, str] = {
+        "Zotero-API-Key": cast(str, zot.api_key),
+        "Zotero-API-Version": "3",
+    }
+
+    # 1. CREATE the attachment item under the parent from the API template.
+    template: dict[str, Any] = httpx.get(
+        f"{zot.endpoint}/items/new?itemType=attachment&linkMode=imported_file",
+        headers=headers,
+        timeout=60,
+    ).json()
+    template.update(
+        parentItem=item_key,
+        title=zip_name,
+        filename=zip_name,
+        contentType="application/octet-stream",
+    )
+    create = httpx.post(
+        f"{base}/items",
+        headers={
+            **headers,
+            "Content-Type": "application/json",
+            # Random idempotency token: a retried create WITHOUT one makes a
+            # duplicate attachment item. A 412 means token replay -> hard raise.
+            "Zotero-Write-Token": os.urandom(16).hex(),
+        },
+        json=[template],
+        timeout=120,
+    )
+    if create.status_code != 200:
+        raise RuntimeError(
+            f"Zotero create-attachment failed: {create.status_code}: "
+            f"{create.text[:200]}"
+        )
+    create_body: dict[str, Any] = create.json()
+    if "0" not in create_body.get("success", {}):
+        raise RuntimeError(
+            f"Zotero create-attachment reported no success: "
+            f"{create_body.get('failed')}"
+        )
+    new_key: str = create_body["success"]["0"]
+
+    # 2. Upload AUTHORIZATION.
+    auth = httpx.post(
+        f"{base}/items/{new_key}/file",
+        headers={
+            **headers,
+            "Content-Type": "application/x-www-form-urlencoded",
+            "If-None-Match": "*",
+        },
+        data={
+            "md5": md5,
+            "filename": zip_name,
+            "filesize": filesize,
+            "mtime": mtime,
+        },
+        timeout=120,
+    )
+    if auth.status_code != 200:
+        raise RuntimeError(
+            f"Zotero upload-authorization failed: {auth.status_code}: "
+            f"{auth.text[:200]}"
+        )
+    auth_body: dict[str, Any] = auth.json()
+    if auth_body.get("exists"):
+        # Identical md5 already stored -> maps to the old `unchanged` success.
+        return new_key
+
+    # 3. POST the bytes to S3. Content-Type MUST be auth["contentType"]
+    # verbatim (S3 signs over it; anything else -> 403 SignatureDoesNotMatch).
+    # Stream prefix+bytes+suffix to avoid a 2x-memory copy on large zips.
+    s3 = httpx.post(
+        auth_body["url"],
+        headers={"Content-Type": auth_body["contentType"]},
+        content=iter(
+            [auth_body["prefix"].encode(), data, auth_body["suffix"].encode()]
+        ),
+        timeout=httpx.Timeout(600.0, connect=60.0),
+    )
+    if s3.status_code not in (200, 201):
+        raise RuntimeError(
+            f"Zotero S3 upload failed: {s3.status_code}: {s3.text[:200]}"
+        )
+
+    # 4. REGISTER the upload.
+    register = httpx.post(
+        f"{base}/items/{new_key}/file",
+        headers={
+            **headers,
+            "Content-Type": "application/x-www-form-urlencoded",
+            "If-None-Match": "*",
+        },
+        data={"upload": auth_body["uploadKey"]},
+        timeout=120,
+    )
+    if register.status_code != 204:
+        raise RuntimeError(
+            f"Zotero register-upload failed: {register.status_code}: "
+            f"{register.text[:200]}"
+        )
+    return new_key
+
+
 def sync_to_zotero(
     citation_key: str,
     output_dir: Path,
@@ -282,33 +425,13 @@ def sync_to_zotero(
         zip_size_mb = zip_path.stat().st_size / 1024 / 1024
         logger.info(f"Uploading {zip_name} ({zip_size_mb:.1f} MB) to Zotero...")
 
-        # Patch httpx default timeout for large file uploads.
-        # pyzotero's _upload.py uses bare httpx.post() with default timeout
-        # which is too short for large files over slow connections.
-        _original_post = httpx.post
-
-        def _patched_post(*args: object, **kwargs: object) -> object:
-            kwargs.setdefault("timeout", httpx.Timeout(600.0, connect=60.0))  # type: ignore[arg-type]
-            return _original_post(*args, **kwargs)  # type: ignore[arg-type]
-
-        httpx.post = _patched_post  # type: ignore[assignment]
-        try:
-            result = zot.attachment_simple([str(zip_path)], parentid=item_key)
-        finally:
-            httpx.post = _original_post  # type: ignore[assignment]
-
-        # pyzotero's attachment_simple returns {'success','failure','unchanged'}
-        # and does NOT raise when the S3 upload/registration fails -- it reports
-        # the failure in the result dict. Ignoring that return value let the prune
-        # below delete the prior good zips while nothing new was stored, leaving
-        # the item with ZERO artifacts (observed with pyzotero 1.11.0 silently
-        # failing every upload). Fail fast on a result that carries no success or
-        # unchanged entry, so the prune never runs and prior versions survive.
-        assert result.get("success") or result.get("unchanged"), (
-            f"Zotero upload of {zip_name} reported no success "
-            f"(attachment_simple result: failure={result.get('failure')}); "
-            "prior attachments left intact."
-        )
+        # Low-level 4-step upload (create -> auth -> S3 -> register). Replaces
+        # pyzotero's attachment_simple, which returned a silent failure dict
+        # here (1.11.0) and never raised. upload_attachment RAISES on any bad
+        # status, so the prune below never runs on a failed upload and prior
+        # good zips survive -- the same invariant the deleted d350add assert
+        # protected, now enforced by control flow.
+        upload_attachment(zot, item_key, zip_path, zip_name)
         uploaded = packed
 
     # Prune prior versions on the same chapter so Zotero stores only the

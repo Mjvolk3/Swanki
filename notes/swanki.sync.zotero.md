@@ -98,3 +98,48 @@ Regression: `tests/test_zotero_upload_guard.py` (no-success -> raises + no
 `scratchpad/zupload.py` was used one-off to repair the pruned Kuchel zips;
 adopting it inside `sync_to_zotero` (replacing the flaky `attachment_simple`) is
 a sensible follow-up.
+
+## 2026.07.22 - Low-level uploader replaces attachment_simple
+
+Delivered the 2026.07.21 follow-up: `attachment_simple` never actually stored a
+file here (it returned failure without raising even on a 5-byte file), so the
+guard above stopped the data loss but left delivery broken -- nothing could
+upload at all. Folded the verified 4-step Zotero file API flow from
+`scratchpad/zupload.py` into a new module-level `upload_attachment(zot,
+item_key, zip_path, zip_name) -> str` in `swanki/sync/zotero.py`:
+
+- **create** `POST {base}/items` (attachment template, `parentItem`,
+  `Zotero-Write-Token` idempotency header) -> 200, `body["success"]["0"]`;
+- **auth** `POST {base}/items/{key}/file` (form `md5,filename,filesize,mtime`,
+  `If-None-Match: *`) -> 200; a truthy `exists` (identical md5 already stored)
+  short-circuits and returns the key -- maps to the old `unchanged` success;
+- **s3** `POST auth["url"]` with `Content-Type: auth["contentType"]` verbatim
+  (S3 signs over it; anything else -> 403) and the body **streamed** as
+  `iter([prefix, data, suffix])` to avoid a 2x-memory copy on large zips,
+  `httpx.Timeout(600, connect=60)` -> 200|201;
+- **register** `POST {base}/items/{key}/file` (form `upload=uploadKey`) -> 204.
+
+Every step `raise RuntimeError(...)` on an unexpected status -- never `assert`
+(stripped under `python -O`, which would silently revive the
+prune-deletes-good-zips bug). The base URL is built from the pyzotero client's
+already-pluralized attrs (`zot.endpoint`, `zot.library_type` = `users`/`groups`,
+`zot.library_id`, `zot.api_key`), so group libraries work without hardcoding
+`/users/` or re-reading env.
+
+In `sync_to_zotero` the old upload block collapsed to a single
+`upload_attachment(zot, item_key, zip_path, zip_name)` call: deleted the
+`_patched_post`/`httpx.post` monkeypatch + `try/finally` (the S3-leg timeout is
+now intrinsic), the `attachment_simple` call, and the dead d350add
+`assert result.get("success")` guard (it dereferenced a now-nonexistent return
+dict). Prune-safety is preserved by control flow -- the uploader raises on any
+failure, so `_prune_prior_attachments` (called only after it returns) never runs
+on a failed upload. `sync_to_zotero`'s signature, its three callers, the
+precondition asserts, and the downstream prune/note/fox-tag are all unchanged.
+
+Tests rewritten (`tests/test_zotero_upload_guard.py`): `attachment_simple` is
+gone; the flow is driven by ordered `httpx.get`/`httpx.post` fakes -- (1) full
+success reaches prune (`delete_item`) + note + tag; (2) non-204 register RAISES
+`RuntimeError` and `delete_item` is NOT called (data-loss regression guard, now
+at the HTTP layer); (3) `exists` short-circuit makes no S3/register POSTs but
+still prunes + notes + tags. Plain monkeypatch + a small fake-Response helper,
+no respx/pytest-httpx.
