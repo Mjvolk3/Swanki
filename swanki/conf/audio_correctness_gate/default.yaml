@@ -28,3 +28,11 @@ audio_correctness_gate:
     # network call and can be noisy, so it defaults OFF.
     enabled: true
     factual_pass: false
+  corrections:
+    # Opt-in APPLY layer (swanki/audio/source_corrections.py). Unlike the
+    # report-only critic above, this MUTATES manifest chunk text and re-TTSs
+    # from a HAND-AUTHORED per-chapter spec -- never from critic findings. Off
+    # by default; requires a live Fish context when enabled.
+    apply_corrections: false
+    # Directory of <citation_key>.yaml correction specs. null disables lookup.
+    spec_dir: null

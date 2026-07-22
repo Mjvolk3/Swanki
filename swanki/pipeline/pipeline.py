@@ -2224,6 +2224,35 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 "postprocessor": post_cfg,
             }
 
+        # Opt-in source-correction APPLY layer (report-only critic is separate).
+        # Config is double-nested under the Hydra group name (see reading/lecture
+        # collectors above). Off by default; only fires when a hand-authored spec
+        # exists for this citation_key under spec_dir AND the track manifest was
+        # rendered. Requires a live Fish context (edit_chunk asserts a voice).
+        def _apply_corrections(
+            track: str, manifest_path: Path, audit_path: Path
+        ) -> None:
+            gate_cfg = self.config.get("audio_correctness_gate", {}).get(
+                "audio_correctness_gate", {}
+            )
+            corr_cfg = gate_cfg.get("corrections", {})
+            if not corr_cfg.get("apply_corrections", False):
+                return
+            spec_dir = corr_cfg.get("spec_dir")
+            if not spec_dir:
+                return
+            spec_path = Path(spec_dir) / f"{self.citation_key}.yaml"
+            if not (spec_path.exists() and manifest_path.exists()):
+                return
+            from ..audio.source_corrections import apply_source_corrections
+
+            apply_source_corrections(
+                spec_path,
+                {track: manifest_path},
+                tts_kwargs=tts_kwargs,
+                audit_path=audit_path,
+            )
+
         # Generate complementary audio (card audio)
         def _gen_complementary():
             if not audio_config.get("generate_complementary", False):
@@ -2404,6 +2433,11 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                     reading_collector.acronym_findings,
                     self.output_base / "reading-correctness-assessment.json",
                 )
+            _apply_corrections(
+                "reading",
+                self.output_base / "reading_chunks" / "chunk_manifest.json",
+                self.output_base / "reading-corrections-audit.json",
+            )
             print(f"Generated reading audio: {reading_audio_path.name}")
 
         # Generate lecture audio (educational style)
@@ -2493,6 +2527,11 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                     lecture_collector.entries,
                     self.output_base / "lecture-correctness-assessment.json",
                 )
+            _apply_corrections(
+                "lecture",
+                self.output_base / "lecture_chunks" / "chunk_manifest.json",
+                self.output_base / "lecture-corrections-audit.json",
+            )
             print(f"Generated lecture audio: {lecture_audio_path.name}")
 
         # Dispatch audio generation in the configured order. The default
