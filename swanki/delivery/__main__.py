@@ -8,7 +8,7 @@ CLI entry for the delivery subsystem, invoked by the queue drainer:
 
     python -m swanki.delivery deliver --citation-key K --content-key C \
         --output-dir D --audio-prefix P [--source local|zotero] \
-        [--targets zotero,anki,abs] [--dry-run]
+        [--targets zotero,anki,abs] [--merge-tracks auto|lecture,...] [--dry-run]
     python -m swanki.delivery finalize-abs [--dry-run]
 
 ``deliver`` runs one job's Zotero -> Anki delivery and defers ABS;
@@ -47,6 +47,22 @@ def _enabled_targets(cfg: dict[str, Any], override: str | None) -> list[str]:
     return [t for t in TARGET_ORDER if toggles.get(t, True)]
 
 
+def _parse_merge_tracks(raw: str | None) -> set[str] | str | None:
+    """Parse the ``--merge-tracks`` value into the shape ``deliver`` expects.
+
+    Args:
+        raw: ``None`` (full replace), ``"auto"``, or a comma list of tracks.
+
+    Returns:
+        ``None``, the literal ``"auto"``, or a set of track names.
+    """
+    if raw is None:
+        return None
+    if raw.strip() == "auto":
+        return "auto"
+    return {t.strip() for t in raw.split(",") if t.strip()}
+
+
 def _cmd_deliver(args: argparse.Namespace) -> int:
     cfg = _load_defaults(args.config)
     source_kind = args.source or cfg.get("source", "local")
@@ -60,6 +76,7 @@ def _cmd_deliver(args: argparse.Namespace) -> int:
         enabled=enabled,
         defer_abs=not args.run_abs,
         dry_run=args.dry_run,
+        merge_tracks=_parse_merge_tracks(args.merge_tracks),
     )
     print(
         f"delivered={result.delivered} ran={result.ran} "
@@ -91,6 +108,13 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--audio-prefix", required=True)
     d.add_argument("--source", choices=["local", "zotero"], default=None)
     d.add_argument("--targets", default=None, help="comma list, e.g. zotero,anki")
+    d.add_argument(
+        "--merge-tracks",
+        default=None,
+        help="Zotero merge policy for a partial regen: 'auto' (merge only the "
+        "tracks present in the output dir) or a comma list "
+        "(lecture,summary,reading,cards). Omit for full-replace.",
+    )
     d.add_argument(
         "--run-abs",
         action="store_true",

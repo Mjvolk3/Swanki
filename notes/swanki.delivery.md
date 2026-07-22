@@ -74,3 +74,12 @@ promised. Interface unchanged (`name`, `refresh(dry_run=...)`, blocking
 default), so the orchestrator, `python -m swanki.delivery finalize-abs`, and
 the SLURM finalizer are untouched; `repo_dir` is retained in the signature for
 compatibility but unused.
+
+## 2026.07.20 - `merge_tracks` threaded to the Zotero target
+
+`deliver(..., merge_tracks=...)` and `ZoteroBackupTarget(..., merge_tracks=...)`
+forward the Zotero merge policy (`None` full-replace | track subset | `"auto"`)
+to `sync_to_zotero`; the CLI exposes `--merge-tracks auto|lecture,...`. Only the
+Zotero target reads it — Anki (no apkg in a partial regen) and ABS
+(`targeted_refresh` already per-track) are unaffected. Rationale and the bundle
+merge mechanism live in [[swanki.sync.zotero]] (2026.07.20).

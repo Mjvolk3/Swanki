@@ -79,3 +79,44 @@ again. Re-applied here on current main with a regression test
 (`tests/test_zotero_sync_note.py`) that mocks a sync-log note off page 1 and
 asserts `everything()` surfaces it instead of creating a duplicate. PR #25 closed
 as superseded.
+
+## 2026.07.20 - Merge-aware bundle delivery for partial regens
+
+`sync_to_zotero` bundles every artifact in the output dir into one zip child
+attachment and prunes prior bundles. That is correct for a full pipeline run,
+but a PARTIAL regen (an `audio_only audio=lecture` re-render whose dir holds
+only the lecture) would upload a lecture-only bundle, prune the complete one,
+and — because the every-5-min ABS refresh treats Zotero as source of truth —
+propagate the loss of summary/reading/apkg all the way to ABS. This bit the
+jakobson lecture fix: a targeted ABS push survived ~5 min, then the cron
+re-synced the stale Zotero bundle and clobbered it. ABS's own
+`targeted_refresh` was already merge-aware (it swaps only the newest mp3 per
+track); Zotero's whole-bundle replace was the sole non-additive layer.
+
+New `merge_tracks` param on `sync_to_zotero`:
+
+- `None` (default) — full replace, byte-identical to the prior behavior. Kept
+  as default for backward-compat and because a full run wants it.
+- a track subset (e.g. `{"lecture"}`) — re-stamp only those tracks from the
+  output dir; download the current bundle and carry every other member forward
+  **verbatim** (original filename, hence original timestamp+commit provenance).
+- `"auto"` — infer the set from the tracks present in the output dir. Safe for
+  full runs too: all tracks present ⇒ identical result to full replace. This is
+  what the job passes, so the caller never has to know which tracks ran.
+
+Mechanism: `_OUTPUT_TYPES` gained a `track` label per entry; `_member_track`
+classifies a bundle member back to its track (audio by the `-lecture|summary|
+reading-` infix, `.apkg` ⇒ `cards`); `_load_existing_bundle` downloads the
+newest bundle zip (or a legacy bare `.apkg`, treated as a one-member bundle)
+and returns `{member: bytes}`. With no prior bundle the merge path degrades to
+a full pack of whatever is present (nothing to merge into). Prune still runs
+after, so the old bundle is removed and only the merged one survives. Covered
+by `tests/test_zotero_merge.py` (11 tests: classifier, download/newest-pick,
+legacy apkg, and the four sync paths — lecture-only merge preserves the other
+three tracks, auto, full-replace ignores the existing bundle, first-sync).
+
+Threaded through `ZoteroBackupTarget(merge_tracks=...)`, `deliver(merge_tracks=
+...)`, and `python -m swanki.delivery deliver --merge-tracks auto|<list>`. The
+job (`scripts/swanki_job.sbatch`) now auto-delivers audio-only regens with
+`--merge-tracks auto` instead of the old `DELIVER=0` manual push — closing the
+"sync on finish" loop. See [[swanki.delivery]] and [[scripts.swanki_job]].

@@ -78,6 +78,7 @@ def deliver(
     enabled: list[str] | None = None,
     defer_abs: bool = True,
     dry_run: bool = False,
+    merge_tracks: set[str] | str | None = None,
 ) -> DeliveryResult:
     """Deliver one job's artifacts to the enabled targets in order.
 
@@ -96,6 +97,10 @@ def deliver(
         defer_abs: When true (default), ABS is only marked ``deferred`` here;
             the queue runs the actual refresh once at drain end.
         dry_run: Plan only; no uploads, imports, or refreshes.
+        merge_tracks: Zotero merge policy — ``None`` full replace, a track
+            subset, or ``"auto"`` (merge only the tracks present in
+            ``output_dir``). Use for partial regens so the Zotero bundle stays
+            additive. See ``sync_to_zotero``.
 
     Returns:
         A ``DeliveryResult``.
@@ -111,7 +116,7 @@ def deliver(
 
         if target == "zotero":
             ZoteroBackupTarget(
-                citation_key, output_dir, audio_prefix, content_key
+                citation_key, output_dir, audio_prefix, content_key, merge_tracks
             ).push(dry_run=dry_run)
             if not dry_run:
                 markers.mark("zotero")
