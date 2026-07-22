@@ -85,3 +85,48 @@ Delivery (2026.07.20): commit -> `sync_to_zotero` (prunes prior attachments, re-
 stale ABS file). ALL four Kuchel ABS bookmarks cleared whole-item via
 `scripts/abs_clear_bookmarks.py` (this also swept the stale CH01 bookmarks that
 were never cleared after the 2026-06-09 fix).
+
+## Kuchel CH01-CH05 full-book remediation + Swanki corrections (2026.07.21)
+
+Swept ALL five chapters (three subagent reviews of CH01/CH02/CH05 + CH04, each
+diffing reading/lecture chunk text vs `clean-md-singles`, plus a deterministic
+number-bug scan). Every finding was hand-verified against source + biochemistry
+before applying -- this caught two subagent errors (CH05 "wrong-chapter lecture"
+was a hallucination; the lecture is correctly enzymes; and CH02 chunk 122
+ubiquinone +0.10 V is correctly positive, only FAD/NAD/H2 lost their minus signs).
+
+**Number-verbalization bug** (pre-PR#39 residue never fixed on these renders):
+CH01 reading 45, CH02 reading 59, CH04 reading 32 + lecture 4 artifacts. CH03 and
+CH05 were already clean. Deterministic digit-word -> numeral, no spoken flag (it
+restores the printed source).
+
+**Swanki corrections** -- new convention: when the audio OVERRIDES a real
+textbook/OCR error (a divergence from the printed book), the corrected chunk
+speaks an inline `[pause] Swanki correction: <source says X> ... <right is Y,
+because ...> [pause]` note so the listener knows the audio deliberately differs
+and why. Mechanical restorations (number bug, the CH03 splice removals, OCR
+garble -> readable) get NO note. 14 spoken corrections shipped:
+CH03(4): saturated->unsaturated fatty acids (55); elaidic octadecanoic->octadecenoic
+(60); monoterpene C10H15->C10H16 (79); rRNA aminotransferase->peptidyl transferase
+(190). CH02(6): glucose reactant 6 CO2->6 O2 (89); free-energy sign (90);
+reduction-potential minus signs (122); pH 13->1, was pOH (54); Nernst +0.32->-0.32 V
+(126); dG K+ not Cl-, +8->-8 (157). CH04(2): alpha-helix psi -47 deg (48); helix
+formers/breakers OCR row-split, Phe/Lys/Ile are formers (60). CH05(2): nucleophile
+electron-rich not deficient (35); RNase P vs ribosome peptidyl-transferase
+clarification (15). Silent overrides/restorations: CH03 Bucket A splices (35/37/143/
+272) + ATP double-emit (174) + Table 3-7 (151) + lineolic->linolenic (259/260) +
+lecture Phe (38, paraphrase track so no note); CH01 "17 half-page" OCR (6) + dup
+chapter-ref (137); CH02 garbled "pH is" (40) + OCR noise tail (51) + 25C/sqrt (38);
+CH04 Try->Tyr (150).
+
+Applied via `scratchpad/apply_edits.py` (explicit replacements THEN numfix digit-swap
+per chunk, verbatim re-TTS, one restitch per track; archives to `_edits/`), one
+SLURM Fish job (987), 101 chunks across 7 tracks, all `numfix residue: 0`. Delivered
+Zotero -> stamped -> `targeted_refresh` per chapter; ALL Kuchel Prologue comments
+cleared whole-item (now the documented default for multi-chapter rewrites, see
+CLAUDE.md "Clear ABS Prologue comments after a multi-chapter book rewrite").
+
+Follow-up: make Swanki corrections a first-class source feature (annotation on the
+edit/critic path that emits the spoken format automatically) instead of hand-authored
+chunk text. See [[plan.audio-reading-correctness-critic.2026.07.21]] (the report-only
+critic that now DETECTS these; corrections are the next layer).

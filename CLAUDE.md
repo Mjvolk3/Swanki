@@ -96,6 +96,15 @@ When the user says any of these, they mean push the latest artifacts to the **se
 
 Prereqs and the headless Anki + AnkiConnect setup are documented in `notes/anki.headless-sync.md`.
 
+### Clear ABS Prologue comments after a multi-chapter book rewrite
+
+ABS bookmarks (the notes left in the BookPlayer/"Prologue" app) are **feedback to be actioned**: they flag content to correct. So whenever a **large rewrite/re-render spanning multiple chapters of a book** lands on ABS, clearing **all** of that book's Prologue comments is part of the delivery, not an afterthought. Two reasons:
+
+- **Ambiguity.** A comment left open reads as "not yet addressed." Once its issue is fixed and re-delivered, leaving the bookmark makes it unclear whether the fix shipped. Clearing is how "done" is signaled.
+- **Timestamp drift.** Re-rendering shifts chunk times, so old bookmark timestamps point at the wrong audio. Stale bookmarks don't auto-migrate ([[feedback_abs_clear_and_remark]]) — they get "messed up" against the new audio.
+
+Mechanism (whole-item, per book): `~/miniconda3/envs/swanki/bin/python scripts/abs_clear_bookmarks.py --citation-key <bookKey> --yes` (dry-run without `--yes`). Bookmarks are filed under the parent item, so one whole-item clear sweeps every chapter's comments at once. Do this **after** the audio has landed on ABS (Zotero → `targeted_refresh`), as the final step of the rewrite. For a single surgical edit this is optional; for a multi-chapter sweep it is the default. Verify zero remain with `scripts/abs_bookmarks.py`.
+
 ## Weekly Notes
 
 - When checking off a task in the weekly note, always add a one-sentence summary before the `[[link]]`. Never leave a checked item as just a bare link.
