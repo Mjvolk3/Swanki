@@ -188,6 +188,7 @@ def edit_chunk(
     speed: float | None = None,
     model: str | None = None,
     section_pause_ms: int | None = None,
+    restitch: bool = True,
 ) -> ChunkEditResult:
     """Apply one reviewer comment to one audio chunk and restitch the chapter.
 
@@ -226,6 +227,12 @@ def edit_chunk(
             caller should almost never pass this explicitly.
         model: pydantic-ai model string; required for the ``comment`` path.
         section_pause_ms: Optional restitch override.
+        restitch: When True (default), restitch the chapter audio after the
+            re-TTS. Pass False in a multi-chunk batch (e.g. the source-
+            corrections apply layer) so each chunk is re-TTS'd here but the
+            single ``restitch_from_chunks`` call is hoisted out and run ONCE per
+            track after all substitutions. Everything else -- archive, re-TTS,
+            manifest write, edit-log -- is unchanged.
 
     Returns:
         A :class:`ChunkEditResult` with the action, rationale, restitched
@@ -309,9 +316,13 @@ def edit_chunk(
         **tts_kwargs,
     )
 
-    # Restitch the chapter audio (rewrites chunk_timeline.json).
+    # Restitch the chapter audio (rewrites chunk_timeline.json). A batch caller
+    # passes restitch=False and stitches ONCE per track after all chunk edits.
     output_file = manifest_path.parent.parent / manifest["output_file"]
-    restitch_from_chunks(manifest_path, output_file, section_pause_ms=section_pause_ms)
+    if restitch:
+        restitch_from_chunks(
+            manifest_path, output_file, section_pause_ms=section_pause_ms
+        )
 
     start_ms, end_ms = chunk_time_window(chunks_dir, audio_type, idx)
 

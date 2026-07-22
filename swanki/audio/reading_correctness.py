@@ -12,6 +12,12 @@ JSON audit writers) but wired as a separate hook that survives ``audio_only``
 runs, where the card gate at ``generate_outputs`` never fires. It NEVER mutates
 audio: every check emits a per-chapter JSON audit and nothing else.
 
+Turning a verified finding into corrected, re-voiced audio is the NEXT layer,
+now shipped as the opt-in apply layer ``swanki/audio/source_corrections.py``
+(``apply_source_corrections``). That layer reads a HAND-AUTHORED per-chapter
+spec -- a higher bar than this critic -- and is NEVER auto-populated from these
+findings. This module stays strictly report-only.
+
 Three checks:
 
 1. Reading clause diff (deterministic, default on). Compares each Pass-2 input

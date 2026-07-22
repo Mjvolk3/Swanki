@@ -1353,6 +1353,75 @@ class CardAuditEntry(BaseModel):
     corrected_back: str | None = None
 
 
+class SourceCorrection(BaseModel):
+    """One hand-authored source-fidelity correction row (the apply-layer spec).
+
+    Authored per chapter in ``swanki/conf/corrections/<citation_key>.yaml`` and
+    applied to a reading/lecture manifest chunk by
+    :func:`swanki.audio.source_corrections.apply_source_corrections`. A higher
+    bar than the report-only reading critic: every ``override`` is human-verified
+    against the printed source. ``kind`` drives spoken-vs-silent and is never
+    inferred from the text or from critic findings.
+    """
+
+    id: str = Field(
+        description="Stable idempotency key, e.g. 'ch03-phe-55'; unique per spec"
+    )
+    track: Literal["reading", "lecture"] = Field(
+        description="Which manifest track this correction targets"
+    )
+    wrong_text: str = Field(
+        description="Literal substring that must appear in the target chunk"
+    )
+    corrected_text: str = Field(
+        description="Replacement prose (plain reading text) for wrong_text"
+    )
+    reason: str = Field(
+        description="The 'because ...' clause; surfaced in an override's spoken "
+        "note. Required for override."
+    )
+    kind: Literal["override", "restoration"] = Field(
+        description="override = the source is genuinely wrong (spoken note); "
+        "restoration = mechanical fix (number-bug/splice/OCR-garble), silent"
+    )
+    note_text: str | None = Field(
+        None,
+        description="Optional pre-shaped spoken-note override (formulas/numbers "
+        "written as TTS should say them). Permitted only for override; when "
+        "absent the applier assembles the default template from corrected_text "
+        "and reason.",
+    )
+
+    @model_validator(mode="after")
+    def check_kind_fields(self):
+        """Enforce kind rules: override requires reason; restoration bars note_text."""
+        if self.kind == "override" and not self.reason.strip():
+            raise ValueError("kind 'override' requires a non-empty reason")
+        if self.kind == "restoration" and self.note_text is not None:
+            raise ValueError("kind 'restoration' forbids note_text")
+        return self
+
+
+class CorrectionAuditEntry(BaseModel):
+    """One correction's apply-layer outcome, serialized to the JSON audit.
+
+    Emitted for EVERY correction the applier sees -- applied, already applied
+    (idempotent short-circuit), or not applicable (a lecture ``wrong_text`` that
+    does not literally match). ``spoken`` records whether an inline note was
+    voiced (override reading only).
+    """
+
+    id: str
+    track: Literal["reading", "lecture"]
+    chunk_index: int | None
+    kind: Literal["override", "restoration"]
+    status: Literal["applied", "already_applied", "not_applicable"]
+    spoken: bool
+    wrong_snippet: str
+    corrected_snippet: str
+    git_hash: str
+
+
 class ReadingChunkFidelity(BaseModel):
     """One reading Pass-2 chunk's source-fidelity verdict.
 
