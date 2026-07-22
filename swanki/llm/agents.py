@@ -14,6 +14,7 @@ from ..models.cards import (
     CardFeedback,
     CardGenerationResponse,
     ChunkEditResponse,
+    LectureFactualAssessment,
     LectureTranscriptFeedback,
 )
 from ..models.document import DocumentSummary, ImageDescription
@@ -50,6 +51,9 @@ chunk_edit_agent: Agent[None, ChunkEditResponse] = Agent(
 )
 card_correctness_agent: Agent[None, CardCorrectnessAssessment] = Agent(
     output_type=CardCorrectnessAssessment, retries=3
+)
+lecture_factual_agent: Agent[None, LectureFactualAssessment] = Agent(
+    output_type=LectureFactualAssessment, retries=3
 )
 image_description_agent: Agent[None, ImageDescription] = Agent(
     output_type=ImageDescription, retries=3

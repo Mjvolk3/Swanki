@@ -1353,6 +1353,108 @@ class CardAuditEntry(BaseModel):
     corrected_back: str | None = None
 
 
+class ReadingChunkFidelity(BaseModel):
+    """One reading Pass-2 chunk's source-fidelity verdict.
+
+    Records the deterministic clause-diff between the Pass-2 input window
+    (post-humanize source) and its transcript output. ``not_assessed`` is set
+    when the chunk fell back to the humanized input verbatim
+    (``fell_back``): the diff would be trivially clean but meaningless, so the
+    chunk is never laundered as verified. Report-only -- audio is never
+    mutated on the strength of these blocks.
+    """
+
+    chunk_index: int = Field(description="0-based Pass-2 chunk index")
+    not_assessed: bool = Field(
+        False,
+        description="True when the chunk was not diffed (Pass-2 fell back to "
+        "the humanized input verbatim); the empty blocks are not a pass",
+    )
+    fell_back: bool = Field(
+        False, description="True when Pass-2 exhausted retries and returned input"
+    )
+    inserted: list[str] = Field(
+        default_factory=list,
+        description="Normalized sentences present in the transcript but absent "
+        "from the source window (candidate spliced-in prose)",
+    )
+    duplicated: list[str] = Field(
+        default_factory=list,
+        description="Normalized sentences occurring more often in the transcript "
+        "than in the source window",
+    )
+    dropped: list[str] = Field(
+        default_factory=list,
+        description="Normalized source sentences absent from the transcript",
+    )
+
+
+class AcronymDoubleEmitFinding(BaseModel):
+    """One acronym double-emit finding on the final reading tts_transcript.
+
+    Two kinds are reported. ``letter_spelled_after_expansion`` is the two-layer
+    bug where a Pass-2 first-use expansion ("adenosine triphosphate, ATP") is
+    followed by ``expand_acronyms_for_tts``'s letter-spelled form of the same
+    acronym ("A-T-P"), composing to a phantom name. ``cross_chunk_double_
+    expansion`` is the same acronym's first-use expansion appearing more than
+    once because Pass-2 chunks are blind to each other. Report-only.
+    """
+
+    acronym: str = Field(description="Acronym with hyphens removed, e.g. 'ATP'")
+    expansion: str = Field(
+        "", description="The full-form expansion phrase preceding the acronym"
+    )
+    kind: Literal["letter_spelled_after_expansion", "cross_chunk_double_expansion"] = (
+        Field(description="Which double-emit pattern was detected")
+    )
+    snippet: str = Field(description="The offending transcript span")
+
+
+class LectureFactualAssessment(BaseModel):
+    """LLM verdict on whether a lecture transcript's claims are factually sound.
+
+    Returned by ``lecture_factual_agent``. Mirrors
+    :class:`CardCorrectnessAssessment`: judges CLAIMS, never wording or style,
+    with a very high acceptance rate. ``assessment_failed`` is assigned by the
+    orchestrator (never the agent) when the call fails and the pass is kept
+    fail-open. The lecture pass is report-only, so ``fixed``/``dropped`` are
+    recorded but never applied to the audio.
+    """
+
+    verdict: Literal["pass", "fixed", "dropped"] = Field(
+        description=(
+            "pass = claims are factually defensible; fixed = a claim is "
+            "unambiguously wrong and the correction is obvious; dropped = a "
+            "claim is unambiguously wrong and unfixable"
+        )
+    )
+    reason: str = Field(
+        description="One or two sentences justifying the verdict, naming the "
+        "specific claim for fixed and dropped verdicts"
+    )
+    claim: str | None = Field(
+        None, description="The specific claim assessed, when verdict is not pass"
+    )
+    corrected_transcript: str | None = Field(
+        None,
+        description="Corrected claim wording; supply when verdict is 'fixed'. "
+        "Report-only: recorded in the audit, never applied to the audio.",
+    )
+
+
+class LectureFactualEntry(BaseModel):
+    """One lecture factual-pass outcome, serialized to the lecture audit JSON.
+
+    ``verdict`` carries the orchestrator-assigned ``assessment_failed`` (kept
+    fail-open) in addition to the agent's ``pass``/``fixed``/``dropped``.
+    """
+
+    verdict: Literal["pass", "fixed", "dropped", "assessment_failed"]
+    reason: str
+    claim: str = ""
+    corrected: str | None = None
+
+
 class CardFeedback(BaseModel):
     """Structured feedback for card quality issues.
 
@@ -1462,15 +1564,15 @@ class ChunkEditResponse(BaseModel):
     escalations the dispatcher surfaces back to the human instead of acting on.
     """
 
-    action: Literal[
-        "edit_text", "speech_only", "needs_section_regen", "cannot_fix"
-    ] = Field(
-        description=(
-            "edit_text: rewrite the chunk text per the comment and re-TTS. "
-            "speech_only: text is fine, delivery isn't -- re-roll the same "
-            "text. needs_section_regen: the comment is conceptual/structural "
-            "and cannot be fixed by a single-chunk edit. cannot_fix: the "
-            "comment is not actionable on this chunk."
+    action: Literal["edit_text", "speech_only", "needs_section_regen", "cannot_fix"] = (
+        Field(
+            description=(
+                "edit_text: rewrite the chunk text per the comment and re-TTS. "
+                "speech_only: text is fine, delivery isn't -- re-roll the same "
+                "text. needs_section_regen: the comment is conceptual/structural "
+                "and cannot be fixed by a single-chunk edit. cannot_fix: the "
+                "comment is not actionable on this chunk."
+            )
         )
     )
     revised_text: str | None = Field(
@@ -1481,9 +1583,7 @@ class ChunkEditResponse(BaseModel):
             "markdown; the preprocessor adds those."
         ),
     )
-    rationale: str = Field(
-        description="One sentence explaining the chosen action."
-    )
+    rationale: str = Field(description="One sentence explaining the chosen action.")
 
 
 class LectureTranscriptFeedback(BaseModel):

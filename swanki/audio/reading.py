@@ -42,6 +42,7 @@ from ._common import (
     verbalize_large_numbers,
     write_chunk_manifest,
 )
+from .reading_correctness import ReadingCorrectnessCollector
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +169,7 @@ def generate_reading_audio(
     model: str | None = None,
     citation_key: str | None = None,
     speed: float = 1.0,
+    correctness: ReadingCorrectnessCollector | None = None,
     **tts_kwargs: object,
 ) -> str:
     """Generate complete audio narration of a document.
@@ -185,6 +187,10 @@ def generate_reading_audio(
         model: pydantic-ai model string (e.g. ``"openai:gpt-5-mini"``).
         citation_key: Citation key to announce at the beginning.
         speed: Audio playback speed multiplier.
+        correctness: Optional report-only fidelity collector. When supplied,
+            each Pass-2 chunk is diffed against its transcript and the final
+            transcript is validated for acronym double-emits; the pipeline hook
+            writes the accumulated audit. Audio is never mutated.
 
     Returns:
         Filename of the generated audio file.
@@ -311,6 +317,14 @@ def generate_reading_audio(
         )
         if fell_back:
             pass2_fallbacks += 1
+        # Report-only source-fidelity signal: diff this Pass-2 input window
+        # against its transcript output while both are in hand (the manifest
+        # keeps only output text, so this is the one place the pair exists). A
+        # fell_back chunk is recorded as not_assessed, never a clean pass.
+        if correctness is not None:
+            correctness.record_chunk(
+                len(transcript_chunks), chunk, chunk_transcript, fell_back
+            )
         transcript_chunks.append(chunk_transcript)
 
     full_transcript = "\n\n".join(transcript_chunks)
@@ -371,6 +385,15 @@ def generate_reading_audio(
         cleaned,
         provider=str(tts_kwargs.get("provider", "elevenlabs")),
     )
+
+    # Report-only acronym double-emit validation. Runs on the FINAL, scrubbed
+    # transcript because the phantom name ("adenosine triphosphate, A-T-P")
+    # only exists after expand_acronyms_for_tts letter-spells the surviving
+    # first-use acronym. Honors the same allowlist the scrubber used.
+    if correctness is not None:
+        correctness.record_acronyms(
+            tts_transcript, set(prep_cfg.get("acronym_allowlist", []))
+        )
 
     cleaned_path = (
         transcripts_dir / f"{output_path.stem}_transcript_cleaned_markdown.md"
