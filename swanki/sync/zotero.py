@@ -293,14 +293,23 @@ def sync_to_zotero(
 
         httpx.post = _patched_post  # type: ignore[assignment]
         try:
-            zot.attachment_simple([str(zip_path)], parentid=item_key)
-            uploaded = packed
-        except Exception as e:
-            logger.warning(f"Failed to upload {zip_name}: {e}")
-            print(f"  Upload failed: {zip_name} ({e})")
-            return
+            result = zot.attachment_simple([str(zip_path)], parentid=item_key)
         finally:
             httpx.post = _original_post  # type: ignore[assignment]
+
+        # pyzotero's attachment_simple returns {'success','failure','unchanged'}
+        # and does NOT raise when the S3 upload/registration fails -- it reports
+        # the failure in the result dict. Ignoring that return value let the prune
+        # below delete the prior good zips while nothing new was stored, leaving
+        # the item with ZERO artifacts (observed with pyzotero 1.11.0 silently
+        # failing every upload). Fail fast on a result that carries no success or
+        # unchanged entry, so the prune never runs and prior versions survive.
+        assert result.get("success") or result.get("unchanged"), (
+            f"Zotero upload of {zip_name} reported no success "
+            f"(attachment_simple result: failure={result.get('failure')}); "
+            "prior attachments left intact."
+        )
+        uploaded = packed
 
     # Prune prior versions on the same chapter so Zotero stores only the
     # most recent artifact. Runs AFTER a successful upload so we never

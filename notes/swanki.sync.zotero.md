@@ -79,3 +79,22 @@ again. Re-applied here on current main with a regression test
 (`tests/test_zotero_sync_note.py`) that mocks a sync-log note off page 1 and
 asserts `everything()` surfaces it instead of creating a duplicate. PR #25 closed
 as superseded.
+
+## 2026.07.21 - Check attachment_simple return (silent-upload-failure guard)
+
+pyzotero 1.11.0's `attachment_simple` returns `{'success','failure','unchanged'}`
+and does NOT raise when the S3 upload/registration fails. `sync_to_zotero`
+previously discarded that return and set `uploaded = packed` on no-exception,
+then ran `_prune_prior_attachments` -- so a silently-failed upload DELETED the
+prior good zips while storing nothing, leaving the Zotero item with ZERO
+artifacts. Observed live: an entire Kuchel 5-chapter re-delivery pruned every
+prior zip and uploaded none (ABS survived because it reads local stamped mp3s,
+and `sync_projection` skips items with no zip, so no wipe). Fix: capture the
+result and `assert result.get("success") or result.get("unchanged")` before the
+prune (fail fast; prior versions survive on failure). Dropped the broad
+`except Exception: return` so genuine upload errors also propagate loudly.
+Regression: `tests/test_zotero_upload_guard.py` (no-success -> raises + no
+`delete_item`; success -> proceeds to prune). NOTE the low-level uploader in
+`scratchpad/zupload.py` was used one-off to repair the pruned Kuchel zips;
+adopting it inside `sync_to_zotero` (replacing the flaky `attachment_simple`) is
+a sensible follow-up.
