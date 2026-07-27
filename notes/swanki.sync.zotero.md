@@ -49,7 +49,6 @@ Runs AFTER upload, never before — guarantees we never leave an item with zero 
 
 One-off cleanup: ran the prune helper directly against `VPZK6ESQ` (keeping today's `2CBKWQH8`) — deleted 12 stale items (8 historical ZIPs + 3 legacy `_CH01-problem-set.apkg` + 1 even older 7a08fcb ZIP). Tests live in `tests/test_zotero_prune.py` covering chapter-base extraction, same-chapter replacement, other-chapter preservation, legacy apkg form, just-uploaded protection, and non-attachment skip.
 
-
 ## 2026.06.04 - Hardened client for flaky Zotero API
 
 Part of [[swanki.delivery]] ([[plan.delivery-subsystem-source-target-sync.2026.06.04]]).
@@ -98,3 +97,42 @@ Regression: `tests/test_zotero_upload_guard.py` (no-success -> raises + no
 `scratchpad/zupload.py` was used one-off to repair the pruned Kuchel zips;
 adopting it inside `sync_to_zotero` (replacing the flaky `attachment_simple`) is
 a sensible follow-up.
+
+## 2026.07.27 - Root cause of the "flaky" uploads: a directory path in `filename`
+
+The 2026.07.21 guard was correct but treated the failure as flakiness. It is not
+flaky -- `attachment_simple` could never have worked here. pyzotero 1.11.0 sets
+the registration template's `filename` to the path it was handed
+(`_client.py:1197`, `tmplt["filename"] = files[idx]`) while constructing
+`Zupload(self, to_add, parentid)` with no `basedir`, which defaults to
+`Path(".")`. Handing it an absolute path therefore registers a `filename`
+containing directory separators, and the Zotero API rejects the item with
+
+    400 "Stored-file filename '<abs path>' cannot contain a directory path"
+
+`Zupload.upload()` then finds no `key` on the payload entry and files it under
+`failure` -- the empty-`success` dict the guard trips on. So EVERY upload of a
+file outside the process CWD failed, deterministically. The Kuchel data loss was
+this, not an S3 or network fault.
+
+Confirmed by bisection: a 20-byte `.txt` fails identically (rules out size, zip
+packing, storage quota, and key scope -- the key reports `write: true`), while
+the same attachment POSTed by hand to `/users/<id>/items` returns
+`"success": {"0": ...}`. Instrumenting `Zupload._create_prelim` surfaced the 400
+body quoted above, which `attachment_simple` swallows.
+
+Fix: call `Zupload` directly with the path SPLIT -- bare `zip_path.name` as the
+registered `filename`, `basedir=zip_path.parent` for reading the bytes. Zupload
+reads `basedir / filename` in both `_verify` and `_get_auth`, so the file is
+still found while the API only ever sees a basename. This is the
+`scratchpad/zupload.py` follow-up the previous entry called for, now in the
+supported path. The httpx timeout monkey-patch still wraps the call unchanged.
+
+Regression: `test_registers_bare_filename_with_basedir` asserts the registered
+`filename` contains no `/` and that `basedir / filename` still resolves; the two
+existing guard tests were rebound from `zot.attachment_simple` to `zmod.Zupload`.
+
+Follow-up: deliveries predating the 2026.07.21 guard could have pruned prior
+attachments while storing nothing, so Zotero items touched then may hold ZERO
+artifacts. Audit hamming / kasser / alcamo / kuchel parents and re-deliver from
+their surviving local output dirs where attachments are missing.

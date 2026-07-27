@@ -17,6 +17,7 @@ from typing import Any
 
 import httpx
 from pyzotero import zotero
+from pyzotero._upload import Zupload
 
 from .zotero_client import make_zotero_client, with_zotero_retry
 
@@ -170,9 +171,7 @@ def _prune_prior_attachments(
     return deleted
 
 
-def _find_or_create_sync_note(
-    zot: zotero.Zotero, parent_key: str
-) -> tuple[dict, str]:
+def _find_or_create_sync_note(zot: zotero.Zotero, parent_key: str) -> tuple[dict, str]:
     """Find or create a 'Swanki Sync Log' child note.
 
     Args:
@@ -291,22 +290,37 @@ def sync_to_zotero(
             kwargs.setdefault("timeout", httpx.Timeout(600.0, connect=60.0))  # type: ignore[arg-type]
             return _original_post(*args, **kwargs)  # type: ignore[arg-type]
 
+        # Upload via Zupload directly rather than zot.attachment_simple().
+        # pyzotero 1.11.0's attachment_simple sets the template's ``filename`` to
+        # the path it was handed (_client.py: ``tmplt["filename"] = files[idx]``)
+        # and constructs ``Zupload(..., basedir=None)`` -> basedir ``Path(".")``.
+        # With an absolute path that puts a directory path in ``filename``, and
+        # the Zotero API rejects the registration with
+        #   400 "Stored-file filename '<abs path>' cannot contain a directory path"
+        # so EVERY upload of an out-of-cwd file failed. Splitting the path into
+        # basedir (for reading the bytes) + bare filename (for registration)
+        # satisfies both: Zupload reads ``basedir / filename`` while the API only
+        # ever sees the basename.
+        template = zot._attachment_template("imported_file")
+        template.update({"title": zip_name, "filename": zip_path.name})
+
         httpx.post = _patched_post  # type: ignore[assignment]
         try:
-            result = zot.attachment_simple([str(zip_path)], parentid=item_key)
+            result = Zupload(
+                zot, [template], item_key, basedir=zip_path.parent
+            ).upload()
         finally:
             httpx.post = _original_post  # type: ignore[assignment]
 
-        # pyzotero's attachment_simple returns {'success','failure','unchanged'}
-        # and does NOT raise when the S3 upload/registration fails -- it reports
-        # the failure in the result dict. Ignoring that return value let the prune
-        # below delete the prior good zips while nothing new was stored, leaving
-        # the item with ZERO artifacts (observed with pyzotero 1.11.0 silently
-        # failing every upload). Fail fast on a result that carries no success or
+        # Zupload.upload() returns {'success','failure','unchanged'} and does NOT
+        # raise when registration or the S3 upload fails -- it reports the failure
+        # in the result dict. Ignoring that return value let the prune below delete
+        # the prior good zips while nothing new was stored, leaving the item with
+        # ZERO artifacts. Fail fast on a result that carries no success or
         # unchanged entry, so the prune never runs and prior versions survive.
         assert result.get("success") or result.get("unchanged"), (
             f"Zotero upload of {zip_name} reported no success "
-            f"(attachment_simple result: failure={result.get('failure')}); "
+            f"(upload result: failure={result.get('failure')}); "
             "prior attachments left intact."
         )
         uploaded = packed
@@ -321,10 +335,7 @@ def sync_to_zotero(
     # Update sync log note
     note_item, note_html = _find_or_create_sync_note(zot, item_key)
     file_lines = "".join(f"<li>{f}</li>" for f in uploaded)
-    log_entry = (
-        f"<h3>{timestamp} ({commit})</h3>\n"
-        f"<ul>{file_lines}</ul>\n"
-    )
+    log_entry = f"<h3>{timestamp} ({commit})</h3>\n<ul>{file_lines}</ul>\n"
     note_item["data"]["note"] = note_html + log_entry
     zot.update_item(note_item)
 
