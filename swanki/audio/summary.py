@@ -9,6 +9,7 @@ Document summary narration with section pauses, bookend announcements, and acron
 import logging
 import time
 from pathlib import Path
+from typing import Any
 
 from ..llm.agents import text_agent
 from ..utils.formatting import humanize_citation_key
@@ -45,7 +46,7 @@ def generate_summary_audio(
     model: str | None = None,
     citation_key: str | None = None,
     speed: float = 1.0,
-    **tts_kwargs: object,
+    **tts_kwargs: Any,
 ) -> str:
     """Generate narration-style audio for a document summary.
 

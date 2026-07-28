@@ -46,7 +46,7 @@ def _git_short_hash() -> str:
     return result.stdout.strip() or "unknown"
 
 
-def _match_citation_key(item: dict, citation_key: str) -> bool:
+def _match_citation_key(item: dict[str, Any], citation_key: str) -> bool:
     """Check if a Zotero item matches a citation key."""
     data = item["data"]
     extra = data.get("extra", "")
@@ -74,7 +74,7 @@ def _find_zotero_item(zot: zotero.Zotero, citation_key: str) -> str | None:
     # when the title renders the same idea with a non-ASCII token (e.g. "β").
     title_words = [w for w in words if len(w) > 1 and w[0].isupper()]
 
-    queries = []
+    queries: list[tuple[str, str | None]] = []
     # Literal citation key with qmode=everything searches the `extra` field
     # where BetterBibTeX stores `Citation Key: <key>` — guaranteed hit when
     # the item actually exists. Put first.
@@ -92,14 +92,14 @@ def _find_zotero_item(zot: zotero.Zotero, citation_key: str) -> str | None:
         queries.append((words[0], "everything"))
 
     for q, qmode in queries:
-        kwargs: dict[str, object] = {"q": q}
+        kwargs: dict[str, Any] = {"q": q}
         if qmode:
             kwargs["qmode"] = qmode
         for item in zot.items(**kwargs):
             if item["data"]["itemType"] == "attachment":
                 continue
             if _match_citation_key(item, citation_key):
-                return item["data"]["key"]
+                return str(item["data"]["key"])
 
     # Last-resort fallback: paginate the full library and match client-side.
     # Zotero's search API does not index the native `citationKey` field, so
@@ -114,7 +114,7 @@ def _find_zotero_item(zot: zotero.Zotero, citation_key: str) -> str | None:
             if item["data"]["itemType"] == "attachment":
                 continue
             if _match_citation_key(item, citation_key):
-                return item["data"]["key"]
+                return str(item["data"]["key"])
         if len(batch) < 100:
             break
         start += 100
@@ -171,7 +171,9 @@ def _prune_prior_attachments(
     return deleted
 
 
-def _find_or_create_sync_note(zot: zotero.Zotero, parent_key: str) -> tuple[dict, str]:
+def _find_or_create_sync_note(
+    zot: zotero.Zotero, parent_key: str
+) -> tuple[dict[str, Any], str]:
     """Find or create a 'Swanki Sync Log' child note.
 
     Args:
@@ -287,7 +289,7 @@ def sync_to_zotero(
         _original_post = httpx.post
 
         def _patched_post(*args: object, **kwargs: object) -> object:
-            kwargs.setdefault("timeout", httpx.Timeout(600.0, connect=60.0))  # type: ignore[arg-type]
+            kwargs.setdefault("timeout", httpx.Timeout(600.0, connect=60.0))
             return _original_post(*args, **kwargs)  # type: ignore[arg-type]
 
         # Upload via Zupload directly rather than zot.attachment_simple().
@@ -310,7 +312,7 @@ def sync_to_zotero(
                 zot, [template], item_key, basedir=zip_path.parent
             ).upload()
         finally:
-            httpx.post = _original_post  # type: ignore[assignment]
+            httpx.post = _original_post
 
         # Zupload.upload() returns {'success','failure','unchanged'} and does NOT
         # raise when registration or the S3 upload fails -- it reports the failure

@@ -22,11 +22,9 @@ import re
 from pathlib import Path
 from typing import Any, cast
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 
-DEFAULT_PROJECTIONS = (
-    Path.home() / "Documents/projects/infra/abs/projections.yml"
-)
+DEFAULT_PROJECTIONS = Path.home() / "Documents/projects/infra/abs/projections.yml"
 
 BOOK_TYPES = {"book", "bookSection"}
 CHAPTER_SUFFIX = re.compile(r"_CH\d+_.*$")

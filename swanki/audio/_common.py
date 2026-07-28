@@ -15,7 +15,7 @@ import threading as _threading
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Literal, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 import httpx
 from elevenlabs import ElevenLabs, VoiceSettings
@@ -1279,7 +1279,7 @@ def text_to_speech(
     api_key: str,
     speed: float = 1.0,
     tts_model: str = DEFAULT_TTS_MODEL,
-    **tts_kwargs: object,
+    **tts_kwargs: Any,
 ) -> None:
     """Convert text to speech and save as MP3.
 
@@ -1320,7 +1320,7 @@ def tts_chunks_parallel(
     api_key: str,
     speed: float = 1.0,
     tts_model: str = DEFAULT_TTS_MODEL,
-    **tts_kwargs: object,
+    **tts_kwargs: Any,
 ) -> list[Path]:
     """Process multiple TTS chunks in parallel across Fish Speech servers.
 
@@ -2326,7 +2326,7 @@ def generate_bookend_audio(
     voice_id: str,
     speed: float = 1.0,
     paper_title: str | None = None,
-    **tts_kwargs: object,
+    **tts_kwargs: Any,
 ) -> Path:
     """Generate a short bookend announcement audio clip.
 

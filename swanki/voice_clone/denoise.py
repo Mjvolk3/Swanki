@@ -36,8 +36,11 @@ def denoise_with_deepfilternet(
     import dataclasses
     import sys
     import types
+
     import torchaudio
+
     if "torchaudio.backend" not in sys.modules:
+
         @dataclasses.dataclass
         class _AudioMetaDataShim:
             sample_rate: int = 0
@@ -51,9 +54,9 @@ def denoise_with_deepfilternet(
         common_mod.AudioMetaData = _AudioMetaDataShim  # type: ignore[attr-defined]
         sys.modules["torchaudio.backend"] = backend_mod
         sys.modules["torchaudio.backend.common"] = common_mod
-        torchaudio.backend = backend_mod  # type: ignore[attr-defined]
+        torchaudio.backend = backend_mod
         backend_mod.common = common_mod  # type: ignore[attr-defined]
-    from df.enhance import enhance, init_df, load_audio, save_audio
+    from df.enhance import enhance, init_df
 
     assert input_wav.exists(), f"input wav not found: {input_wav}"
     output_wav.parent.mkdir(parents=True, exist_ok=True)
@@ -62,7 +65,7 @@ def denoise_with_deepfilternet(
     import soundfile as sf
     import torch
 
-    logger.info(f"Loading DeepFilterNet model")
+    logger.info("Loading DeepFilterNet model")
     model, df_state, _ = init_df()
     target_sr = df_state.sr()
 
@@ -72,6 +75,7 @@ def denoise_with_deepfilternet(
 
     if src_sr != target_sr:
         from torchaudio.functional import resample
+
         audio_t = resample(audio_t, src_sr, target_sr)
 
     logger.info(f"Denoising with DeepFilterNet (sr={target_sr})")

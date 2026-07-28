@@ -78,3 +78,31 @@ cards but exhausted all 3 preamble retries on one SARS-CoV-2-binding
 segment; the pipeline now has a segment-level try/except (see
 [[swanki.pipeline.pipeline]] 2026.05.28) that skips and continues on
 exhausted-retry biosec refusal.
+
+## 2026.07.27 - `Agent` is generic with PEP 696 defaults, so bare `Agent` is wrong
+
+`with_safety_retry` and `_run_sync_with_transient_retry` annotated their agent
+parameter as a bare `Agent`. pydantic-ai's `Agent` is generic with **type
+parameter defaults** (`Agent[AgentDepsT = None, OutputDataT = str]`), so a bare
+`Agent` is not "any agent" -- it silently means `Agent[None, str]`. Every
+structured-output call site therefore failed strict mypy with
+
+    Argument 1 to "with_safety_retry" has incompatible type
+    "Agent[None, CardGenerationResponse]"; expected "Agent[None, str]"
+
+26 of the repo's 41 mypy errors traced to this one annotation, and it directly
+contradicted the docstring's own promise ("Works with any pydantic-ai `Agent`
+regardless of output type").
+
+Annotated `Agent[Any, Any]`, which is what the function actually accepts -- it
+only calls `run_sync` and hands the `RunResult` back untouched, never inspecting
+`.output`. A `TypeVar`-generic signature returning `AgentRunResult[OutputT]`
+would be stronger still (call sites would get a typed `.output` instead of
+`Any`), but that is a behaviour-visible typing change across every caller and
+was deliberately left out of a cleanup pass.
+
+Same root cause, different spelling, in the audio modules: `**tts_kwargs: object`
+makes the collected dict `dict[str, object]`, which cannot be re-splatted into
+`text_to_speech(..., voice_id: str, speed: float)` -- `object` does not unify
+with a concrete parameter type. These bags are heterogeneous passthrough by
+design, so `Any` is the correct annotation, not `object`.

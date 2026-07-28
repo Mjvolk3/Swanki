@@ -26,9 +26,9 @@ clip with yt-dlp, persist original.wav + transcript.txt + clip.json, optionally
 denoise, register with Fish Speech.
 """
 
-import json
 import os
 import re
+from collections.abc import Iterator
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -131,7 +131,9 @@ def list_clips(speaker_id: str) -> list[str]:
     cdir = clips_dir(speaker_id)
     if not cdir.is_dir():
         return []
-    return sorted(p.name for p in cdir.iterdir() if p.is_dir() and CLIP_ID_PATTERN.match(p.name))
+    return sorted(
+        p.name for p in cdir.iterdir() if p.is_dir() and CLIP_ID_PATTERN.match(p.name)
+    )
 
 
 def load_clip(speaker_id: str, clip_id: str) -> VoiceClip:
@@ -150,7 +152,7 @@ def write_clip(speaker_id: str, clip: VoiceClip) -> Path:
     return path
 
 
-def iter_clips(speaker_id: str):
+def iter_clips(speaker_id: str) -> Iterator[tuple[str, VoiceClip]]:
     """Yield (clip_id, VoiceClip) pairs for a speaker, oldest first."""
     for cid in list_clips(speaker_id):
         yield cid, load_clip(speaker_id, cid)

@@ -53,9 +53,9 @@ TRANSIENT_ERROR_MARKERS: tuple[str, ...] = (
 
 
 def _run_sync_with_transient_retry(
-    agent: Agent,
+    agent: Agent[Any, Any],
     message: Any,
-    kwargs: dict,
+    kwargs: dict[str, Any],
     *,
     max_attempts: int = 6,
     label: str = "",
@@ -136,12 +136,12 @@ def _augment_with_preamble(message: Any, preamble: str) -> Any:
 
 
 def with_safety_retry(
-    agent: Agent,
+    agent: Agent[Any, Any],
     user_message: Any,
     *,
     instructions: str | None = None,
     model: str,
-    model_settings: dict | None = None,
+    model_settings: dict[str, Any] | None = None,
     max_safety_retries: int = 2,
     label: str = "",
 ) -> Any:
@@ -188,7 +188,7 @@ def with_safety_retry(
         _augment_with_preamble(user_message, EDU_CONTEXT_PREAMBLE)
         for _ in range(max_safety_retries)
     ]
-    kwargs_base: dict = {"model": model}
+    kwargs_base: dict[str, Any] = {"model": model}
     if instructions is not None:
         kwargs_base["instructions"] = instructions
     if model_settings is not None:
@@ -196,9 +196,7 @@ def with_safety_retry(
 
     for i, msg in enumerate(attempts):
         try:
-            return _run_sync_with_transient_retry(
-                agent, msg, kwargs_base, label=label
-            )
+            return _run_sync_with_transient_retry(agent, msg, kwargs_base, label=label)
         except Exception as e:
             err = str(e)
             is_safety = any(m in err for m in SAFETY_REFUSAL_MARKERS)

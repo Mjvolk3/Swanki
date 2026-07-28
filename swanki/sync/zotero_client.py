@@ -53,7 +53,7 @@ def harden_zotero_timeouts(seconds: int = ZOTERO_READ_TIMEOUT) -> None:
     Args:
         seconds: New per-call read timeout in seconds.
     """
-    _pyz_client.DEFAULT_TIMEOUT = seconds  # type: ignore[attr-defined]
+    _pyz_client.DEFAULT_TIMEOUT = seconds
 
 
 def make_zotero_client(

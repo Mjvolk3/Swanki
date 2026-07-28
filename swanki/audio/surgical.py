@@ -14,6 +14,7 @@ without a full pipeline regeneration.
 
 import json
 from collections.abc import Mapping
+from typing import Any
 from pathlib import Path
 
 import requests
@@ -51,7 +52,7 @@ def regenerate_and_restitch(
     audio_type: str | None = None,
     output_path: Path | None = None,
     speed: float = 1.1,
-    tts_kwargs: Mapping[str, object] | None = None,
+    tts_kwargs: Mapping[str, Any] | None = None,
     section_pause_ms: int | None = None,
 ) -> Path:
     """Re-TTS selected chunks and restitch the final audio.

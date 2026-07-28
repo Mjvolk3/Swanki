@@ -21,7 +21,6 @@ import yaml
 from ..llm.agents import (
     get_model_string,
     problem_card_gen_agent,
-    problem_enumeration_agent,
     problem_pairing_agent,
 )
 from ..models.cards import PlainCard
@@ -30,7 +29,6 @@ from ..models.problem_set import (
     CardPlan,
     PairingResult,
     ProblemCardBatchResponse,
-    ProblemEnumerationResponse,
     ProblemLocation,
     ProblemPairing,
     ProblemPairingResponse,
@@ -71,9 +69,7 @@ class CoverageError(RuntimeError):
                 f"{len(self.missing)} problems missing from cards: {sorted(self.missing)}"
             )
         if self.extra:
-            parts.append(
-                f"{len(self.extra)} unexpected card IDs: {sorted(self.extra)}"
-            )
+            parts.append(f"{len(self.extra)} unexpected card IDs: {sorted(self.extra)}")
         if self.unsolved:
             parts.append(
                 f"{len(self.unsolved)} problems with no solution: {sorted(self.unsolved)}"
@@ -283,7 +279,12 @@ def _candidate_ids(
     bare_chapter = f"{prefix}-CH{chapter}-{item}"
     ordered = [natural, occurrence, bare_chapter, f"{prefix}-{item}"]
     seen: set[str] = set()
-    return [c for c in ordered if not (c in seen or seen.add(c))]
+    deduped: list[str] = []
+    for c in ordered:
+        if c not in seen:
+            seen.add(c)
+            deduped.append(c)
+    return deduped
 
 
 def _set_label(occ: int, n_occ: int) -> str:
@@ -315,9 +316,7 @@ def _enumerate_multiple_choice(full_text: str, chapter: str) -> list[ProblemUnit
             )
             out.append(
                 ProblemUnit(
-                    problem_id=_problem_id(
-                        "MC", chapter, occ, n_occ, item_num
-                    ),
+                    problem_id=_problem_id("MC", chapter, occ, n_occ, item_num),
                     subtype="multiple_choice",
                     chapter=chapter,
                     statement=statement,
@@ -358,9 +357,7 @@ def _enumerate_matching(full_text: str, chapter: str) -> list[ProblemUnit]:
             )
             out.append(
                 ProblemUnit(
-                    problem_id=_problem_id(
-                        "MAT", chapter, occ, n_occ, item_num
-                    ),
+                    problem_id=_problem_id("MAT", chapter, occ, n_occ, item_num),
                     subtype="matching",
                     chapter=chapter,
                     statement=statement,
@@ -391,9 +388,7 @@ def _enumerate_true_false(full_text: str, chapter: str) -> list[ProblemUnit]:
             statement = f"{item_num}.{set_label} True or false: {stmt_body}"
             out.append(
                 ProblemUnit(
-                    problem_id=_problem_id(
-                        "TF", chapter, occ, n_occ, item_num
-                    ),
+                    problem_id=_problem_id("TF", chapter, occ, n_occ, item_num),
                     subtype="true_false",
                     chapter=chapter,
                     statement=statement,
@@ -421,9 +416,7 @@ def _enumerate_completion(full_text: str, chapter: str) -> list[ProblemUnit]:
             statement = f"{item_num}.{set_label} Fill in the blank: {readable}"
             out.append(
                 ProblemUnit(
-                    problem_id=_problem_id(
-                        "CMP", chapter, occ, n_occ, item_num
-                    ),
+                    problem_id=_problem_id("CMP", chapter, occ, n_occ, item_num),
                     subtype="completion",
                     chapter=chapter,
                     statement=statement,
@@ -541,9 +534,7 @@ def _partition_back_of_book(full_text: str) -> dict[str, dict[str, list[str]]]:
     merged = _merge_consecutive_chapters(chapter_matches)
     out: dict[str, dict[str, list[str]]] = {}
     for i, (chapter_num, chapter_start, _header_start) in enumerate(merged):
-        chapter_end = (
-            merged[i + 1][2] if i + 1 < len(merged) else len(full_text)
-        )
+        chapter_end = merged[i + 1][2] if i + 1 < len(merged) else len(full_text)
         sections: dict[str, list[str]] = {}
         section_matches = list(
             _BACK_SECTION_HEADER.finditer(full_text, chapter_start, chapter_end)
@@ -605,9 +596,7 @@ def _try_pair_or_unpaired(
     return False
 
 
-_EXERCISES_HEADING = re.compile(
-    r"^#{1,3}\s+Exercises\b", re.MULTILINE | re.IGNORECASE
-)
+_EXERCISES_HEADING = re.compile(r"^#{1,3}\s+Exercises\b", re.MULTILINE | re.IGNORECASE)
 # Bishop-style worked solutions in a separate manual start with a bare
 # ``N.M`` followed by an English word — NO difficulty marker like ``(?)``,
 # ``($\star$)``, ``(* *)`` (those mark problem statements). MinerU strips
@@ -642,7 +631,7 @@ def _partition_statement_solution_regions(
     sol = _SOLUTION_BODY_START.search(full_text, ex.end())
     if sol is None:
         return full_text, None
-    return full_text[: sol.start()], full_text[sol.start():]
+    return full_text[: sol.start()], full_text[sol.start() :]
 
 
 def enumerate_problems(
@@ -833,10 +822,7 @@ def pair_problems_across_pages(
                         elif raw_answer == "F":
                             text = "False."
                         else:
-                            text = (
-                                "False — replace underlined word with: "
-                                f"{raw_answer}"
-                            )
+                            text = f"False — replace underlined word with: {raw_answer}"
                         if _try_pair_or_unpaired(
                             pairings_by_id,
                             unpaired_solutions,
@@ -901,9 +887,7 @@ def pair_problems_across_pages(
                     used_llm = True
 
     method: Literal["regex", "llm", "mixed"] = (
-        "mixed" if used_llm and used_regex
-        else "llm" if used_llm
-        else "regex"
+        "mixed" if used_llm and used_regex else "llm" if used_llm else "regex"
     )
 
     return PairingResult(
@@ -1007,9 +991,7 @@ def _format_problem_card_prompt(
     required_tags = [
         "problem-set",
         f"chapter-{problem.chapter or 'unknown'}",
-        ProblemTag(
-            citation_key=citation_key, problem_id=problem.problem_id
-        ).render(),
+        ProblemTag(citation_key=citation_key, problem_id=problem.problem_id).render(),
     ]
     requested_subtypes: list[str] = []
     if plan.include_main:
@@ -1050,7 +1032,10 @@ def generate_cards_for_problem(
     """
     sm_config = config.get("pipeline", {}).get("solution_manual", {})
 
-    if not sm_config.get("enable_full_solution_cards", False) and plan.include_full_solution:
+    if (
+        not sm_config.get("enable_full_solution_cards", False)
+        and plan.include_full_solution
+    ):
         plan = plan.model_copy(
             update={
                 "include_full_solution": False,
@@ -1108,9 +1093,7 @@ def generate_cards_for_problem(
         if problem.referenced_figures and card.back.image_path is None:
             card.back.image_path = problem.referenced_figures[0]
 
-    provenance = (
-        response.provenance_entries[0] if response.provenance_entries else None
-    )
+    provenance = response.provenance_entries[0] if response.provenance_entries else None
     return response.cards, provenance
 
 
@@ -1159,9 +1142,7 @@ def audit_coverage(
     duplicated = {pid for pid in paired_ids if main_card_counts[pid] > 1}
     extra = set(main_card_counts) - paired_ids
     if missing_main or duplicated or extra:
-        raise CoverageError(
-            missing=missing_main, extra=extra, duplicated=duplicated
-        )
+        raise CoverageError(missing=missing_main, extra=extra, duplicated=duplicated)
 
 
 def run_solution_manual_override(
@@ -1218,9 +1199,7 @@ def run_solution_manual_override(
         return [], ProvenanceLog(chapter_id=chapter_id)
 
     pairings = pair_problems_across_pages(problems, cleaned_files, config)
-    problems = [
-        resolve_references(p, current_index, prior_indexes) for p in problems
-    ]
+    problems = [resolve_references(p, current_index, prior_indexes) for p in problems]
     plans = [classify_card_plan(p, sm_config) for p in problems]
 
     all_cards: list[PlainCard] = []
@@ -1238,9 +1217,7 @@ def run_solution_manual_override(
     # markdown; this is a debug dump of the LLM output.
     output_base = pipeline.output_base
     pairing_path = output_base / "problem-pairings.yaml"
-    pairing_path.write_text(
-        yaml.safe_dump(pairings.model_dump(), sort_keys=False)
-    )
+    pairing_path.write_text(yaml.safe_dump(pairings.model_dump(), sort_keys=False))
     logger.info(f"Wrote pairing artifact: {pairing_path}")
 
     debug_path = output_base / "cards-debug.yaml"
@@ -1274,8 +1251,6 @@ def run_solution_manual_override(
         allow_unsolved=sm_config.get("allow_unsolved", False),
     )
 
-    provenance_log = ProvenanceLog(
-        chapter_id=chapter_id, entries=provenance_entries
-    )
+    provenance_log = ProvenanceLog(chapter_id=chapter_id, entries=provenance_entries)
 
     return all_cards, provenance_log

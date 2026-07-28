@@ -11,6 +11,7 @@ import logging
 import re
 import time
 from pathlib import Path
+from typing import Any
 
 import tiktoken
 
@@ -47,9 +48,7 @@ def _preprocess_for_tts(text: str, tts_kwargs: dict) -> str:
     Returns:
         Preprocessed text safe for the provider's TTS endpoint.
     """
-    return preprocess_for_tts(
-        text, tts_kwargs, add_pauses=False, clean_markdown=False
-    )
+    return preprocess_for_tts(text, tts_kwargs, add_pauses=False, clean_markdown=False)
 
 
 def generate_card_transcript(
@@ -148,7 +147,9 @@ def generate_card_transcript(
     logger.debug(f"  Is front: {is_front}")
     logger.debug(f"  Front image path: {card.front.image_path}")
     logger.debug(f"  Back image path: {card.back.image_path}")
-    logger.debug(f"  Front image summary (perceptual): {card.front.image_summary_perceptual}")
+    logger.debug(
+        f"  Front image summary (perceptual): {card.front.image_summary_perceptual}"
+    )
     logger.debug(f"  Back image summary (interpretive): {card.back.image_summary}")
 
     if is_front:
@@ -203,7 +204,9 @@ def generate_card_transcript(
     if "$" in content or "\\" in content:
         from ._common import humanize_latex
 
-        logger.info(f"Card {card.card_id} - Humanizing LaTeX before transcript generation")
+        logger.info(
+            f"Card {card.card_id} - Humanizing LaTeX before transcript generation"
+        )
         content = humanize_latex(content, model)
 
     # Build system prompt
@@ -270,7 +273,7 @@ def generate_citation_audio(
     min_file_size: int = 1024,
     force_regenerate: bool = False,
     citation_speed_override: float | None = None,
-    **tts_kwargs: object,
+    **tts_kwargs: Any,
 ) -> Path:
     """Generate reusable audio for a citation key with validation and caching.
 
@@ -375,7 +378,7 @@ def generate_card_audio(
     citation_key: str | None = None,
     speed: float = 1.0,
     force_regenerate_citation: bool = False,
-    **tts_kwargs: object,
+    **tts_kwargs: Any,
 ) -> tuple[str, str | None]:
     """Generate audio files for both sides of a flashcard.
 
@@ -493,7 +496,11 @@ def generate_card_audio(
     if not needs_combination:
         text_to_speech(
             _preprocess_for_tts(front_chunks[0], tts_kwargs),
-            voice_id, front_path, elevenlabs_api_key, speed, **tts_kwargs
+            voice_id,
+            front_path,
+            elevenlabs_api_key,
+            speed,
+            **tts_kwargs,
         )
     else:
         chunks_subdir.mkdir(parents=True, exist_ok=True)
@@ -515,7 +522,11 @@ def generate_card_audio(
             paused_chunk = append_chunk_pause(chunk, provider)
             text_to_speech(
                 _preprocess_for_tts(paused_chunk, tts_kwargs),
-                voice_id, chunk_path, elevenlabs_api_key, speed, **tts_kwargs
+                voice_id,
+                chunk_path,
+                elevenlabs_api_key,
+                speed,
+                **tts_kwargs,
             )
             chunk_paths.append(chunk_path)
             front_manifest_chunks.append(
@@ -538,7 +549,11 @@ def generate_card_audio(
         if len(back_chunks) == 1:
             text_to_speech(
                 _preprocess_for_tts(back_chunks[0], tts_kwargs),
-                voice_id, back_path, elevenlabs_api_key, speed, **tts_kwargs
+                voice_id,
+                back_path,
+                elevenlabs_api_key,
+                speed,
+                **tts_kwargs,
             )
         else:
             chunks_subdir.mkdir(parents=True, exist_ok=True)
@@ -549,7 +564,11 @@ def generate_card_audio(
                 paused_chunk = append_chunk_pause(chunk, provider)
                 text_to_speech(
                     _preprocess_for_tts(paused_chunk, tts_kwargs),
-                    voice_id, chunk_path, elevenlabs_api_key, speed, **tts_kwargs
+                    voice_id,
+                    chunk_path,
+                    elevenlabs_api_key,
+                    speed,
+                    **tts_kwargs,
                 )
                 chunk_paths.append(chunk_path)
                 back_manifest_chunks.append(

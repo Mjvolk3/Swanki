@@ -391,7 +391,7 @@ class Pipeline:
                 f"{len(review_files)} review_exercises pages"
             )
 
-            all_cards: list[PlainCard] = []
+            all_cards = []
 
             # ── main_content path: existing segment-driven card-gen ──
             if main_files:
@@ -2183,7 +2183,10 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         chunk_cfg = _sub("chunking")
         post_cfg = _sub("postprocessor")
 
-        tts_kwargs: dict[str, object] = {}
+        # Any, not object: this is splatted as **tts_kwargs into TTS helpers
+        # whose params are concretely typed (str/int/float), and `object`
+        # does not unify with those. The dict is heterogeneous by design.
+        tts_kwargs: dict[str, Any] = {}
         if tts_provider == "fish_speech":
             from ..audio._common import ensure_fish_speech_reference
 
@@ -2243,7 +2246,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 )
 
                 def _process_card(
-                    args: tuple[int, object],
+                    args: tuple[int, PlainCard],
                 ) -> tuple[int, str | None, str | None]:
                     idx, card = args
                     front_fn, back_fn = generate_card_audio(

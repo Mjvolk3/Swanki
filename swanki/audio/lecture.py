@@ -12,6 +12,7 @@ import re
 import time
 from pathlib import Path
 from string import Template
+from typing import Any
 
 import tiktoken
 
@@ -487,7 +488,7 @@ def generate_lecture_audio(
     si_start_page: int | None = None,
     paper_title: str | None = None,
     correctness: LectureCorrectnessCollector | None = None,
-    **tts_kwargs: object,
+    **tts_kwargs: Any,
 ) -> str:
     """Generate an educational lecture from document content.
 

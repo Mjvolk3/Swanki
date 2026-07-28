@@ -136,7 +136,7 @@ class ABSClient:
                 connect, matching the hardened Zotero client.
         """
         self.base_url = (
-            base_url or os.environ.get("ABS_URL", DEFAULT_ABS_URL)
+            base_url or os.environ.get("ABS_URL") or DEFAULT_ABS_URL
         ).rstrip("/")
         kwargs: dict[str, Any] = {}
         if transport is not None:
@@ -186,15 +186,18 @@ class ABSClient:
 
     def create_library(self, name: str, folder: str) -> dict[str, Any]:
         """Create one audiobook library rooted at ``folder``."""
-        return cast(dict[str, Any], self.request(
-            "POST",
-            "/api/libraries",
-            json={
-                "name": name,
-                "mediaType": "book",
-                "folders": [{"fullPath": folder}],
-            },
-        ))
+        return cast(
+            dict[str, Any],
+            self.request(
+                "POST",
+                "/api/libraries",
+                json={
+                    "name": name,
+                    "mediaType": "book",
+                    "folders": [{"fullPath": folder}],
+                },
+            ),
+        )
 
     def library_items(
         self, library_id: str, *, limit: int = 10000
@@ -230,9 +233,7 @@ class ABSClient:
             json={"metadata": {"authors": [{"name": n} for n in author_names]}},
         )
 
-    def post_chapters(
-        self, item_id: str, chapters: list[dict[str, Any]]
-    ) -> None:
+    def post_chapters(self, item_id: str, chapters: list[dict[str, Any]]) -> None:
         """POST a chapters array so DB + in-memory state both update."""
         self.request(
             "POST", f"/api/items/{item_id}/chapters", json={"chapters": chapters}
@@ -274,9 +275,7 @@ class ABSClient:
 
     def remove_collection_book(self, collection_id: str, book_id: str) -> None:
         """Remove one book from a collection."""
-        self.request(
-            "DELETE", f"/api/collections/{collection_id}/book/{book_id}"
-        )
+        self.request("DELETE", f"/api/collections/{collection_id}/book/{book_id}")
 
     # -- user (bookmarks) ----------------------------------------------------
 
@@ -287,6 +286,4 @@ class ABSClient:
     def delete_bookmark(self, library_item_id: str, time_s: float) -> None:
         """Delete one bookmark, keyed by item id + coerced time."""
         tv = bookmark_time_key(time_s)
-        self.request(
-            "DELETE", f"/api/me/item/{library_item_id}/bookmark/{tv}"
-        )
+        self.request("DELETE", f"/api/me/item/{library_item_id}/bookmark/{tv}")

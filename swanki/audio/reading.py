@@ -9,6 +9,7 @@ Full document reading with two-pass LLM processing (LaTeX humanization + audio o
 import logging
 import time
 from pathlib import Path
+from typing import Any
 
 import tiktoken
 
@@ -170,7 +171,7 @@ def generate_reading_audio(
     citation_key: str | None = None,
     speed: float = 1.0,
     correctness: ReadingCorrectnessCollector | None = None,
-    **tts_kwargs: object,
+    **tts_kwargs: Any,
 ) -> str:
     """Generate complete audio narration of a document.
 
