@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from swanki.models.sections import ClassificationResult, PageLabel
 from swanki.pipeline import Pipeline
 
 
@@ -31,12 +32,52 @@ def base_config():
 
 
 @pytest.fixture()
-def mock_pipeline(base_config):
-    """Pipeline with all heavy methods mocked out."""
+def stub_classifier():
+    """Stub the section classifier: no LLM call, deterministic labels.
+
+    ``process_full`` runs ``classify_sections`` for both full and audio_only,
+    and that helper is heading-first with an **LLM fallback**. These tests are
+    about mode branching, not classification, so it is stubbed -- otherwise the
+    suite could reach the network depending on fixture content.
+
+    Patched on ``swanki.pipeline.section_classifier`` (the defining module),
+    not on ``swanki.pipeline.pipeline``: ``process_full`` imports the name
+    inside the function body, so the lookup happens at call time and a patch on
+    the importing module would not be seen.
+    """
+    result = ClassificationResult(
+        page_labels=[PageLabel(page_idx=0, kind="main_content")],
+        confidence=1.0,
+        method="heading",
+    )
+    with patch(
+        "swanki.pipeline.section_classifier.classify_sections", return_value=result
+    ) as m:
+        yield m
+
+
+@pytest.fixture()
+def mock_pipeline(base_config, tmp_path, stub_classifier):
+    """Pipeline with all heavy methods mocked out.
+
+    The stage mocks return paths to REAL files under ``tmp_path``. They used to
+    return ``/tmp/p1_clean.md`` etc., which never existed -- ``process_full``
+    genuinely reads the cleaned markdown (via ``classify_sections`` /
+    ``merge_main_content``), so all five tests died on FileNotFoundError before
+    reaching the assertions they were written for. Mocked stages must still
+    honour their contract: ``clean_markdown`` returns readable files.
+    """
+    pdf = tmp_path / "p1.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    md = tmp_path / "p1.md"
+    md.write_text("# Page 1\n\nRaw markdown.\n")
+    clean = tmp_path / "p1_clean.md"
+    clean.write_text("# Page 1\n\nCleaned markdown body.\n")
+
     p = Pipeline(base_config)
-    p.split_pdf = MagicMock(return_value=[Path("/tmp/p1.pdf")])
-    p.convert_to_markdown = MagicMock(return_value=[Path("/tmp/p1.md")])
-    p.clean_markdown = MagicMock(return_value=[Path("/tmp/p1_clean.md")])
+    p.split_pdf = MagicMock(return_value=[pdf])
+    p.convert_to_markdown = MagicMock(return_value=[md])
+    p.clean_markdown = MagicMock(return_value=[clean])
     p.process_images = MagicMock(return_value=[])
     p.generate_document_summary = MagicMock()
     p.estimate_card_count = MagicMock(return_value=10)
@@ -45,7 +86,8 @@ def mock_pipeline(base_config):
     p.generate_outputs = MagicMock(return_value=({}, []))
     p.generate_audio = MagicMock()
     p.send_to_anki = MagicMock()
-    p.data_dir = Path("/tmp/swanki-test")
+    p.data_dir = tmp_path
+    p.output_base = tmp_path
     return p
 
 
