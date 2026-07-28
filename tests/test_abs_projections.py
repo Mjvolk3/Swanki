@@ -13,6 +13,7 @@ import httpx
 
 from swanki.abs.client import ABSClient
 from swanki.abs.libraries import build_library_index, library_items_by_title
+from swanki.abs.metadata import derive_authors
 from swanki.abs.projections import (
     citation_key,
     classify,
@@ -154,3 +155,48 @@ def test_library_items_by_title_falls_back_to_path():
 
     items = library_items_by_title(_client(handler), "L1")
     assert items == {"hamming2020": "I1", "bechtel1986": "I2"}
+
+
+# -- derive_authors: editor fallback for edited volumes -----------------------
+
+
+def _zot(creators: list[dict[str, str]]) -> dict[str, object]:
+    return {"data": {"creators": creators}}
+
+
+def test_derive_authors_prefers_authors() -> None:
+    assert derive_authors(
+        _zot(
+            [
+                {"creatorType": "author", "firstName": "Ada", "lastName": "L"},
+                {"creatorType": "editor", "firstName": "Ed", "lastName": "I"},
+            ]
+        )
+    ) == ["Ada L"]
+
+
+def test_derive_authors_preserves_order() -> None:
+    assert derive_authors(
+        _zot(
+            [
+                {"creatorType": "author", "firstName": "First", "lastName": "A"},
+                {"creatorType": "author", "firstName": "Second", "lastName": "B"},
+            ]
+        )
+    ) == ["First A", "Second B"]
+
+
+def test_derive_authors_falls_back_to_editors() -> None:
+    """Edited volumes list only editors; a blank ABS author is the bug."""
+    assert derive_authors(
+        _zot([{"creatorType": "editor", "firstName": "Horst", "lastName": "Feldmann"}])
+    ) == ["Horst Feldmann"]
+
+
+def test_derive_authors_ignores_other_creator_types() -> None:
+    assert (
+        derive_authors(
+            _zot([{"creatorType": "translator", "firstName": "T", "lastName": "R"}])
+        )
+        == []
+    )

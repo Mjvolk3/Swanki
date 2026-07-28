@@ -48,13 +48,30 @@ def _creator_name(c: dict[str, Any]) -> str | None:
 
 
 def derive_authors(zot_item: dict[str, Any]) -> list[str]:
-    """All authors in Zotero order; first author = primary display."""
-    creators = [
-        c
-        for c in zot_item["data"].get("creators", [])
-        if c.get("creatorType") == "author"
-    ]
-    return [n for n in (_creator_name(c) for c in creators) if n]
+    """All authors in Zotero order; first author = primary display.
+
+    Falls back to ``editor`` when an item has no ``author`` creators. Edited
+    volumes -- common for the textbooks swanki ingests -- list only editors, so
+    the author-only filter returned [], the caller's ``if authors:`` guard
+    skipped the PATCH, and the ABS item was left with a blank author forever
+    (observed on feldmannYeastMolecularCell2012, whose sole creator is
+    "editor: Horst Feldmann"). Editors are the right display name for such a
+    book; authors still win whenever both are present.
+    """
+    creators = zot_item["data"].get("creators", [])
+    for creator_type in ("author", "editor"):
+        names = [
+            n
+            for n in (
+                _creator_name(c)
+                for c in creators
+                if c.get("creatorType") == creator_type
+            )
+            if n
+        ]
+        if names:
+            return names
+    return []
 
 
 def get_pdf_attachment(zot: Any, item_key: str) -> dict[str, Any] | None:
