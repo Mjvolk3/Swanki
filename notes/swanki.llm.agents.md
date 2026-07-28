@@ -51,3 +51,41 @@ lives in [[swanki.models.cards]]. Plan:
 ## 2026.06.12
 
 Registered `image_description_agent` (`Agent[None, ImageDescription]`, retries=3) for the dual-field image vision call. Called through the existing `with_safety_retry` (output-type-agnostic, returns the full RunResult), same multimodal `[prompt, image_content]` shape as the prior `text_agent` image-summary call. See [[plan.two-field-image-descriptions-audio-only.2026.06.12]].
+
+## 2026.07.27 - Reasoning models need `provider: openai-responses`, not `openai`
+
+Switching `models.llm.model` to `gpt-5.6-sol` broke the whole pipeline within
+~2 minutes, at the first structured-output call (image processing):
+
+    400 "Function tools with reasoning_effort are not supported for gpt-5.6-sol
+         in /v1/chat/completions. To use function tools, use /v1/responses or
+         set reasoning_effort to 'none'."
+
+Every agent in this module declares `output_type=<PydanticModel>`, and
+pydantic-ai implements structured output as a **function tool**. So effectively
+every LLM call in swanki is a tool call. `get_model_string` concatenates
+`f"{provider}:{model}"`, and pydantic-ai resolves the `openai:` prefix to
+`OpenAIChatModel` -> `/v1/chat/completions`, which will not serve function tools
+together with reasoning.
+
+Fix is config-only -- no code change here. pydantic-ai registers
+`openai-responses` as a distinct prefix selecting a different model class:
+
+    openai:gpt-5.6-sol            -> OpenAIChatModel       (/v1/chat/completions)  400
+    openai-responses:gpt-5.6-sol  -> OpenAIResponsesModel  (/v1/responses)         OK
+
+So `provider: openai-responses` in the seven LLM config files is what makes a
+reasoning model usable. **Do not "correct" this back to `openai`** -- that
+silently reintroduces the 400 on the first structured call of every run.
+`reasoning_effort: 'none'` would also clear the error but disables the reasoning
+that is the point of the model, so it was rejected.
+
+Two gotchas. (1) `swanki/conf/models/openai_tts.yaml` also has
+`provider: openai`, but that is a **TTS** provider -- a blind sed over
+`provider: openai` breaks TTS. Only the `llm:` block (line 3 of the seven files)
+changes. (2) `temperature: 0.7` is now silently ignored; pydantic-ai warns
+"Sampling parameters ['temperature'] are not supported when reasoning is
+enabled." Dead config, harmless, left in place for the non-reasoning case.
+
+The Responses API also serves non-reasoning OpenAI models, so this prefix is
+safe if `models.llm.model` is later moved back to a gpt-4o-class model.
