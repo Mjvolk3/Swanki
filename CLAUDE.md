@@ -45,8 +45,14 @@ Use **Google-style docstrings** for functions and classes (`Args:`, `Returns:`, 
 
 ## Code Execution
 
-- ~/opt/miniconda3/envs/swanki/bin/Swanki python script.py
-- On gilahyper, Mathpix CLI requires a TTY (`process.stdout.clearLine`). Wrap `conda run` with `script`:
+- `~/miniconda3/envs/swanki/bin/python script.py` — the conda root is `~/miniconda3`
+  on gilahyper (it is `~/opt/miniconda3` on the Mac), so prefer `conda activate swanki`
+  over a hardcoded interpreter path when a script may run on either machine.
+- Activate rather than calling the interpreter directly whenever the code shells out:
+  `ffmpeg`/`ffprobe` are only on `PATH` inside the env, and the test suite fails ~37
+  tests with `FileNotFoundError: 'ffmpeg'` without it.
+- Only when running `ocr=mathpix` (the default is `ocr=mineru`): the Mathpix CLI
+  requires a TTY (`process.stdout.clearLine`), so wrap the call with `script`:
   ```bash
   conda activate swanki && script -qc "bash /path/to/run.sh" /dev/null
   ```
@@ -56,13 +62,16 @@ Use **Google-style docstrings** for functions and classes (`Args:`, `Returns:`, 
 When running swanki on gilahyper, use these overrides:
 
 - **`audio=all`** — generate per-card complementary audio alongside summary/lecture/reading. Applies to every paper.
-- **`anki=default`** — no Anki client on this machine; `anki=auto_send` fails at pipeline end.
-- **`models=fish_speech`** — local Fish Speech server at `http://localhost:8080` with the `british-prof` reference voice. Prefer this over ElevenLabs for TTS: no per-call cost, voice cloning stays on-box, and it sidesteps ElevenLabs rate limits.
+- **`anki=default`** — no Anki *client* on this machine; `anki=auto_send` fails at pipeline end. (Delivery to the headless AnkiConnect server is a separate step — see Sync Terminology.)
+- **`ocr=mineru`** — local GPU OCR; `ocr=mathpix` is the paid fallback and needs a TTY.
+- **`models=fish_speech`** — Fish Speech with the `british-prof` reference voice. Prefer it over ElevenLabs: no per-call cost, voice cloning stays on-box, no rate limits. Under SLURM the server is brought up **per job** on a derived free port (`SWANKI_FISH_PORTS`), so the `server_url: http://localhost:8080` in `conf/models/fish_speech.yaml` is only the fallback for a hand-run outside SLURM.
+- The `llm` block uses **`provider: openai-responses`**, not `openai`. Reasoning models refuse function tools on `/v1/chat/completions`, and every swanki agent uses structured output. See [[swanki.llm.agents]] 2026.07.27 before "fixing" that back.
 
-Combined `.sh` template invocation:
+Prefer `scripts/swanki_enqueue.sh` (see Generation Queue) over a hand-written `.sh` — the
+sbatch already applies these. For a one-off hand run:
 ```bash
 swanki pdf_path=... citation_key=... +output_dir=... \
-  audio=all anki=default models=fish_speech \
+  audio=all anki=default ocr=mineru models=fish_speech zotero=default \
   pipeline.processing.confirm_before_generation=false
 ```
 
@@ -70,19 +79,22 @@ Other workstations (laptops without the Fish server / with Anki installed) shoul
 
 ## Generation Queue
 
-To run **many sources without babysitting blocking**, use the fire-and-forget serial queue instead of hand-writing a one-off batch script. Drop jobs and forget them — they drain one at a time.
+To run **many sources without babysitting blocking**, enqueue jobs and forget them.
+**SLURM is the live path** — set `SWANKI_QUEUE_EXECUTOR=slurm`. The Docker Fish fleet and
+the bash drainer are retired; do not start them.
 
-- **Enqueue:** `scripts/swanki_enqueue.sh --pdf PATH --key CITATION_KEY [--content-key <key>_CH##_<slug>] [--voice fish_speech] [--author "Name"] [--extra "hydra.override=x"]`. Papers need just `--pdf --key`; book chapters add `--content-key` (output_dir is derived as `<key>/<content_key>`). Voice defaults to the `fish_speech` british-prof seminar; pass a clone (`fish_speech_bechtel`, `fish_speech_hamming`, …) for author-voiced books.
-- **Drainer:** `scripts/swanki_queue.sh`, run by the `swanki-queue.service` systemd --user unit (enabled, survives reboot). Jobs land in `~/.swanki-queue/pending/` and move to `done/`/`failed/` with per-job logs in `logs/`.
-- **Watch:** `tail -f ~/.swanki-queue/queue.log`, `journalctl --user -u swanki-queue -f`, `ls ~/.swanki-queue/pending` (depth), `systemctl --user status swanki-queue`.
+- **Enqueue:** `SWANKI_QUEUE_EXECUTOR=slurm scripts/swanki_enqueue.sh --pdf PATH --key CITATION_KEY [--content-key <key>_CH##_<slug>] [--voice fish_speech] [--author "Name"] [--extra "hydra.override=x"] [--singleton] [--after JOBID]`. Papers need just `--pdf --key`; book chapters add `--content-key` (output_dir is derived as `<key>/<content_key>`). Voice defaults to the `fish_speech` british-prof seminar; pass a clone (`fish_speech_bechtel`, `fish_speech_hamming`, …) for author-voiced books. Prints the jobid on stdout for chaining; `DRY_RUN=1` previews without submitting.
+- **One GPU at a time.** Swanki shares the box with science sweeps and may hold **one** GPU. Submitting N chapters at once is fine, but chain them with `--singleton` (or `--after <jobid>`) so only one runs — two concurrent jobs means two GPUs. Verify with `squeue` that only one `swanki` job is RUNNING.
+- **Per job:** `sbatch --gres=gpu:1` (`scripts/swanki_job.sbatch`) brings Fish up **in-job** via `apptainer --nv` (baked `.sif`) on a derived free port exported as `SWANKI_FISH_PORTS`, runs OCR+cards+TTS pinned to the allocated GPU (local index 0 via the ambient `CUDA_VISIBLE_DEVICES`), delivers Zotero then Anki (flock-serialized) at end-of-job, then tears Fish down. Idle swanki uses zero GPU. Hardcodes `audio=all anki=default ocr=mineru models=<voice> zotero=default`.
+- **ABS** is deferred to a no-GPU `--dependency=singleton` finalizer (`scripts/swanki_finalize_abs.sbatch`), submitted per chapter as `--dependency="singleton,afterok:<jobid>"` with a **per-chapter `SWANKI_ABS_DIRTY` path**. The per-chapter flag is load-bearing: with the shared default flag, a finalizer that is mid-refresh deletes a newer chapter's flag on completion and that chapter silently never reaches ABS.
+- **Watch:** `squeue`, `~/.swanki-queue/logs/slurm-<jobid>.log`, `sacct -j <jobid> --format=JobID,State,Elapsed,ExitCode -X`.
 
-**Why serial (legacy local mode):** with the persistent Fish fleet, one swanki run already fans TTS across all GPUs, so `SWANKI_QUEUE_CONCURRENCY` (default 1) keys off **Fish capacity, not GPU count**. Each job runs the gilahyper default invocation (`audio=all anki=default ocr=mineru models=<voice> zotero=default …`).
-
-**Important:** the local queue only serializes jobs **submitted through it** — a swanki run launched by hand stays outside it and will contend for Fish. Once the queue is in use, run everything through it. Full design/rationale: `notes/scripts.swanki_queue.md` ([[scripts.swanki_queue]]).
-
-### SLURM-native mode (serverless per-job Fish)
-
-The forward path: set `SWANKI_QUEUE_EXECUTOR=slurm` and `scripts/swanki_enqueue.sh` submits one `sbatch --gres=gpu:1` job per paper (`scripts/swanki_job.sbatch`) instead of writing a drainer spec. Each job brings up Fish **in-job** via `apptainer --nv` (baked `.sif`) on its single allocated GPU, runs OCR+cards+TTS pinned to that GPU, delivers Zotero→Anki→ABS at end-of-job, then tears Fish down — so idle swanki uses zero GPU and SLURM's cgroups keep it off science's GPUs. Linear vs parallel is a SLURM QOS `GrpTRES=gres/gpu=N` cap (and/or `--enqueue ... --singleton`); chain jobs with `--after <jobid>` / `--dependency`. OCR honors the ambient `CUDA_VISIBLE_DEVICES` (the allocated GPU is local index 0) and TTS targets the single job-private `SWANKI_FISH_PORTS`. ABS is a `--dependency=singleton` finalizer (`scripts/swanki_finalize_abs.sbatch`). This is **not yet cut over** — the live box still runs the Docker Fish fleet + bash drainer; the one-time migration is `notes/runbook.slurm-cutover.md` ([[runbook.slurm-cutover]]) / `scripts/slurm_cutover.sh`.
+**Legacy local drainer** (`scripts/swanki_queue.sh` + `swanki-queue.service`): the systemd
+unit is no longer installed, and the executor still defaults to `local` — so
+`SWANKI_QUEUE_EXECUTOR=slurm` must be set explicitly or the enqueue silently writes a JSON
+spec that nothing will drain. Design/rationale for the old serial queue:
+`notes/scripts.swanki_queue.md` ([[scripts.swanki_queue]]); migration record:
+`notes/runbook.slurm-cutover.md` ([[runbook.slurm-cutover]]) / `scripts/slurm_cutover.sh`.
 
 ## Sync Terminology
 
@@ -111,7 +123,12 @@ Mechanism (whole-item, per book): `~/miniconda3/envs/swanki/bin/python scripts/a
 
 ## Git Worktrees
 
-We develop on multiple branches simultaneously using git worktrees. Each worktree lives at `~/projects/Swanki.worktrees/<branch>/` alongside the main repo at `~/projects/Swanki/`. Active worktrees and their tasks are tracked in weekly notes (e.g., `notes/user.mjvolk3.swanki.tasks.weekly.2026.10.md`).
+We develop on multiple branches simultaneously using git worktrees. The main repo is
+`~/Documents/projects/Swanki/`; worktrees live in a **different tree** at
+`~/projects/Swanki.worktrees/<branch>/` (note: not `~/projects/Swanki/`, which does not
+exist). Confirm with `git worktree list` rather than assuming either path. Active
+worktrees and their tasks are tracked in weekly notes
+(`notes/user.mjvolk3.swanki.tasks.weekly.<year>.<week>.md`).
 
 **Shared data.** `SWANKI_DATA` points to the sibling `Swanki_Data/` directory and is the same across all worktrees (no per-worktree copy needed). Only repo-internal paths (`WORKSPACE_DIR`, `ASSET_IMAGES_DIR`) get rewritten by the setup script.
 
@@ -141,11 +158,3 @@ gh api repos/Mjvolk3/Swanki/git/refs/heads/<branch> --method DELETE
 ## Finding Rationale for Changes
 
 To understand why a code change was made, check the dendron module note (`notes/swanki.<module>.md`). Each dated section documents what changed and why. This is the primary source of decision history for the codebase.
-
-## Dotfiles
-
-Shared dotfiles are managed in `~/Documents/projects/dotfiles` (repo: `Mjvolk3/dotfiles`). Contains tmux config (`tmux/`) and Claude Code status line + keybindings (`claude/`). Run `install.sh` to symlink everything into place. `~/.claude/settings.json` points `statusLine` to `~/.claude/statusline.sh`, which is symlinked to the repo.
-
-## Change Log
-
-- This is automatically updated. Don't edit it directly.
