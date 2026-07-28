@@ -66,9 +66,13 @@ repos:
 
   - repo: local
     hooks:
+      # Uses the ambient interpreter (language: system), so it works on any
+      # machine with the swanki env active. Do NOT hardcode a conda path here:
+      # the prefix differs per machine (~/miniconda3 vs ~/opt/miniconda3) and a
+      # mac path made this hook fail on every gilahyper commit.
       - id: pytest
         name: Run tests (testmon)
-        entry: /Users/michaelvolk/opt/miniconda3/envs/swanki/bin/python -m pytest tests/ -x -q --ignore=tests/test_first_module.py --ignore=tests/test_anki_processor_tables.py
+        entry: python -m pytest tests/ -x -q --ignore=tests/test_first_module.py --ignore=tests/test_anki_processor_tables.py
         language: system
         files: ^(swanki|tests)/.*\.py$
         pass_filenames: false

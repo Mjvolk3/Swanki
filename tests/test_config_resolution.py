@@ -16,10 +16,18 @@ def _load_yaml(relative: str) -> dict:
 
 
 def test_default_models_resolve() -> None:
-    """Default model config has expected provider and model."""
+    """Default model config has expected provider and model.
+
+    ``openai-responses`` (the pydantic-ai prefix selecting OpenAIResponsesModel,
+    i.e. ``/v1/responses``) is as valid as ``openai`` here and is REQUIRED for a
+    reasoning model: on ``/v1/chat/completions`` OpenAI refuses function tools
+    alongside reasoning, and every swanki agent uses structured output, which
+    pydantic-ai implements as a function tool. See [[swanki.llm.agents]]
+    2026.07.27.
+    """
     cfg = _load_yaml("models/default.yaml")
     llm = cfg["models"]["llm"]
-    assert llm["provider"] == "openai"
+    assert llm["provider"] in {"openai", "openai-responses"}
     assert "gpt" in llm["model"]
     assert llm["temperature"] == 0.7
     assert llm["max_retries"] == 3

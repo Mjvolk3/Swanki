@@ -38,17 +38,28 @@ def test_package_defaults_has_all_groups():
 
 
 def test_audio_presets_renamed():
+    """The canonical audio presets all exist under their post-rename names.
+
+    Asserts a SUBSET, not set equality. The preset list is open -- new
+    combinations get added as papers need them (``complementary.yaml`` and
+    ``summary_lecture_reading.yaml`` both landed after this test was written and
+    silently red-lined it). Equality made every legitimate addition a test
+    failure while adding nothing: the rename regression this guards is that an
+    OLD name comes back, and ``test_no_old_audio_names`` covers exactly that.
+    """
     audio = package_defaults_path() / "audio"
-    expected = {
+    canonical = {
         "none.yaml",
         "all.yaml",
+        "complementary.yaml",
         "complementary_summary.yaml",
         "complementary_summary_lecture.yaml",
         "lecture.yaml",
         "summary_lecture.yaml",
+        "summary_lecture_reading.yaml",
     }
     actual = {f.name for f in audio.glob("*.yaml")}
-    assert actual == expected
+    assert canonical <= actual, f"missing presets: {sorted(canonical - actual)}"
 
 
 def test_no_old_audio_names():
