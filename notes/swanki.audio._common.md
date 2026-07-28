@@ -125,7 +125,7 @@ Five new helpers + one constant land alongside `_normalize_fish_speech_punct` an
 
 ## 2026.05.14 - Strip chunk-boundary pause tags instead of appending one (Fish stutter fix)
 
-Listener flagged audible stutter at every chunk boundary in the post-merge Hamming audio. Inspecting the chunk manifest text confirmed each Fish chunk ended with `\n[short pause]\n[pause]` — `add_tts_pauses` injects `[short pause]` after sentence-end+newline and `[pause]` between paragraphs, then the (now-removed) fish branch of `append_chunk_pause` added one more ` [pause]`. Fish renders these tokens as a brief audible artifact, then the deterministic `chunk_pause_ms=700` silence plays — listener perceives a double-beat stutter at every join.
+Listener flagged audible stutter at every chunk boundary in the post-merge Hamming audio. Inspecting the chunk manifest text confirmed each Fish chunk ended with `\n[short pause]\n[pause]` — `add_tts_pauses` injects `[short pause]` after sentence-end+newline and `[pause]` between paragraphs, then the (now-removed) fish branch of `append_chunk_pause` added one more `[pause]`. Fish renders these tokens as a brief audible artifact, then the deterministic `chunk_pause_ms=700` silence plays — listener perceives a double-beat stutter at every join.
 
 Fish branch of `append_chunk_pause` now strips trailing AND leading pause tags via the new `strip_chunk_boundary_pause_tags` helper instead of appending one. Inter-chunk silence is supplied entirely by `combine_audio_with_section_pauses` `chunk_pause_ms`. Mid-chunk pause tags are preserved — they signal complex-sentence comprehension breaks or dramatic effect (the listener's stated design principle).
 
@@ -320,6 +320,7 @@ sections and the exit check was `line.startswith("##")` (H2 only). Result:
 74,426 chars of source → 65 chars of filtered output (just the title).
 
 Split into two lists:
+
 - `section_skip_patterns` -- enter *persistent* skip-mode (References,
   Competing interests, Author block, Acknowledgments, bibliography entries,
   `\\author{`, `\\end{document}`).

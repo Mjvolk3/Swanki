@@ -16,13 +16,13 @@ Commit `0d95eaf` already added a client-side retry in `_tts_fish_speech` (`swank
 
 ## Relevant Files
 
-| Path | Action | Purpose | Stance |
-| --- | --- | --- | --- |
-| `scripts/swanki_job.sbatch` | MODIFY | Add inline unified poll-loop supervisor around the generation step (line 128); export raised `SWANKI_FISH_TTS_ATTEMPTS`; crash-time capture | in-flux |
-| `notes/scripts.swanki_job.md` | MODIFY | Append dated section documenting the supervisor (convention: ship rationale here) | in-flux |
-| `swanki/audio/_common.py` | REFERENCE | Layer-1 client retry (`_tts_fish_speech` 1003-1036), discovery (`_discover_fish_speech_servers` 922-956), reference registration (`ensure_fish_speech_reference` 1039-1084). NOT edited — it is in-flux from today and owns the HTTP boundary | in-flux |
-| `swanki/pipeline/pipeline.py` | REFERENCE | Calls `ensure_fish_speech_reference` ONCE at TTS setup (line 2159), not per-TTS — load-bearing for Open Question 1 | undocumented |
-| `notes/swanki.audio._common.md` | REFERENCE | Layer-1 design note; its 2026.06.08 entry forward-references "swanki_job.sbatch needs a restart-supervisor (layer 2)" — this plan | in-flux |
+| Path                            | Action    | Purpose                                                                                                                                                                                                                                       | Stance       |
+|---------------------------------|-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------|
+| `scripts/swanki_job.sbatch`     | MODIFY    | Add inline unified poll-loop supervisor around the generation step (line 128); export raised `SWANKI_FISH_TTS_ATTEMPTS`; crash-time capture                                                                                                   | in-flux      |
+| `notes/scripts.swanki_job.md`   | MODIFY    | Append dated section documenting the supervisor (convention: ship rationale here)                                                                                                                                                             | in-flux      |
+| `swanki/audio/_common.py`       | REFERENCE | Layer-1 client retry (`_tts_fish_speech` 1003-1036), discovery (`_discover_fish_speech_servers` 922-956), reference registration (`ensure_fish_speech_reference` 1039-1084). NOT edited — it is in-flux from today and owns the HTTP boundary | in-flux      |
+| `swanki/pipeline/pipeline.py`   | REFERENCE | Calls `ensure_fish_speech_reference` ONCE at TTS setup (line 2159), not per-TTS — load-bearing for Open Question 1                                                                                                                            | undocumented |
+| `notes/swanki.audio._common.md` | REFERENCE | Layer-1 design note; its 2026.06.08 entry forward-references "swanki_job.sbatch needs a restart-supervisor (layer 2)" — this plan                                                                                                             | in-flux      |
 
 ## Key Design Decisions
 

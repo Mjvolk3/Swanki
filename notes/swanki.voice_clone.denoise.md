@@ -18,4 +18,3 @@ Bypasses `df.io.load_audio` / `df.io.save_audio` because DFN 0.5.6 imports paths
 4. Write the cleaned tensor back via `soundfile.write` as `PCM_16`.
 
 The shim approach is more robust than pinning `torchaudio<2.0` because DFN itself doesn't require the removed APIs at the inference layer; only its convenience I/O wrappers did. Returns a small dict (`{"method": "deepfilternet", "model": "DeepFilterNet3"}`) suitable for stamping into a `VoiceClip.denoising` block so downstream code can tell which clips have been processed.
-

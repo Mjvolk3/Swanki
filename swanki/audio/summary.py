@@ -58,6 +58,9 @@ def generate_summary_audio(
         model: pydantic-ai model string (e.g. ``"openai:gpt-5-mini"``).
         citation_key: Citation key to announce at the beginning.
         speed: Audio playback speed multiplier.
+        **tts_kwargs: Provider-specific TTS options forwarded to the
+            synthesis call (server_url, reference_id, preprocessor /
+            chunking / postprocessor sub-trees, ...).
 
     Returns:
         Filename of the generated audio file.

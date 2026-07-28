@@ -90,7 +90,8 @@ class TestAnkiTarget:
         # importPackage params must be ONLY {path}: the headless Anki build
         # rejects a deleteExisting kwarg. Guards against reintroducing it.
         import_calls = [
-            c for c in post.call_args_list
+            c
+            for c in post.call_args_list
             if c.kwargs["json"]["action"] == "importPackage"
         ]
         for c in import_calls:

@@ -34,9 +34,7 @@ logger = logging.getLogger(__name__)
 # Heading-driven anchors. Schaum's-style chapters open with `## Theory and
 # Problems`; review sections use the canonical Schaum's labels. Bishop and
 # similar use `## Exercises` / `## Problems`.
-_THEORY_HEADING = re.compile(
-    r"^##\s+Theory and Problems\b", re.MULTILINE
-)
+_THEORY_HEADING = re.compile(r"^##\s+Theory and Problems\b", re.MULTILINE)
 _REVIEW_HEADINGS = re.compile(
     r"^#{1,3}\s+(Multiple Choice|Matching|True/False|Completion|Review Questions|Problems|Exercises|Practice Problems)\b",
     re.MULTILINE,
@@ -53,9 +51,7 @@ _FRONT_MATTER = re.compile(
     r"^#{1,6}\s+(Preface|Table of Contents|Copyright|Dedication)\b",
     re.IGNORECASE | re.MULTILINE,
 )
-_CHAPTER_HEADER = re.compile(
-    r"^#\s+(?:CHAPTER|Chapter)\s+\d+", re.MULTILINE
-)
+_CHAPTER_HEADER = re.compile(r"^#\s+(?:CHAPTER|Chapter)\s+\d+", re.MULTILINE)
 # Back-of-book answer block markers — `Chapter N` followed by an answer
 # subheading. We re-classify these from back_matter -> review_exercises.
 _BACK_OF_BOOK_BLOCK = re.compile(
@@ -285,9 +281,7 @@ def _llm_classify(
     prompts_root = config.get("prompts", {}).get("prompts", {})
     sm_prompts = prompts_root.get("solution_manual", {})
     system_prompt = sm_prompts.get("section_classifier", "")
-    sample = "\n\n--- PAGE ---\n\n".join(
-        f.read_text()[:1500] for f in clean_md_files
-    )
+    sample = "\n\n--- PAGE ---\n\n".join(f.read_text()[:1500] for f in clean_md_files)
     models_config = config.get("models", {}).get("models", {}).get("llm", {})
     result = section_classifier_agent.run_sync(
         sample,
@@ -330,9 +324,7 @@ def join_pages(texts: list[str]) -> str:
     return out
 
 
-def merge_main_content(
-    clean_md_files: list[Path], page_labels: list[PageLabel]
-) -> str:
+def merge_main_content(clean_md_files: list[Path], page_labels: list[PageLabel]) -> str:
     """Concatenate only pages labeled main_content.
 
     Used by both segmentation (so the segmenter never sees problem-set content)
@@ -354,14 +346,10 @@ def filter_files_by_kind(
     kind: SectionKind,
 ) -> list[Path]:
     """Return cleaned-md files whose pages carry the given kind."""
-    return [
-        clean_md_files[p.page_idx] for p in page_labels if p.kind == kind
-    ]
+    return [clean_md_files[p.page_idx] for p in page_labels if p.kind == kind]
 
 
-def original_page_indices(
-    page_labels: list[PageLabel], kind: SectionKind
-) -> list[int]:
+def original_page_indices(page_labels: list[PageLabel], kind: SectionKind) -> list[int]:
     """Return original page indices (in document order) for pages of the given kind.
 
     Used to translate filtered-page indices back to original ones for image

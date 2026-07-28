@@ -17,12 +17,14 @@ from swanki.abs.client import ABSClient
 
 ME_JSON = {
     "bookmarks": [
-        {"libraryItemId": "A", "time": 10, "title": "old hamming note",
-         "createdAt": 100},
-        {"libraryItemId": "B", "time": 20, "title": "unrelated",
-         "createdAt": 300},
-        {"libraryItemId": "A", "time": 30, "title": "new note",
-         "createdAt": 200},
+        {
+            "libraryItemId": "A",
+            "time": 10,
+            "title": "old hamming note",
+            "createdAt": 100,
+        },
+        {"libraryItemId": "B", "time": 20, "title": "unrelated", "createdAt": 300},
+        {"libraryItemId": "A", "time": 30, "title": "new note", "createdAt": 200},
     ]
 }
 
@@ -76,9 +78,7 @@ def test_to_bookmark_tolerates_missing_fields():
 
 
 def test_get_bookmarks_filters_by_citation_key_and_sorts():
-    out = get_bookmarks(
-        citation_key="hammingArtDoingScience2020", client=_client()
-    )
+    out = get_bookmarks(citation_key="hammingArtDoingScience2020", client=_client())
     # Only item A bookmarks (title match), newest createdAt first.
     assert [b.library_item_id for b in out] == ["A", "A"]
     assert [b.created_at for b in out] == [200, 100]

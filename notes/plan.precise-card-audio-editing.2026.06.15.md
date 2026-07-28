@@ -142,6 +142,7 @@ card with the existing manifest. The same card's BACK side has no `card_chunks` 
 (single chunk, no citation, written directly) — the decision-5 fallback covers it.
 
 Action items (NOT a "fix"):
+
 - Verification only: confirm `generate_card_audio` writes + retains
   `card_chunks/{uuid}_manifest.json` on a fresh `audio=complementary_summary` run.
 - Guardrail: keep "never auto-prune `card_chunks/`". The only nearby `rmtree`/`unlink` are

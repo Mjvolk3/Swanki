@@ -146,10 +146,16 @@ def convert_pdf_mineru(
     gpu_label = env.get("CUDA_VISIBLE_DEVICES", "ambient/all")
     logger.info(f"Running MinerU on {pdf_path.name} (GPU {gpu_label})")
     proc = subprocess.run(
-        cmd, env=env, capture_output=True, text=True, timeout=ocr_config.get("timeout", 3600)
+        cmd,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=ocr_config.get("timeout", 3600),
     )
     if proc.returncode != 0:
-        raise RuntimeError(f"MinerU failed (exit {proc.returncode}): {proc.stderr[-2000:]}")
+        raise RuntimeError(
+            f"MinerU failed (exit {proc.returncode}): {proc.stderr[-2000:]}"
+        )
 
     stem = pdf_path.stem
     num_pages = len(PdfReader(str(pdf_path)).pages)

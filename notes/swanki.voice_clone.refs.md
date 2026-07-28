@@ -26,4 +26,3 @@ Persistence helpers serialize the pydantic models to disk (`write_speaker`, `wri
 ## 2026.06.14 - YoutubeSource records channel/title/upload-date
 
 Added `channel`, `channel_url`, `video_title`, and `upload_date` (all optional) to `YoutubeSource`. Previously a clip only recorded the bare video URL, so the source attribution (channel/title) was lost. [[scripts.clone_voice_from_youtube]] now fetches these via `yt-dlp --print` and stamps them into `clip.json`. Backfilled by hand on the existing Ball clip (The Royal Institution).
-

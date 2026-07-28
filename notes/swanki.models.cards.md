@@ -81,6 +81,7 @@ Round-trip: `to_md()` emits a single-line `<!-- user-feedback: TEXT -->` marker 
 Note-type schema change requires a one-time migration on any pre-existing Anki collection: `scripts/anki_add_feedback_field.py` calls AnkiConnect's `modelFieldAdd` for both Basic and Cloze, idempotent. Must run on the laptop (gilahyper has no Anki client per the `anki=default` rule). Without it, importing a newer .apkg on top of the old two-field model is brittle. Model IDs stay stable (seeds unchanged), so once migrated the imports drop in cleanly.
 
 Daily-pull design (not implemented):
+
 - AnkiConnect query: `tag:marked is:suspended Feedback:_*` (the `_*` matches any non-empty string).
 - For each hit, produce one bullet in a dated Dendron triage note (front + back + feedback + tags + citation key parsed from the `@<key>:` prefix).
 - For cards the user flags for escalation, call the `gh-issue` skill path to open a GitHub issue with the card content and feedback as the body. The triage report stays the source of truth; deletes/fixes are still hand-pulled, not auto-applied.

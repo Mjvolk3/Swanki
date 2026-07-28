@@ -94,9 +94,17 @@ def render_cover(pdf_bytes: bytes, dest: Path) -> None:
         prefix = dest.with_suffix("")
         subprocess.run(
             [
-                "pdftoppm", "-jpeg", "-f", "1", "-l", "1",
-                "-r", "100", "-singlefile",
-                tmp.name, str(prefix),
+                "pdftoppm",
+                "-jpeg",
+                "-f",
+                "1",
+                "-l",
+                "1",
+                "-r",
+                "100",
+                "-singlefile",
+                tmp.name,
+                str(prefix),
             ],
             check=True,
             capture_output=True,
@@ -111,7 +119,7 @@ def container_to_host(container_path: str, abs_root: Path) -> Path:
     """Rewrite an ABS container path (``/audiobooks/...``) to the host view."""
     if not container_path.startswith(CONTAINER_PREFIX):
         raise ValueError(f"unexpected container path: {container_path}")
-    return abs_root / container_path[len(CONTAINER_PREFIX):].lstrip("/")
+    return abs_root / container_path[len(CONTAINER_PREFIX) :].lstrip("/")
 
 
 def enrich_metadata(
@@ -148,10 +156,9 @@ def enrich_metadata(
         cover_updates = 0
         for library_id in proj_lib_ids:
             for item in client.library_items(library_id):
-                title = (
-                    item.get("media", {}).get("metadata", {}).get("title")
-                    or item.get("relPath")
-                )
+                title = item.get("media", {}).get("metadata", {}).get(
+                    "title"
+                ) or item.get("relPath")
                 if not title or title not in by_group:
                     continue
                 zot_item, _kind = by_group[title]
@@ -176,7 +183,4 @@ def enrich_metadata(
                 cover_updates += 1
                 print(f"  cover: {title}")
 
-        print(
-            f"  {author_updates} author updates, "
-            f"{cover_updates} covers generated"
-        )
+        print(f"  {author_updates} author updates, {cover_updates} covers generated")

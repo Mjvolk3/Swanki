@@ -25,8 +25,13 @@ def _manifest(tmp: Path, *, with_post: bool = True) -> Path:
         f = f"paper_chunk{i}.mp3"
         (chunks_dir / f).write_bytes(b"old-audio-%d" % i)
         chunks.append(
-            {"index": i, "section": 0, "text": f"text {i}", "file": f,
-             "boundary": "paragraph"}
+            {
+                "index": i,
+                "section": 0,
+                "text": f"text {i}",
+                "file": f,
+                "boundary": "paragraph",
+            }
         )
     m = {
         "audio_type": "reading",
@@ -47,9 +52,7 @@ def _manifest(tmp: Path, *, with_post: bool = True) -> Path:
 @patch("swanki.audio.surgical.text_to_speech")
 def test_text_edit_persists_and_only_named_chunk_retts(tts, restitch, tmp_path):
     mp = _manifest(tmp_path)
-    out = regenerate_and_restitch(
-        mp, {1: "corrected text 1"}, audio_type="reading"
-    )
+    out = regenerate_and_restitch(mp, {1: "corrected text 1"}, audio_type="reading")
     # Only chunk 1 re-rendered, with the corrected text.
     assert tts.call_count == 1
     assert tts.call_args.kwargs["text"] == "corrected text 1"
@@ -117,23 +120,34 @@ def test_restitch_writes_timeline_sidecar(tts, tmp_path):
             str(ck / f), format="mp3", bitrate="192k"
         )
         chunks.append(
-            {"index": i, "section": 0, "text": f"t{i}", "file": f,
-             "boundary": "paragraph"}
+            {
+                "index": i,
+                "section": 0,
+                "text": f"t{i}",
+                "file": f,
+                "boundary": "paragraph",
+            }
         )
-    (ck / "chunk_manifest.json").write_text(json.dumps({
-        "audio_type": "reading",
-        "output_file": "paper-reading-audio.mp3",
-        "bookend_start": None,
-        "bookend_end": None,
-        "postprocessor": {"section_pause_ms": 5000, "chunk_pause_ms": 700,
-                          "chunk_tail_trim_ms": 0, "chunk_crossfade_ms": 0},
-        "chunks": chunks,
-    }))
+    (ck / "chunk_manifest.json").write_text(
+        json.dumps(
+            {
+                "audio_type": "reading",
+                "output_file": "paper-reading-audio.mp3",
+                "bookend_start": None,
+                "bookend_end": None,
+                "postprocessor": {
+                    "section_pause_ms": 5000,
+                    "chunk_pause_ms": 700,
+                    "chunk_tail_trim_ms": 0,
+                    "chunk_crossfade_ms": 0,
+                },
+                "chunks": chunks,
+            }
+        )
+    )
     sidecar = ck / TIMELINE_FILENAME
     assert not sidecar.exists()
-    regenerate_and_restitch(
-        ck / "chunk_manifest.json", {1: None}, audio_type="reading"
-    )
+    regenerate_and_restitch(ck / "chunk_manifest.json", {1: None}, audio_type="reading")
     assert sidecar.exists()
     tl = ChunkTimeline.model_validate_json(sidecar.read_text())
     assert tl.audio_type == "reading"

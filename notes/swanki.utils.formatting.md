@@ -28,6 +28,7 @@ Added a regex-based pre-LLM transcript pass that expands abbreviated tokens whic
 - **Long form** (defense-in-depth for LLM regressions to the canonical problem_id): `MC-CH1-13:` / `TF-CH1-12:` / `MAT-CH1-3:` / `CMP-CH2-9:` → expanded same as short form.
 
 Plus general scaffolding:
+
 - `Ch. 1` / `Chapter 1` / `CH3` (word-bounded) → `chapter 1` / `chapter 3` (leading zeros stripped via `int()` so `CH01` reads as `chapter 1`, not `chapter oh one`).
 - `Sec. 4` / `Section 4` / `SEC2` → `section 4` / `section 2`.
 
@@ -54,7 +55,7 @@ Two new helpers extracted from `humanize_chapter_slug` to support the rewritten 
 
 ## 2026.05.17 - Strip choice-label parens for Fish Speech
 
-Extended `humanize_card_text_for_tts` with one more line-anchored pattern: `(?m)^\(([a-z])\)\s+` -> `<UPPERCASE>. `. Fish Speech tokenized `(a)` / `(b)` / `(c)` / `(d)` as phonetic glyphs (sounds like "pee a oh", or in some cards just "e"), and in worse failure modes the TTS skipped or duplicated choices entirely (e.g. MC 2 said "a milk" twice and skipped "b"). Stripping the parens and uppercasing the letter gives Fish Speech `A. milk` / `B. ham` etc., which reads as natural lettered list items with a period-induced pause.
+Extended `humanize_card_text_for_tts` with one more line-anchored pattern: `(?m)^\(([a-z])\)\s+` -> `<UPPERCASE>.`. Fish Speech tokenized `(a)` / `(b)` / `(c)` / `(d)` as phonetic glyphs (sounds like "pee a oh", or in some cards just "e"), and in worse failure modes the TTS skipped or duplicated choices entirely (e.g. MC 2 said "a milk" twice and skipped "b"). Stripping the parens and uppercasing the letter gives Fish Speech `A. milk` / `B. ham` etc., which reads as natural lettered list items with a period-induced pause.
 
 The line-anchor (`(?m)^`) is deliberate: inline back-references in body prose like "compare option (a) above" should stay readable as-is. New tests in `tests/test_card_text_humanizer.py::TestChoiceLabels` cover MC stems, Matching options, and the inline-preserve case.
 

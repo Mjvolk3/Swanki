@@ -14,4 +14,3 @@ New `TestPlainCardUserFeedback` class locks the data plumbing for the Anki revie
 - `test_to_md_omits_marker_when_empty` — no `<!-- user-feedback:` marker emitted when the field is empty.
 - `test_to_md_emits_marker_when_set` — marker is emitted and ordered BEFORE the tag line (asserts `marker_idx < tag_idx`).
 - `test_extract_cards_round_trip` — drives `to_md()` -> [[swanki.processing.anki_processor]] `extract_cards()`, asserts `user_feedback` survives and the marker is stripped from both front and back content.
-

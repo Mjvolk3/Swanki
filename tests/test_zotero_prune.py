@@ -16,13 +16,18 @@ from swanki.sync.zotero import _chapter_base, _prune_prior_attachments
 
 class TestChapterBase:
     def test_truncates_at_chapter_marker(self) -> None:
-        assert _chapter_base(
-            "alcamoSchaumsOutlineMicrobiology2010_CH01_introduction-to-microbiology"
-        ) == "alcamoSchaumsOutlineMicrobiology2010_CH01"
+        assert (
+            _chapter_base(
+                "alcamoSchaumsOutlineMicrobiology2010_CH01_introduction-to-microbiology"
+            )
+            == "alcamoSchaumsOutlineMicrobiology2010_CH01"
+        )
 
     def test_returns_legacy_bare_chapter_form_unchanged(self) -> None:
-        assert _chapter_base("alcamoSchaumsOutlineMicrobiology2010_CH01") == \
-            "alcamoSchaumsOutlineMicrobiology2010_CH01"
+        assert (
+            _chapter_base("alcamoSchaumsOutlineMicrobiology2010_CH01")
+            == "alcamoSchaumsOutlineMicrobiology2010_CH01"
+        )
 
     def test_paper_without_chapter_passes_through(self) -> None:
         # Papers (no `_CH##`) use the full content_key as their slot key.
@@ -87,7 +92,9 @@ class TestPrunePriorAttachments:
             },
         ]
         deleted = _prune_prior_attachments(
-            zot, "ITEM", "book_CH01_intro",
+            zot,
+            "ITEM",
+            "book_CH01_intro",
             "book_CH01_intro-20260506T1057-ghi789.zip",
         )
         assert deleted == 1
@@ -107,7 +114,9 @@ class TestPrunePriorAttachments:
             },
         ]
         deleted = _prune_prior_attachments(
-            zot, "ITEM", "book_CH01_intro",
+            zot,
+            "ITEM",
+            "book_CH01_intro",
             "book_CH01_intro-20260506T1057-ghi789.zip",
         )
         assert deleted == 1
@@ -126,7 +135,9 @@ class TestPrunePriorAttachments:
             },
         ]
         deleted = _prune_prior_attachments(
-            zot, "ITEM", "book_CH01_intro",
+            zot,
+            "ITEM",
+            "book_CH01_intro",
             "book_CH01_intro-20260506T1057-ghi789.zip",
         )
         assert deleted == 0
@@ -153,7 +164,9 @@ class TestPrunePriorAttachments:
             },
         ]
         deleted = _prune_prior_attachments(
-            zot, "ITEM", "book_CH01_intro",
+            zot,
+            "ITEM",
+            "book_CH01_intro",
             "book_CH01_intro-new.zip",
         )
         assert deleted == 0

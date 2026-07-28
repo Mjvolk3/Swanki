@@ -45,21 +45,21 @@ perceptual is absent) deserialize fine and fall back to current behavior.
 
 ## Relevant Files
 
-| Path | Action | Purpose | Stance |
-| --- | --- | --- | --- |
-| `swanki/models/cards.py` | MODIFY | add `image_summary_perceptual` to `CardContent` (~L92) | stable |
-| `swanki/models/document.py` | MODIFY | add `perceptual` to `ImageSummary` (~L52-57) | undocumented |
-| `swanki/models/document.py` | MODIFY | add new `ImageDescription` structured-output model | undocumented |
-| `swanki/llm/agents.py` | MODIFY | register `image_description_agent` | stable |
-| `swanki/processing/image_processor.py` | MODIFY | dual-field vision call in `_generate_image_summary` (L172-283) | stable |
-| `swanki/pipeline/pipeline.py` | MODIFY | carry `perceptual` through `process_images` (L737-789) + image-card assignment (L1437-1509) | in-flux |
-| `swanki/audio/card.py` | MODIFY | per-side picker (L144-185) + front system-prompt wording (L807-885) | in-flux |
-| `swanki/audio/reading.py` | REFERENCE | landmark path (~L218-225) must stay interpretive — verify untouched | stable |
-| `swanki/audio/lecture.py` | REFERENCE | landmark path (~L530-537) must stay interpretive — verify untouched | stable |
-| `swanki/processing/image_processor.py::_insert_image_summary` | REFERENCE | inline md summary (L285-299) stays interpretive — verify untouched | stable |
-| `swanki/llm/safety.py` | REFERENCE | `with_safety_retry` is output-type-agnostic, used unchanged (L71-154) | stable |
-| `tests/test_audio_card.py` | MODIFY | assert front picker selects perceptual + fallback | n-a |
-| `tests/test_models_validation.py` | MODIFY/NEW | assert two fields distinct, old records deserialize | n-a |
+| Path                                                          | Action     | Purpose                                                                                     | Stance       |
+|---------------------------------------------------------------|------------|---------------------------------------------------------------------------------------------|--------------|
+| `swanki/models/cards.py`                                      | MODIFY     | add `image_summary_perceptual` to `CardContent` (~L92)                                      | stable       |
+| `swanki/models/document.py`                                   | MODIFY     | add `perceptual` to `ImageSummary` (~L52-57)                                                | undocumented |
+| `swanki/models/document.py`                                   | MODIFY     | add new `ImageDescription` structured-output model                                          | undocumented |
+| `swanki/llm/agents.py`                                        | MODIFY     | register `image_description_agent`                                                          | stable       |
+| `swanki/processing/image_processor.py`                        | MODIFY     | dual-field vision call in `_generate_image_summary` (L172-283)                              | stable       |
+| `swanki/pipeline/pipeline.py`                                 | MODIFY     | carry `perceptual` through `process_images` (L737-789) + image-card assignment (L1437-1509) | in-flux      |
+| `swanki/audio/card.py`                                        | MODIFY     | per-side picker (L144-185) + front system-prompt wording (L807-885)                         | in-flux      |
+| `swanki/audio/reading.py`                                     | REFERENCE  | landmark path (~L218-225) must stay interpretive — verify untouched                         | stable       |
+| `swanki/audio/lecture.py`                                     | REFERENCE  | landmark path (~L530-537) must stay interpretive — verify untouched                         | stable       |
+| `swanki/processing/image_processor.py::_insert_image_summary` | REFERENCE  | inline md summary (L285-299) stays interpretive — verify untouched                          | stable       |
+| `swanki/llm/safety.py`                                        | REFERENCE  | `with_safety_retry` is output-type-agnostic, used unchanged (L71-154)                       | stable       |
+| `tests/test_audio_card.py`                                    | MODIFY     | assert front picker selects perceptual + fallback                                           | n-a          |
+| `tests/test_models_validation.py`                             | MODIFY/NEW | assert two fields distinct, old records deserialize                                         | n-a          |
 
 ## Key Design Decisions
 
@@ -187,6 +187,7 @@ existing "skip card if no interpretive summary" guard is unchanged — perceptua
 is best-effort.
 
 **5. Per-side audio picker + fallback.** In `swanki/audio/card.py` (L154-169):
+
 - Front branch (`is_front`, has `front.image_path`): use
   `card.front.image_summary_perceptual` **if present**, else fall back to
   `card.front.image_summary` (current behavior).

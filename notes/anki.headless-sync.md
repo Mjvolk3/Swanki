@@ -12,13 +12,13 @@ Headless Anki desktop running on gilahyper as a second AnkiWeb client. The Swank
 
 ```
 Swanki pipeline -- importPackage / sync (AnkiConnect HTTP :8765)
-        |
+|-----|
         v
 Headless Anki desktop on gilahyper (Xvfb :99, no GUI)
-        |
+|-----|
         v  normal Anki sync
 AnkiWeb (existing account, shared with Mac)
-        |
+|-----|
         v  Mac clicks Sync
 Mac Anki desktop (untouched study client)
 ```
@@ -31,13 +31,13 @@ AnkiWeb has no public API for uploading `.apkg`. The self-hosted sync server als
 
 ## Files
 
-| Path | Purpose |
-|---|---|
-| `~/bin/anki-headless.sh` | Service wrapper -- starts Xvfb on :99, then `exec`s `flatpak run net.ankiweb.Anki`. Cleans stale `/tmp/.X99-lock` + `prefs21.db-journal` on startup. |
-| `~/bin/anki-vnc-attach.sh` | On-demand VNC: x11vnc against :99 + websockify on :6080 for browser viewing. Run only when debugging. |
-| `~/bin/anki-vnc-detach.sh` | Stops x11vnc + websockify; Anki keeps running. |
-| `~/.config/systemd/user/anki-headless.service` | systemd `--user` unit. `Type=simple`, `Restart=on-failure`. |
-| `~/bin/anki-headless-login.sh` | One-shot bootstrap (Xvfb + Anki + x11vnc + websockify) used for the initial AnkiWeb login. Superseded by the systemd service; kept for reference. |
+| Path                                           | Purpose                                                                                                                                              |
+|------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `~/bin/anki-headless.sh`                       | Service wrapper -- starts Xvfb on :99, then `exec`s `flatpak run net.ankiweb.Anki`. Cleans stale `/tmp/.X99-lock` + `prefs21.db-journal` on startup. |
+| `~/bin/anki-vnc-attach.sh`                     | On-demand VNC: x11vnc against :99 + websockify on :6080 for browser viewing. Run only when debugging.                                                |
+| `~/bin/anki-vnc-detach.sh`                     | Stops x11vnc + websockify; Anki keeps running.                                                                                                       |
+| `~/.config/systemd/user/anki-headless.service` | systemd `--user` unit. `Type=simple`, `Restart=on-failure`.                                                                                          |
+| `~/bin/anki-headless-login.sh`                 | One-shot bootstrap (Xvfb + Anki + x11vnc + websockify) used for the initial AnkiWeb login. Superseded by the systemd service; kept for reference.    |
 
 Linger is enabled (`sudo loginctl enable-linger michaelvolk`) so the unit survives SSH disconnect and reboot.
 

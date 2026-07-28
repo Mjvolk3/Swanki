@@ -294,7 +294,8 @@ def test_combine_audio_with_section_pauses_bookends(tmp_path):
 
 def test_combine_audio_bookend_pauses_are_asymmetric(tmp_path):
     """A larger end pause + trailing silence makes the same content longer
-    than a symmetric-small-pause assembly."""
+    than a symmetric-small-pause assembly.
+    """
     chunk, start, end = (tmp_path / n for n in ("c.mp3", "s.mp3", "e.mp3"))
     for p in (chunk, start, end):
         _silence(p, 500)

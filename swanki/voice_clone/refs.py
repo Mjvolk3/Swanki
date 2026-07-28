@@ -39,6 +39,8 @@ CLIP_ID_PATTERN = re.compile(r"^\d{8}T\d{4}-[a-z0-9-]+$")
 
 
 class YoutubeSource(BaseModel):
+    """Provenance for a clip cut from a YouTube video."""
+
     type: str = "youtube"
     url: str
     playlist_url: str | None = None
@@ -53,6 +55,8 @@ class YoutubeSource(BaseModel):
 
 
 class AudioFormat(BaseModel):
+    """PCM parameters the clip was normalised to before registration."""
+
     sample_rate_hz: int = 24000
     channels: int = 1
     encoding: str = "pcm_s16le"
@@ -60,6 +64,8 @@ class AudioFormat(BaseModel):
 
 
 class DenoisingState(BaseModel):
+    """Whether (and how) a clip was denoised on the way in."""
+
     applied: bool = False
     method: str | None = None
     model: str | None = None

@@ -45,14 +45,14 @@ clear/re-mark is a separate, deferred, user-approved step (see Open Questions).
 
 ## Relevant Files
 
-| Path | Action | Purpose | Stance |
-|---|---|---|---|
-| `swanki/audio/_common.py` | MODIFY | Add opt-in second-pass balanced repack + min-2-sentence invariant to `chunk_text_paragraphs`; add onset fade in `_load()` | IN-FLUX (25+ dated entries thru 2026.06.02) |
-| `swanki/audio/lecture.py` | MODIFY | Wire `soft_max_chars` + `chunk_onset_fade_ms` from `tts_kwargs` into chunker + stitch call | STABLE (latest 2026.05.31) |
-| `swanki/conf/models/fish_speech.yaml` | MODIFY | `max_chars` 700->650 (hard), add `soft_max_chars: 500`, add `chunk_onset_fade_ms: 25` | STABLE config (no paired note) |
-| `tests/test_audio_common.py` | MODIFY | Unit tests for even-split, merge precedence, escape hatches, hard cap, byte-identical non-fish default | n/a |
-| `.../hammingArtDoingScience2020/hammingArtDoingScience2020_CH03_history-of-computers-hardware/lecture_transcript/*_transcript_cleaned_markdown.md` | REFERENCE | A/B source CH03 | n/a |
-| `.../hammingArtDoingScience2020_CH04_history-of-computers-software/lecture_transcript/*_transcript_cleaned_markdown.md` | REFERENCE | A/B source CH04 (EXCLUDE `_CH04_..._4card_BAK`) | n/a |
+| Path                                                                                                                                               | Action    | Purpose                                                                                                                   | Stance                                      |
+|----------------------------------------------------------------------------------------------------------------------------------------------------|-----------|---------------------------------------------------------------------------------------------------------------------------|---------------------------------------------|
+| `swanki/audio/_common.py`                                                                                                                          | MODIFY    | Add opt-in second-pass balanced repack + min-2-sentence invariant to `chunk_text_paragraphs`; add onset fade in `_load()` | IN-FLUX (25+ dated entries thru 2026.06.02) |
+| `swanki/audio/lecture.py`                                                                                                                          | MODIFY    | Wire `soft_max_chars` + `chunk_onset_fade_ms` from `tts_kwargs` into chunker + stitch call                                | STABLE (latest 2026.05.31)                  |
+| `swanki/conf/models/fish_speech.yaml`                                                                                                              | MODIFY    | `max_chars` 700->650 (hard), add `soft_max_chars: 500`, add `chunk_onset_fade_ms: 25`                                     | STABLE config (no paired note)              |
+| `tests/test_audio_common.py`                                                                                                                       | MODIFY    | Unit tests for even-split, merge precedence, escape hatches, hard cap, byte-identical non-fish default                    | n/a                                         |
+| `.../hammingArtDoingScience2020/hammingArtDoingScience2020_CH03_history-of-computers-hardware/lecture_transcript/*_transcript_cleaned_markdown.md` | REFERENCE | A/B source CH03                                                                                                           | n/a                                         |
+| `.../hammingArtDoingScience2020_CH04_history-of-computers-software/lecture_transcript/*_transcript_cleaned_markdown.md`                            | REFERENCE | A/B source CH04 (EXCLUDE `_CH04_..._4card_BAK`)                                                                           | n/a                                         |
 
 Transcript root: `/scratch/projects/torchcell-scratch/Swanki_Data/hammingArtDoingScience2020/`.
 

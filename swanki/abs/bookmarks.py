@@ -77,9 +77,7 @@ def get_bookmarks(
     for raw in me.get("bookmarks", []):
         bm = _to_bookmark(raw)
         if bm.library_item_id not in title_cache:
-            title_cache[bm.library_item_id] = _item_title(
-                c, bm.library_item_id
-            )
+            title_cache[bm.library_item_id] = _item_title(c, bm.library_item_id)
         bm.item_title = title_cache[bm.library_item_id]
         if citation_key and citation_key.lower() not in (
             bm.item_title.lower() + " " + bm.note.lower()
@@ -90,9 +88,7 @@ def get_bookmarks(
     return out
 
 
-def in_windows(
-    time_s: float, windows: list[tuple[float, float]] | None
-) -> bool:
+def in_windows(time_s: float, windows: list[tuple[float, float]] | None) -> bool:
     """Whether a bookmark time falls inside any window (None = everywhere)."""
     if windows is None:
         return True

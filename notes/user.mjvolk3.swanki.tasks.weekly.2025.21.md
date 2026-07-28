@@ -198,4 +198,3 @@ cards.3.front.text
 
 Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.
 ```
-

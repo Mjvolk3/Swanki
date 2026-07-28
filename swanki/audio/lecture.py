@@ -509,6 +509,9 @@ def generate_lecture_audio(
         correctness: Optional report-only factual-pass collector (default off).
             When enabled, the final transcript's claims are assessed and the
             pipeline hook writes the audit. Audio is never mutated.
+        **tts_kwargs: Provider-specific TTS options forwarded to the
+            synthesis call (server_url, reference_id, preprocessor /
+            chunking / postprocessor sub-trees, ...).
 
     Returns:
         Filename of the generated audio file.

@@ -76,9 +76,7 @@ class TestDeliver:
         _stage(tmp_path)
         DeliveryMarkers.load(tmp_path).mark("zotero", when="t")
         with (
-            patch(
-                "swanki.delivery.targets.zotero.ZoteroBackupTarget.push"
-            ) as zpush,
+            patch("swanki.delivery.targets.zotero.ZoteroBackupTarget.push") as zpush,
             patch("swanki.delivery.targets.anki.AnkiTarget.push", return_value=1),
         ):
             result = deliver(

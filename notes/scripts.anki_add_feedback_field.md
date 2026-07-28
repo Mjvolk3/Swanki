@@ -13,4 +13,3 @@ One-shot, idempotent migration that adds the `Feedback` field (ord 2, after Fron
 - Idempotent: checks `modelFieldNames` first; reports `added` / `already_present` / `missing_model` per model and exits non-zero only when a requested model is absent.
 - Run on the laptop — gilahyper has no Anki client (the `anki=default` rule).
 - Pairs with the model-side change in [[swanki.processing.apkg_exporter]] and the round-trip plumbing in [[swanki.models.cards]] / [[swanki.processing.anki_processor]]. Model IDs are unchanged, so retrofitted collections keep their scheduling history.
-

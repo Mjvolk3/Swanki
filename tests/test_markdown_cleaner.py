@@ -96,7 +96,9 @@ def test_wrapped_table_with_caption_read_verbatim_no_double_count(tmp_path):
 
 
 def test_two_bare_tabulars_numbered_in_order(tmp_path):
-    content = "Intro.\n\n" + BARE_TABULAR + "\n\nMiddle.\n\n" + BARE_TABULAR + "\n\nEnd."
+    content = (
+        "Intro.\n\n" + BARE_TABULAR + "\n\nMiddle.\n\n" + BARE_TABULAR + "\n\nEnd."
+    )
     out = MarkdownCleaner(tmp_path)._apply_cleaning(content, page_stem="page-8")
     assert list(iter_table_placeholders(out)) == [("page-8", 0), ("page-8", 1)]
 

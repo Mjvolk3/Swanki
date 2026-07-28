@@ -30,6 +30,7 @@ gate's kept list the single source of truth; `replace_card` then cleans up the 5
 already-live cards without a full regen.
 
 Scope boundary: `replace_card` is a **live-collection patch only** — `updateNoteFields`
+
 + `storeMediaFile` + one AnkiWeb `sync`. It deliberately does NOT re-export a full
 `.apkg` to Zotero; that GUID-divergence boundary stays paused (see
 `project_card_unify_regen`). No ABS step: per-card complementary audio ships inside
@@ -37,23 +38,23 @@ the apkg `[sound:]`, not an ABS projection.
 
 ## Relevant Files
 
-| Path | Action | Purpose | Stance |
-| --- | --- | --- | --- |
-| `swanki/audio/card_replace.py` | NEW | Thin orchestrator: locate live note, regen both sides, rebuild fields, patch collection, update md files | n-a |
-| `scripts/swanki_replace_card.py` | NEW | SLURM CLI; mirrors `swanki_card_edit.py` (Fish ref setup, `build_fish_tts_kwargs`, `swap_anki_media`) | n-a |
-| `scripts/swanki_replace_card.sbatch` | NEW | In-job Fish bring-up; mirrors `swanki_card_edit.sbatch` | n-a |
-| `tests/test_audio_card_replace.py` | NEW | Unit tests mirroring `test_audio_card_edit.py` (patch TTS/combine) | n-a |
-| `notes/swanki.audio.card_replace.md` | NEW | Paired dendron note for the orchestrator | n-a |
-| `notes/scripts.swanki_replace_card.md` | NEW | Paired dendron note for the CLI | n-a |
-| `swanki/pipeline/pipeline.py` | MODIFY | `generate_outputs` returns the kept list; reassign `all_cards` at `337`/`359`/`533` | in-flux |
-| `swanki/audio/card_edit.py` | REFERENCE | Reuse `_whole_side_retts` (111-173) via `edit_card_chunk` whole-side fallback (176) with explicit `new_text` | stable |
-| `swanki/audio/card.py` | REFERENCE | Manifest + filename shape: `{key}_{uuid}_{side}.mp3`, `card_chunks/{uuid}_manifest.json` (367-591) | stable |
-| `swanki/audio/comment_edit.py` | REFERENCE | `edit_chunk`, `_SPEED_BY_AUDIO_TYPE` (card=1.6) | stable |
-| `swanki/audio/_common.py` | REFERENCE | `text_to_speech`, `chunk_text`, `append_chunk_pause`, `combine_audio`, `ensure_fish_speech_reference` | stable |
-| `swanki/processing/anki_processor.py` | REFERENCE | Import `prepare_for_anki` (540); `process_content` (470) — both pure, do NOT modify | stable-but-note-stale |
-| `swanki/delivery/targets/anki.py` | REFERENCE | `ankiconnect_call` (57, fail-fast), `default_ankiconnect_url` (109) | stable |
-| `scripts/swanki_audio_edit.py` | REFERENCE | `build_fish_tts_kwargs` source pattern | stable |
-| `swanki/models/cards.py` | REFERENCE | `to_md` citation prefix (1072-1083); `model_copy` preserves `card_id` | in-flux |
+| Path                                   | Action    | Purpose                                                                                                      | Stance                |
+|----------------------------------------|-----------|--------------------------------------------------------------------------------------------------------------|-----------------------|
+| `swanki/audio/card_replace.py`         | NEW       | Thin orchestrator: locate live note, regen both sides, rebuild fields, patch collection, update md files     | n-a                   |
+| `scripts/swanki_replace_card.py`       | NEW       | SLURM CLI; mirrors `swanki_card_edit.py` (Fish ref setup, `build_fish_tts_kwargs`, `swap_anki_media`)        | n-a                   |
+| `scripts/swanki_replace_card.sbatch`   | NEW       | In-job Fish bring-up; mirrors `swanki_card_edit.sbatch`                                                      | n-a                   |
+| `tests/test_audio_card_replace.py`     | NEW       | Unit tests mirroring `test_audio_card_edit.py` (patch TTS/combine)                                           | n-a                   |
+| `notes/swanki.audio.card_replace.md`   | NEW       | Paired dendron note for the orchestrator                                                                     | n-a                   |
+| `notes/scripts.swanki_replace_card.md` | NEW       | Paired dendron note for the CLI                                                                              | n-a                   |
+| `swanki/pipeline/pipeline.py`          | MODIFY    | `generate_outputs` returns the kept list; reassign `all_cards` at `337`/`359`/`533`                          | in-flux               |
+| `swanki/audio/card_edit.py`            | REFERENCE | Reuse `_whole_side_retts` (111-173) via `edit_card_chunk` whole-side fallback (176) with explicit `new_text` | stable                |
+| `swanki/audio/card.py`                 | REFERENCE | Manifest + filename shape: `{key}_{uuid}_{side}.mp3`, `card_chunks/{uuid}_manifest.json` (367-591)           | stable                |
+| `swanki/audio/comment_edit.py`         | REFERENCE | `edit_chunk`, `_SPEED_BY_AUDIO_TYPE` (card=1.6)                                                              | stable                |
+| `swanki/audio/_common.py`              | REFERENCE | `text_to_speech`, `chunk_text`, `append_chunk_pause`, `combine_audio`, `ensure_fish_speech_reference`        | stable                |
+| `swanki/processing/anki_processor.py`  | REFERENCE | Import `prepare_for_anki` (540); `process_content` (470) — both pure, do NOT modify                          | stable-but-note-stale |
+| `swanki/delivery/targets/anki.py`      | REFERENCE | `ankiconnect_call` (57, fail-fast), `default_ankiconnect_url` (109)                                          | stable                |
+| `scripts/swanki_audio_edit.py`         | REFERENCE | `build_fish_tts_kwargs` source pattern                                                                       | stable                |
+| `swanki/models/cards.py`               | REFERENCE | `to_md` citation prefix (1072-1083); `model_copy` preserves `card_id`                                        | in-flux               |
 
 ## Key Design Decisions
 
@@ -206,7 +207,7 @@ re-sync; ABS refresh; any new TTS engine; minting new card ids; touching the
 
 ## Verification
 
-- **Unit tests (`tests/test_audio_card_replace.py`, NEW):** mirror
++ **Unit tests (`tests/test_audio_card_replace.py`, NEW):** mirror
   `tests/test_audio_card_edit.py` — patch `text_to_speech` and `combine_audio` so NO
   Fish/TTS runs in tests. Cover: (a) both-sides regen calls the whole-side re-TTS
   path with explicit `new_text` per side; (b) Front field carries `@citation:` prefix
@@ -215,15 +216,15 @@ re-sync; ABS refresh; any new TTS engine; minting new card ids; touching the
   fields dict includes Feedback (preserved); (e) manifest-absent degrades to text-only
   and requires `note_id`; (f) `cards-plain.md`/`cards-with-audio.md` updated via
   `model_copy` with uuid preserved.
-- **Gate regression (`tests/test_card_correctness.py`, extend):** assert that after
++ **Gate regression (`tests/test_card_correctness.py`, extend):** assert that after
   `generate_outputs`, the reassigned `all_cards` equals the gated kept list, and that
   `cards-with-audio.md` + the note pushed to Anki reflect the gated list (not the
   pre-gate `all_cards`). Assert the gate runs exactly once (no second invocation).
-- **Commands:**
-  - `~/opt/miniconda3/envs/swanki/bin/Swanki python -m pytest tests/test_audio_card_replace.py tests/test_card_correctness.py -q`
-  - `mypy` on changed files: `swanki/audio/card_replace.py swanki/pipeline/pipeline.py scripts/swanki_replace_card.py`
-  - `ruff check` on the same changed files.
-- **Manual smoke:** the FIRST real run is the 5 mis-shipped alcamo cards (CH01, CH03,
++ **Commands:**
+  + `~/opt/miniconda3/envs/swanki/bin/Swanki python -m pytest tests/test_audio_card_replace.py tests/test_card_correctness.py -q`
+  + `mypy` on changed files: `swanki/audio/card_replace.py swanki/pipeline/pipeline.py scripts/swanki_replace_card.py`
+  + `ruff check` on the same changed files.
++ **Manual smoke:** the FIRST real run is the 5 mis-shipped alcamo cards (CH01, CH03,
   CH04 x2, CH05). Before running, verify each of the 5 has a comp-audio manifest
   (`card_chunks/{uuid}_manifest.json` present -> audio+field path) vs text-only
   (`--note-id` required). Run one card end-to-end via `swanki_replace_card.sbatch`

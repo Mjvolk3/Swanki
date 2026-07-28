@@ -81,14 +81,10 @@ class TestProblemTagRoundTrip:
         assert parsed.problem_id == "MAT-CH3-7"
 
     def test_parse_rejects_lowercase_prefix(self) -> None:
-        assert ProblemTag.parse(
-            "alcamo2010.problem.mc-CH1-7", "alcamo2010"
-        ) is None
+        assert ProblemTag.parse("alcamo2010.problem.mc-CH1-7", "alcamo2010") is None
 
     def test_parse_rejects_wrong_citation_key(self) -> None:
-        assert ProblemTag.parse(
-            "alcamo2010.problem.MC-CH1-7", "bishop2017"
-        ) is None
+        assert ProblemTag.parse("alcamo2010.problem.MC-CH1-7", "bishop2017") is None
 
     def test_parse_rejects_malformed_tag(self) -> None:
         assert ProblemTag.parse("not.a.tag.shape", "alcamo2010") is None

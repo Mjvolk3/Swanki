@@ -68,7 +68,7 @@ Papers are tracked in scratch notes as citation key checklists. Currently import
 
 - Add `"pyzotero"` to dependencies (line 36, before closing `]`)
 
-## Verification
+## Verification Commands
 
 ```bash
 /Users/michaelvolk/miniconda3/bin/python scripts/zotero_import.py montanolopezPhysiologicalLimitationsOpportunities2022

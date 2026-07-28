@@ -12,7 +12,7 @@ created: 1781029315687
 `scripts/abs_setup_libraries.py`: idempotently create
 `/audiobooks/<proj>/Swanki-<Kind>-<Audiotype>` libraries per projection;
 existing folders are left untouched; a library name colliding across
-projections gets the `<proj>: ` prefix.
+projections gets the `<proj>:` prefix.
 
 - `build_library_index` inverts folder paths to
   `(projection, kind, audiotype) -> library_id`, normalizing audiotype to

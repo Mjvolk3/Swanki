@@ -15,8 +15,8 @@ Convention: pass the **smallest** `--answer-key-pages` range covering only the t
 For Schaum's Microbiology (Alcamo, 2nd ed.) the per-chapter ranges are:
 
 | Chapter | Pages | Answer key |
-|---|---|---|
-| Ch1 | 8-18 | 328-328 |
-| Ch2+ | TBD | TBD |
+|---------|-------|------------|
+| Ch1     | 8-18  | 328-328    |
+| Ch2+    | TBD   | TBD        |
 
 First validated 2026.04.26 on Ch1 — packed PDF (12 pages) ran end-to-end through the swanki pipeline producing 31 cards + summary/lecture/reading audio + Zotero sync.

@@ -192,6 +192,9 @@ def generate_reading_audio(
             each Pass-2 chunk is diffed against its transcript and the final
             transcript is validated for acronym double-emits; the pipeline hook
             writes the accumulated audit. Audio is never mutated.
+        **tts_kwargs: Provider-specific TTS options forwarded to the
+            synthesis call (server_url, reference_id, preprocessor /
+            chunking / postprocessor sub-trees, ...).
 
     Returns:
         Filename of the generated audio file.

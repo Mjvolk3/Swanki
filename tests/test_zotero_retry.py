@@ -64,9 +64,7 @@ class TestRetryWrapper:
         assert seq.calls == 1  # not retried
 
     def test_exhausts_after_max_tries(self) -> None:
-        seq = _Sequence(
-            _status_error(504), _status_error(502), _status_error(503)
-        )
+        seq = _Sequence(_status_error(504), _status_error(502), _status_error(503))
         with pytest.raises(httpx.HTTPStatusError):
             with_zotero_retry(seq, max_tries=3, sleep=_no_sleep)
         assert seq.calls == 3

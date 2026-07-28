@@ -284,9 +284,7 @@ class MarkdownCleaner:
             image_url = img_match.group(1)
 
             # Extract caption text if available (full caption, no truncation).
-            caption_match = re.search(
-                r"\\caption\{(.*?)\}", figure_content, re.DOTALL
-            )
+            caption_match = re.search(r"\\caption\{(.*?)\}", figure_content, re.DOTALL)
             if caption_match:
                 caption_text = clean_caption(caption_match.group(1))
             else:

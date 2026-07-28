@@ -53,7 +53,9 @@ def test_extract_audio_rerun_is_noop(tmp_path: Path):
 def test_extract_audio_replaces_stale_same_key_and_type(tmp_path: Path):
     dest = tmp_path / "proj"
     dest.mkdir()
-    extract_audio(_zip(OLD, OTHER_TYPE), {"lecture", "summary"}, dest, "Book", "hamming")
+    extract_audio(
+        _zip(OLD, OTHER_TYPE), {"lecture", "summary"}, dest, "Book", "hamming"
+    )
     extract_audio(_zip(NEW), {"lecture", "summary"}, dest, "Book", "hamming")
 
     lecture_dir = dest / "Swanki-Book-Lecture" / "hamming"

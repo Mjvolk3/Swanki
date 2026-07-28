@@ -6,19 +6,19 @@ updated: 1748637174895
 created: 1661539594543
 ---
 
-### Architecture
+## Architecture
 
 Swanki is implemented as a modular python application built on a pipeline-driven architecture that converts PDFs into Anki flashcards through sequential processing stages (Figure 1A). The core pipeline orchestrates PDF splitting using PyPDF2, OCR conversion via Mathpix API, and AI-powered content generation using OpenAI's GPT models with Instructor for enforcing structured outputs. The system employs a sliding window approach over the PDF with configurable window sizes to maintain contextual coherence and for guaranteeing full coverage during card generation. Pydantic data models used by Instructor ensure content validation and type safety throughout the processing workflow.
 
-### Configuration
+## Configuration
 
 The software utilizes Hydra's hierarchical configuration system to provide comprehensive customization through automatically generated configuration files stored in `.swanki_config`. Users can modify processing parameters including window size, cards per page, image processing settings, and modify AI model prompts to their liking. The configuration system supports runtime overrides via command-line arguments and includes preset profiles (default, comprehensive, fast) for different use cases. Output files and Anki decks use citation keys so users can mix cards into large decks without losing context which supports elaborative encoding helping users relate their learnings across topics.
 
-### Cards
+## Cards
 
 The system generates three primary card types: standard question-answer cards (Figure 1A), cloze deletion cards that mask information (Figure 1B), and image-based cards derived from figures and diagrams (Figure 1C). Cards are tagged using configurable hierarchical systems with citation keys automatically prepended to maintain source attribution. LaTeX mathematical notation is preserved for visual display and converted to natural language for audio compatibility.
 
-### Audio
+## Audio
 
 Swanki's complementary audio system generates four distinct audio types: complementary audio providing front/back narration for each flashcard, summary audio for rapid content review, reading audio containing complete document narration, and lecture audio formatted as educational presentations. The system uses LLMs to convert academic text into transcripts for text-to-speech (TTS) models, automatically humanizing mathematical expressions and adding descriptions for images. Audio generation supports variable playback speeds, voice options, and other options configurable via the ElevenLabs API.
 

@@ -113,9 +113,7 @@ def _agent_rewrite(
     return result.output
 
 
-def _archive_chunk(
-    chunks_dir: Path, chunk: dict, manifest: dict, stamp: str
-) -> None:
+def _archive_chunk(chunks_dir: Path, chunk: dict, manifest: dict, stamp: str) -> None:
     """Snapshot the prior chunk audio+text and the manifest into ``_edits/``.
 
     Called BEFORE any overwrite, so the first edit captures the original
@@ -265,7 +263,11 @@ def edit_chunk(
     if speech_only:
         action, rationale = "speech_only", "caller requested a speech-only re-roll"
     elif new_text is not None:
-        action, rationale, raw_new = "edit_text", "explicit caller-supplied text", new_text
+        action, rationale, raw_new = (
+            "edit_text",
+            "explicit caller-supplied text",
+            new_text,
+        )
     else:
         assert comment is not None  # guaranteed by the args assert above
         assert model, "model (pydantic-ai model string) required for the comment path"

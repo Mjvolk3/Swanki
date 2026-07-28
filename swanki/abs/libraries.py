@@ -25,9 +25,7 @@ from swanki.abs.client import ABSClient
 KINDS = ("Paper", "Book")
 
 
-def ensure_libraries(
-    client: ABSClient, projections: dict[str, dict[str, Any]]
-) -> int:
+def ensure_libraries(client: ABSClient, projections: dict[str, dict[str, Any]]) -> int:
     """Idempotently create each projection's audiobook libraries.
 
     Returns:
@@ -35,9 +33,7 @@ def ensure_libraries(
     """
     libs = client.libraries()
     by_folder = {
-        folder["fullPath"]: lib
-        for lib in libs
-        for folder in lib.get("folders", [])
+        folder["fullPath"]: lib for lib in libs for folder in lib.get("folders", [])
     }
     existing_names = {lib["name"] for lib in libs}
     print(f"Found {len(libs)} existing libraries on {client.base_url}")
@@ -48,8 +44,7 @@ def ensure_libraries(
         for kind in kinds:
             for audiotype in cfg["audiotypes"]:
                 folder = (
-                    f"/audiobooks/{proj_name}/"
-                    f"Swanki-{kind}-{audiotype.capitalize()}"
+                    f"/audiobooks/{proj_name}/Swanki-{kind}-{audiotype.capitalize()}"
                 )
                 if folder in by_folder:
                     print(f"  = {by_folder[folder]['name']}  (at {folder})")
@@ -57,9 +52,7 @@ def ensure_libraries(
 
                 simple = f"{kind} — {audiotype.capitalize()}"
                 name = (
-                    simple
-                    if simple not in existing_names
-                    else f"{proj_name}: {simple}"
+                    simple if simple not in existing_names else f"{proj_name}: {simple}"
                 )
                 client.create_library(name, folder)
                 print(f"  + {name}  ->  {folder}")
@@ -91,9 +84,7 @@ def build_library_index(client: ABSClient) -> dict[tuple[str, str, str], str]:
     return index
 
 
-def library_items_by_title(
-    client: ABSClient, library_id: str
-) -> dict[str, str]:
+def library_items_by_title(client: ABSClient, library_id: str) -> dict[str, str]:
     """Map item title (or folder name) -> ABS item id for one library."""
     items: dict[str, str] = {}
     for item in client.library_items(library_id):

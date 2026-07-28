@@ -52,9 +52,7 @@ class TestPackChapter:
         assert n == 10
         assert len(PdfReader(out).pages) == 10
 
-    def test_out_of_bounds_range_raises(
-        self, source_pdf: Path, tmp_path: Path
-    ) -> None:
+    def test_out_of_bounds_range_raises(self, source_pdf: Path, tmp_path: Path) -> None:
         from swanki.pdf_prep import pack_chapter
 
         out = tmp_path / "packed.pdf"

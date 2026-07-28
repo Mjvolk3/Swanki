@@ -39,8 +39,7 @@ def test_reading_coverage_expansion_is_above_one():
     # so a faithful transcript is >= source.
     src = "The SAR system and the CPU were new in 1950."
     transcript = (
-        "The S-A-R system and the C-P-U were new in 1950. "
-        "Hamming, 1986, notes this."
+        "The S-A-R system and the C-P-U were new in 1950. Hamming, 1986, notes this."
     )
     assert reading_coverage_ratio(src, transcript) > 1.0
 
@@ -231,9 +230,7 @@ def test_humanize_latex():
     with patch("swanki.audio._common.text_agent") as mock_agent:
         mock_agent.run_sync.return_value = mock_result
 
-        result = humanize_latex(
-            "The variable $\\alpha$ equals 5.", "openai:test"
-        )
+        result = humanize_latex("The variable $\\alpha$ equals 5.", "openai:test")
 
         assert isinstance(result, str)
         assert len(result) > 0

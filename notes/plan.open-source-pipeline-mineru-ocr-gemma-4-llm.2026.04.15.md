@@ -894,26 +894,26 @@ def synthesize_audio_from_transcripts(
 
 After addressing the above findings:
 
-| File Spec | Rating |
-|-----------|--------|
-| `swanki/ocr/__init__.py` | GREEN |
-| `swanki/ocr/mineru.py` | YELLOW (MinerU API specifics need empirical testing) |
-| `swanki/infra/__init__.py` | GREEN |
-| `swanki/infra/server_pool.py` | GREEN |
-| `swanki/infra/vllm_server.py` | GREEN (after --device removal) |
-| `swanki/infra/fish_speech_server.py` | GREEN (new, mirrors vllm_server) |
-| `swanki/infra/gpu_orchestrator.py` | GREEN (after Fish Speech lifecycle clarification) |
-| `swanki/conf/models/gemma4.yaml` | GREEN |
-| `swanki/llm/agents.py` | GREEN |
-| `swanki/audio/_common.py` | GREEN |
-| `swanki/audio/card.py` | YELLOW (TTS guard points identifiable from code) |
-| `swanki/audio/reading.py` | YELLOW (same) |
-| `swanki/audio/summary.py` | YELLOW (same) |
-| `swanki/audio/lecture.py` | YELLOW (same) |
-| `swanki/pipeline/pipeline.py` | YELLOW (improved from RED with added detail) |
-| `swanki/presentation/slide_generator.py` | GREEN |
-| SLURM scripts | GREEN |
-| Tests | YELLOW (test cases clear, implementation requires mocking) |
-| `pyproject.toml` | GREEN |
+| File Spec                                | Rating                                                     |
+|------------------------------------------|------------------------------------------------------------|
+| `swanki/ocr/__init__.py`                 | GREEN                                                      |
+| `swanki/ocr/mineru.py`                   | YELLOW (MinerU API specifics need empirical testing)       |
+| `swanki/infra/__init__.py`               | GREEN                                                      |
+| `swanki/infra/server_pool.py`            | GREEN                                                      |
+| `swanki/infra/vllm_server.py`            | GREEN (after --device removal)                             |
+| `swanki/infra/fish_speech_server.py`     | GREEN (new, mirrors vllm_server)                           |
+| `swanki/infra/gpu_orchestrator.py`       | GREEN (after Fish Speech lifecycle clarification)          |
+| `swanki/conf/models/gemma4.yaml`         | GREEN                                                      |
+| `swanki/llm/agents.py`                   | GREEN                                                      |
+| `swanki/audio/_common.py`                | GREEN                                                      |
+| `swanki/audio/card.py`                   | YELLOW (TTS guard points identifiable from code)           |
+| `swanki/audio/reading.py`                | YELLOW (same)                                              |
+| `swanki/audio/summary.py`                | YELLOW (same)                                              |
+| `swanki/audio/lecture.py`                | YELLOW (same)                                              |
+| `swanki/pipeline/pipeline.py`            | YELLOW (improved from RED with added detail)               |
+| `swanki/presentation/slide_generator.py` | GREEN                                                      |
+| SLURM scripts                            | GREEN                                                      |
+| Tests                                    | YELLOW (test cases clear, implementation requires mocking) |
+| `pyproject.toml`                         | GREEN                                                      |
 
 All RED ratings resolved. Remaining YELLOW items are implementable by an agent that reads the existing code alongside the plan.

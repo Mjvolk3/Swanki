@@ -137,10 +137,7 @@ def sync_projection(
     dest_root = abs_root / name
     dest_root.mkdir(parents=True, exist_ok=True)
 
-    print(
-        f"\n=== Projection: {name} "
-        f"(Zotero {lib_type}/{lib_id}, tag={tag!r}) ==="
-    )
+    print(f"\n=== Projection: {name} (Zotero {lib_type}/{lib_id}, tag={tag!r}) ===")
     zot = make_zotero_client(lib_id, lib_type, api_key)
     items = fetch_items(zot, tag)
     print(f"  {len(items)} item(s) matched")

@@ -33,6 +33,7 @@ _ROMAN_NUMERAL_WORDS = {
 ```
 
 `_sub` becomes:
+
 ```python
 def _sub(m):
     tok = m.group(1)
@@ -44,6 +45,7 @@ def _sub(m):
 ```
 
 Why this set / these exclusions:
+
 - Letters are C/D/M-free, so real initialisms like `MD`, `CV`, `DC`, `MC`, `CI`, `MM` are NOT in the map and keep letter-spelling (correct). The only I/V/X collisions are `IV` (intravenous) and `VI` (vi editor) — deliberately excluded, so they behave EXACTLY as today (no regression).
 - Everything mapped (`II, III, VII, VIII, IX, XI..XX`) has no common English initialism, so converting to a word is safe and catches "World War II/III", "Part VII", "Henry VIII", "Chapter IX", "Section XV".
 - Output is lowercase ("two"); TTS reads it identically to "Two".

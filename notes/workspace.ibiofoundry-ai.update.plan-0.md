@@ -306,28 +306,28 @@ Also add the `dendronTreeDepth` input (pickString 1-5) to the inputs array.
 
 **New files to CREATE**:
 
-| File                                            | Source                       |
-| ----------------------------------------------- | ---------------------------- |
-| `.claude/skills/update-py-notes/SKILL.md`       | Adapted from iBioFoundry-AI  |
-| `.claude/skills/update-tasks-weekly/SKILL.md`   | Adapted from iBioFoundry-AI  |
-| `.claude/skills/pdf/SKILL.md`                   | Adapted from iBioFoundry-AI  |
-| `.claude/skills/save-plan/SKILL.md`             | Adapted from iBioFoundry-AI  |
-| `.claude/skills/stage/SKILL.md`                 | Adapted from iBioFoundry-AI  |
-| `.claude/skills/commit/SKILL.md`                | Adapted from iBioFoundry-AI  |
-| `.claude/skills/ruff/SKILL.md`                  | Adapted from iBioFoundry-AI  |
-| `.claude/skills/dendron-tree/SKILL.md`          | Copied from iBioFoundry-AI   |
-| `.claude/skills/gh-issue/SKILL.md`              | Adapted from iBioFoundry-AI  |
-| `notes/assets/publish/scripts/export_pod_md.sh` | Copied from iBioFoundry-AI   |
-| `notes/assets/publish/filters/break-long-code.lua` | Copied from iBioFoundry-AI |
-| `scripts/dendron-tree.sh`                       | Copied from iBioFoundry-AI   |
+| File                                               | Source                      |
+|----------------------------------------------------|-----------------------------|
+| `.claude/skills/update-py-notes/SKILL.md`          | Adapted from iBioFoundry-AI |
+| `.claude/skills/update-tasks-weekly/SKILL.md`      | Adapted from iBioFoundry-AI |
+| `.claude/skills/pdf/SKILL.md`                      | Adapted from iBioFoundry-AI |
+| `.claude/skills/save-plan/SKILL.md`                | Adapted from iBioFoundry-AI |
+| `.claude/skills/stage/SKILL.md`                    | Adapted from iBioFoundry-AI |
+| `.claude/skills/commit/SKILL.md`                   | Adapted from iBioFoundry-AI |
+| `.claude/skills/ruff/SKILL.md`                     | Adapted from iBioFoundry-AI |
+| `.claude/skills/dendron-tree/SKILL.md`             | Copied from iBioFoundry-AI  |
+| `.claude/skills/gh-issue/SKILL.md`                 | Adapted from iBioFoundry-AI |
+| `notes/assets/publish/scripts/export_pod_md.sh`    | Copied from iBioFoundry-AI  |
+| `notes/assets/publish/filters/break-long-code.lua` | Copied from iBioFoundry-AI  |
+| `scripts/dendron-tree.sh`                          | Copied from iBioFoundry-AI  |
 
 **Existing files to MODIFY**:
 
-| File                                                | Change                                 |
-| --------------------------------------------------- | -------------------------------------- |
-| `notes/assets/publish/scripts/bib_tex_pdf.sh`      | Replace with iBioFoundry-AI version    |
-| `notes/assets/publish/tex-templates/header-includes.tex` | Update with new LaTeX packages    |
-| `swanki.code-workspace`                             | Add export pod + dendron tree tasks    |
+| File                                                     | Change                              |
+|----------------------------------------------------------|-------------------------------------|
+| `notes/assets/publish/scripts/bib_tex_pdf.sh`            | Replace with iBioFoundry-AI version |
+| `notes/assets/publish/tex-templates/header-includes.tex` | Update with new LaTeX packages      |
+| `swanki.code-workspace`                                  | Add export pod + dendron tree tasks |
 
 **Directories to CREATE**:
 

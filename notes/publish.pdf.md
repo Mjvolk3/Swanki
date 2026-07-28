@@ -8,7 +8,7 @@ created: 1661892034192
 
 ## Merge Tools
 
-- [PDF Merge Tools](https://sites.astro.caltech.edu/observatories/coo/solicit/mergePDF.html#:~:text=ghostscript%20is%20commonly%2Ftypically%20foun
+- [PDF Merge Tools](<https://sites.astro.caltech.edu/observatories/coo/solicit/mergePDF.html#:~:text=ghostscript%20is%20commonly%2Ftypically%20foun>
 
 ### Linux and MacOS
 

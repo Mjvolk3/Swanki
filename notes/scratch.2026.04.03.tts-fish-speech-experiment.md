@@ -11,6 +11,7 @@ created: 1775234351567
 Experiment comparing TTS providers for Swanki audio generation on `luoWhenCausalInference2020` (2-page causal inference paper, 8 cards).
 
 **Infrastructure:**
+
 - Machine: gilahyper (4x NVIDIA RTX 6000 Ada, 48GB each)
 - Fish Speech S2 Pro (5B params) running via Docker on Slurm, 1 GPU
 - ~20GB VRAM resident, single-threaded inference
@@ -35,16 +36,17 @@ Experiment comparing TTS providers for Swanki audio generation on `luoWhenCausal
 - **Critic fix:** not yet applied (critic flagged prosody tags as meta-commentary)
 - **Output:** `luoWhenCausalInference2020-fish_3/`
 
-| Stage | Start | End | Duration |
-|-------|-------|-----|----------|
-| PDF + markdown + images + cards | 03:03 | 03:07 | ~4 min |
-| Card audio (8 cards, 16 TTS calls) | 03:07 | 03:49 | ~42 min |
-| Summary audio (8 TTS chunks) | 03:49 | 04:19 | ~30 min |
-| Reading audio (5 TTS chunks) | 04:19 | 04:34 | ~15 min |
-| Lecture (generate + 3x critique + 4 TTS chunks) | 04:34 | 04:47 | ~13 min |
-| **Total** | **03:03** | **04:47** | **~1h 44m** |
+| Stage                                           | Start     | End       | Duration    |
+|-------------------------------------------------|-----------|-----------|-------------|
+| PDF + markdown + images + cards                 | 03:03     | 03:07     | ~4 min      |
+| Card audio (8 cards, 16 TTS calls)              | 03:07     | 03:49     | ~42 min     |
+| Summary audio (8 TTS chunks)                    | 03:49     | 04:19     | ~30 min     |
+| Reading audio (5 TTS chunks)                    | 04:19     | 04:34     | ~15 min     |
+| Lecture (generate + 3x critique + 4 TTS chunks) | 04:34     | 04:47     | ~13 min     |
+| **Total**                                       | **03:03** | **04:47** | **~1h 44m** |
 
 **Observations:**
+
 - TTS is the bottleneck: ~100 min of 104 min total
 - Each TTS chunk takes ~2-5 min (Fish Speech inference on RTX 6000)
 - GPU utilization spikes during inference, drops to 0% between requests (no batching/pipelining)
@@ -62,10 +64,10 @@ Experiment comparing TTS providers for Swanki audio generation on `luoWhenCausal
 - **Output:** TBD
 - **Hypothesis:** Larger chunks should reduce per-call overhead and total time
 
-| Stage | Start | End | Duration |
-|-------|-------|-----|----------|
-| ... | | | |
-| **Total** | | | |
+| Stage     | Start | End | Duration |
+|-----------|-------|-----|----------|
+| ...       |       |     |          |
+| **Total** |       |     |          |
 
 ## ElevenLabs Baseline (for comparison)
 
@@ -74,6 +76,7 @@ No ElevenLabs run on this paper from gilahyper (no prior data). Historical refer
 ## GPU Utilization Analysis
 
 Fish Speech inference is **single-threaded, single-request**:
+
 - LLAMA worker pulls one request from FIFO queue, processes it, then waits
 - No dynamic batching, no request pipelining
 - 0% GPU between requests is expected
@@ -81,6 +84,7 @@ Fish Speech inference is **single-threaded, single-request**:
 - With 48GB GPU: could fit `--workers 2` (~40GB) but adds complexity
 
 **Potential speedups (not yet implemented):**
+
 1. Concurrent HTTP requests from Swanki (asyncio/threading) to keep queue fed
 2. Larger Swanki text chunks (currently 3000-4500 chars, model supports 32K context)
 3. `--compile` flag for torch.compile optimization (one-time warmup cost)

@@ -18,27 +18,27 @@ No kanban issue is associated with this work.
 
 ## Relevant Files
 
-| Path | Purpose | Tag |
-|------|---------|-----|
-| `swanki/audio/_common.py` | Chunker (`chunk_text_paragraphs`), `append_chunk_pause`, `combine_audio_with_section_pauses` (tail-buffer constant at line 830), `_normalize_fish_speech_punct`, post-refine scrubbers | MODIFY |
-| `swanki/audio/lecture.py` | Lecture writer + critic + refine loop, `_strip_duplicate_openers` (line 117) — the precedent for new deterministic guards | MODIFY |
-| `swanki/audio/summary.py` | Summary audio path; shares `_common` chunker/post-refine layer | REFERENCE |
-| `swanki/audio/reading.py` | Reading audio path; same shared layer | REFERENCE |
-| `swanki/audio/card.py` | Per-card audio; pronunciation overrides apply via shared TTS path | REFERENCE |
-| `swanki/models/cards.py` | `LectureTranscriptFeedback` (line 1352) — extend with `bridge_quality` and `repeated_phrase` dimensions | MODIFY |
-| `swanki/utils/formatting.py` | `humanize_citation_key` (line 184) — extend to absorb chapter slugs (`*_03_history-of-computers-hardware` -> "Chapter three, history of computers and hardware") | MODIFY |
-| `swanki/conf/models/fish_speech.yaml` | Base fish-speech config; add nested `tts.{preprocessor,chunking,postprocessor}` sub-trees | MODIFY |
-| `swanki/conf/models/fish_speech_hamming.yaml` | Per-paper override; pronunciation table (SAR -> "sar"; Decisively phoneme override) lives here, NOT in base | MODIFY |
-| `swanki/conf/models/fish_speech_audrey.yaml` | Sibling per-paper variant; mirror new sub-tree skeleton (no per-paper overrides yet) | MODIFY |
-| `swanki/conf/models/fish_speech_bechtel.yaml` | Same as audrey | MODIFY |
-| `swanki/conf/prompts/default.yaml` | Lecture writer prompt; add bridging-sentence instruction for sections after the first | MODIFY |
-| `swanki/conf/prompts/book_voice.yaml` | Book-voice prompt twin; mirror bridging instruction (must keep first-person whitelist intact) | MODIFY |
-| `swanki/pipeline/pipeline.py` | Load-bearing flat-listed `tts_kwargs` dict at lines 1902-1908; add three nested keys via single `OmegaConf.to_container(resolve=True)` conversion | MODIFY |
-| `tests/test_audio_common.py` | Fix the two broken assertions at lines 351 and 375; add coverage for chunker `max_chars=700`, `gain_match_target_dbfs`, `chunk_pause_ms`, slug stripper, repeated-phrase detector, sigh-tag scrubber | MODIFY |
-| `tests/test_audio_lecture.py` | Add tests for `bridge_quality` critic dimension and refiner first-person whitelist preservation | MODIFY (or NEW if absent) |
-| `tests/test_formatting.py` | Add cases for chapter-slug humanization | MODIFY (or NEW if absent) |
-| `/scratch/hammingArtDoingScience2020/rerun_hamming_lectures.sh` | Existing batch regen entry-point; rerun after merge to validate against the 33 bookmarks | REFERENCE |
-| `scripts/abs_refresh.sh` | Pushes regenerated mp3s to BookPlayer; invoked as `scripts/abs_refresh.sh hammingArtDoingScience2020` after rerun | REFERENCE |
+| Path                                                            | Purpose                                                                                                                                                                                              | Tag                       |
+|-----------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------|
+| `swanki/audio/_common.py`                                       | Chunker (`chunk_text_paragraphs`), `append_chunk_pause`, `combine_audio_with_section_pauses` (tail-buffer constant at line 830), `_normalize_fish_speech_punct`, post-refine scrubbers               | MODIFY                    |
+| `swanki/audio/lecture.py`                                       | Lecture writer + critic + refine loop, `_strip_duplicate_openers` (line 117) — the precedent for new deterministic guards                                                                            | MODIFY                    |
+| `swanki/audio/summary.py`                                       | Summary audio path; shares `_common` chunker/post-refine layer                                                                                                                                       | REFERENCE                 |
+| `swanki/audio/reading.py`                                       | Reading audio path; same shared layer                                                                                                                                                                | REFERENCE                 |
+| `swanki/audio/card.py`                                          | Per-card audio; pronunciation overrides apply via shared TTS path                                                                                                                                    | REFERENCE                 |
+| `swanki/models/cards.py`                                        | `LectureTranscriptFeedback` (line 1352) — extend with `bridge_quality` and `repeated_phrase` dimensions                                                                                              | MODIFY                    |
+| `swanki/utils/formatting.py`                                    | `humanize_citation_key` (line 184) — extend to absorb chapter slugs (`*_03_history-of-computers-hardware` -> "Chapter three, history of computers and hardware")                                     | MODIFY                    |
+| `swanki/conf/models/fish_speech.yaml`                           | Base fish-speech config; add nested `tts.{preprocessor,chunking,postprocessor}` sub-trees                                                                                                            | MODIFY                    |
+| `swanki/conf/models/fish_speech_hamming.yaml`                   | Per-paper override; pronunciation table (SAR -> "sar"; Decisively phoneme override) lives here, NOT in base                                                                                          | MODIFY                    |
+| `swanki/conf/models/fish_speech_audrey.yaml`                    | Sibling per-paper variant; mirror new sub-tree skeleton (no per-paper overrides yet)                                                                                                                 | MODIFY                    |
+| `swanki/conf/models/fish_speech_bechtel.yaml`                   | Same as audrey                                                                                                                                                                                       | MODIFY                    |
+| `swanki/conf/prompts/default.yaml`                              | Lecture writer prompt; add bridging-sentence instruction for sections after the first                                                                                                                | MODIFY                    |
+| `swanki/conf/prompts/book_voice.yaml`                           | Book-voice prompt twin; mirror bridging instruction (must keep first-person whitelist intact)                                                                                                        | MODIFY                    |
+| `swanki/pipeline/pipeline.py`                                   | Load-bearing flat-listed `tts_kwargs` dict at lines 1902-1908; add three nested keys via single `OmegaConf.to_container(resolve=True)` conversion                                                    | MODIFY                    |
+| `tests/test_audio_common.py`                                    | Fix the two broken assertions at lines 351 and 375; add coverage for chunker `max_chars=700`, `gain_match_target_dbfs`, `chunk_pause_ms`, slug stripper, repeated-phrase detector, sigh-tag scrubber | MODIFY                    |
+| `tests/test_audio_lecture.py`                                   | Add tests for `bridge_quality` critic dimension and refiner first-person whitelist preservation                                                                                                      | MODIFY (or NEW if absent) |
+| `tests/test_formatting.py`                                      | Add cases for chapter-slug humanization                                                                                                                                                              | MODIFY (or NEW if absent) |
+| `/scratch/hammingArtDoingScience2020/rerun_hamming_lectures.sh` | Existing batch regen entry-point; rerun after merge to validate against the 33 bookmarks                                                                                                             | REFERENCE                 |
+| `scripts/abs_refresh.sh`                                        | Pushes regenerated mp3s to BookPlayer; invoked as `scripts/abs_refresh.sh hammingArtDoingScience2020` after rerun                                                                                    | REFERENCE                 |
 
 ## Key Design Decisions
 

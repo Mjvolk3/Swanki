@@ -98,9 +98,7 @@ def mirror_zotero_collections(
 
             for kind, groups in groups_by_kind.items():
                 for audiotype in audiotypes:
-                    target_lib = lib_index.get(
-                        (proj_name, kind, audiotype.lower())
-                    )
+                    target_lib = lib_index.get((proj_name, kind, audiotype.lower()))
                     if not target_lib:
                         continue
                     if target_lib not in items_cache:
@@ -121,6 +119,4 @@ def mirror_zotero_collections(
                         client, target_lib, abs_name, matched, existing_by_name
                     )
                     note = f"  (missing: {missing_ct})" if missing_ct else ""
-                    print(
-                        f"  {action}: {abs_name}  [{len(matched)} items]{note}"
-                    )
+                    print(f"  {action}: {abs_name}  [{len(matched)} items]{note}")

@@ -21,7 +21,9 @@ def _setup(tmp_path: Path, *, source: str = "factor & years \\\\ 2 & 17 \\\\") -
     summaries.mkdir()
     page = clean / "page-4.md"
     page.write_text(
-        "Intro.\n" + landmark_block("Table", table_placeholder("page-4", 0)) + "Outro.\n"
+        "Intro.\n"
+        + landmark_block("Table", table_placeholder("page-4", 0))
+        + "Outro.\n"
     )
     (summaries / "page-4_0.source.txt").write_text(source)
     return tmp_path
@@ -40,7 +42,9 @@ def test_fills_placeholder_with_one_sentence(tmp_path):
     with _mock_llm("A comparison of parent age against the knowledge a child faces."):
         results = TableProcessor(tmp_path, "fake:model").process_all_tables()
     out = (tmp_path / "clean-md-singles" / "page-4.md").read_text()
-    assert "Table: A comparison of parent age against the knowledge a child faces." in out
+    assert (
+        "Table: A comparison of parent age against the knowledge a child faces." in out
+    )
     assert "TBLLMK" not in out.replace("\x00", "")
     assert len(results) == 1
     assert results[0].page_stem == "page-4" and results[0].occurrence_idx == 0

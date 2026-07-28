@@ -116,9 +116,7 @@ def _client(handler) -> ABSClient:
 def test_libraries_unwraps_envelope():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["Authorization"] == "Bearer tok"
-        return httpx.Response(
-            200, json={"libraries": [{"id": "lib1"}, {"id": "lib2"}]}
-        )
+        return httpx.Response(200, json={"libraries": [{"id": "lib1"}, {"id": "lib2"}]})
 
     assert [x["id"] for x in _client(handler).libraries()] == ["lib1", "lib2"]
 
@@ -135,9 +133,7 @@ def test_request_plain_text_body_returns_empty_dict():
     # The live /scan endpoint returns a non-JSON body on success; the legacy
     # curl discarded it. Must not attempt to JSON-parse it.
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200, text="OK", headers={"content-type": "text/plain"}
-        )
+        return httpx.Response(200, text="OK", headers={"content-type": "text/plain"})
 
     c = _client(handler)
     c.scan_library("lib1")

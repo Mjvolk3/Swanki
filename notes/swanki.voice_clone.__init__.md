@@ -34,4 +34,3 @@ for clip_id, clip in iter_clips("hamming"):
 ```
 
 Companion modules: `swanki.voice_clone.refs` (schema), `swanki.voice_clone.denoise` (DeepFilterNet wrapper). Companion CLI: [[scripts.clone_voice_from_youtube]] for end-to-end YouTube → denoise → register.
-

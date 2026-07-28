@@ -69,6 +69,7 @@ class CardPlan(BaseModel):
 
     @model_validator(mode="after")
     def check_n_cards_consistent(self) -> "CardPlan":
+        """Assert n_cards matches the main + subproblem + solution breakdown."""
         expected = (
             int(self.include_main)
             + len(self.subproblem_labels)
@@ -190,10 +191,12 @@ class ProblemTag(BaseModel):
     problem_id: str
 
     def render(self) -> str:
+        """Render as the flat Anki tag string."""
         return f"{self.citation_key}.problem.{self.problem_id}"
 
     @classmethod
     def parse(cls, tag: str, citation_key: str) -> "ProblemTag | None":
+        """Parse a tag back into a ProblemTag, or None if it does not match."""
         m = _PROBLEM_TAG_RE.match(tag)
         if m is None or m.group(1) != citation_key:
             return None

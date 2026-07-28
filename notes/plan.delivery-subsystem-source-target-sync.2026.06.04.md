@@ -35,34 +35,34 @@ the queue DONE semantics. No kanban issues are tracked for this work.
 
 ## Relevant Files
 
-| path | action | purpose | stance |
-| --- | --- | --- | --- |
-| `swanki/delivery/__init__.py` | NEW | export `SyncSource`, `SyncTarget`, `deliver()` orchestrator | n-a |
-| `swanki/delivery/source.py` | NEW | `LocalSource` / `ZoteroSource` resolvers yielding canonical apkg+zip set for a key | n-a |
-| `swanki/delivery/targets/anki.py` | NEW | Anki target: per-item importPackage + single final sync (absorbs `swanki_anki_sync.py`) | n-a |
-| `swanki/delivery/targets/abs.py` | NEW | ABS target: 7-step scan + projections (absorbs `abs_refresh.sh` + `swanki_abs_sync.py`) | n-a |
-| `swanki/delivery/zotero_target.py` | NEW | thin wrapper marking the Zotero backup as a target (delegates to `sync_to_zotero`) | n-a |
-| `swanki/delivery/markers.py` | NEW | read/write `.delivery.json` per-target markers for crash-consistent re-drain | n-a |
-| `swanki/delivery/orchestrator.py` | NEW | run targets in order Zotero->Anki->ABS, honor enable flags, ABS debounce hook | n-a |
-| `swanki/conf/delivery/default.yaml` | NEW | `source: local`, all targets enabled, retry knobs | n-a |
-| `swanki/conf/delivery/zotero_source.yaml` | NEW | variant: `source: zotero` for users without on-disk data | n-a |
-| `swanki/conf/config.yaml` | MODIFY | register `delivery: default` in the defaults list | stable |
-| `swanki/sync/zotero.py` | MODIFY | harden: explicit `httpx.Client` timeout + call-site retry wrapper; stays sole fox-tag writer | stable |
-| `swanki/sync/__init__.py` | MODIFY | re-export hardened client helper if shared with delivery | stable |
-| `swanki/pipeline/pipeline.py` | MODIFY | call `deliver()` (Zotero backup) at pipeline end behind config, replacing bare `sync_to_zotero` | stable |
-| `scripts/swanki_queue.sh` | MODIFY | DONE = delivered Zotero->Anki->ABS; per-item Anki; ABS debounced once at drain end | in-flux |
-| `scripts/swanki_anki_sync.py` | MODIFY | becomes thin shim -> `swanki.delivery` anki target (keeps Sync Terminology + tests) | stable |
-| `scripts/abs_refresh.sh` | MODIFY | becomes thin shim -> ABS target; preserves `flock -n` (cron) vs `--wait` (delivery) | stable |
-| `scripts/swanki_abs_sync.py` | MODIFY | logic absorbed by ABS target; file kept as shim | stable |
-| `scripts/swanki_sync.sh` | MODIFY | thin shim chaining the subsystem (`--projection`/`--dry-run` forwarded) | stable |
-| `scripts/_swanki_zotero_artifacts.py` | REFERENCE | reuse newest-per-content-prefix + `_chapter_base` logic from local source | stable |
-| `scripts/swanki_enqueue.sh` | REFERENCE | job spec writer; unchanged but informs source key derivation | provisional |
+| path                                             | action    | purpose                                                                                           | stance       |
+|--------------------------------------------------|-----------|---------------------------------------------------------------------------------------------------|--------------|
+| `swanki/delivery/__init__.py`                    | NEW       | export `SyncSource`, `SyncTarget`, `deliver()` orchestrator                                       | n-a          |
+| `swanki/delivery/source.py`                      | NEW       | `LocalSource` / `ZoteroSource` resolvers yielding canonical apkg+zip set for a key                | n-a          |
+| `swanki/delivery/targets/anki.py`                | NEW       | Anki target: per-item importPackage + single final sync (absorbs `swanki_anki_sync.py`)           | n-a          |
+| `swanki/delivery/targets/abs.py`                 | NEW       | ABS target: 7-step scan + projections (absorbs `abs_refresh.sh` + `swanki_abs_sync.py`)           | n-a          |
+| `swanki/delivery/zotero_target.py`               | NEW       | thin wrapper marking the Zotero backup as a target (delegates to `sync_to_zotero`)                | n-a          |
+| `swanki/delivery/markers.py`                     | NEW       | read/write `.delivery.json` per-target markers for crash-consistent re-drain                      | n-a          |
+| `swanki/delivery/orchestrator.py`                | NEW       | run targets in order Zotero->Anki->ABS, honor enable flags, ABS debounce hook                     | n-a          |
+| `swanki/conf/delivery/default.yaml`              | NEW       | `source: local`, all targets enabled, retry knobs                                                 | n-a          |
+| `swanki/conf/delivery/zotero_source.yaml`        | NEW       | variant: `source: zotero` for users without on-disk data                                          | n-a          |
+| `swanki/conf/config.yaml`                        | MODIFY    | register `delivery: default` in the defaults list                                                 | stable       |
+| `swanki/sync/zotero.py`                          | MODIFY    | harden: explicit `httpx.Client` timeout + call-site retry wrapper; stays sole fox-tag writer      | stable       |
+| `swanki/sync/__init__.py`                        | MODIFY    | re-export hardened client helper if shared with delivery                                          | stable       |
+| `swanki/pipeline/pipeline.py`                    | MODIFY    | call `deliver()` (Zotero backup) at pipeline end behind config, replacing bare `sync_to_zotero`   | stable       |
+| `scripts/swanki_queue.sh`                        | MODIFY    | DONE = delivered Zotero->Anki->ABS; per-item Anki; ABS debounced once at drain end                | in-flux      |
+| `scripts/swanki_anki_sync.py`                    | MODIFY    | becomes thin shim -> `swanki.delivery` anki target (keeps Sync Terminology + tests)               | stable       |
+| `scripts/abs_refresh.sh`                         | MODIFY    | becomes thin shim -> ABS target; preserves `flock -n` (cron) vs `--wait` (delivery)               | stable       |
+| `scripts/swanki_abs_sync.py`                     | MODIFY    | logic absorbed by ABS target; file kept as shim                                                   | stable       |
+| `scripts/swanki_sync.sh`                         | MODIFY    | thin shim chaining the subsystem (`--projection`/`--dry-run` forwarded)                           | stable       |
+| `scripts/_swanki_zotero_artifacts.py`            | REFERENCE | reuse newest-per-content-prefix + `_chapter_base` logic from local source                         | stable       |
+| `scripts/swanki_enqueue.sh`                      | REFERENCE | job spec writer; unchanged but informs source key derivation                                      | provisional  |
 | `~/Documents/projects/infra/abs/projections.yml` | REFERENCE | ABS target's DATA file (per-projection push_audio/push_anki); consumed, not duplicated into Hydra | undocumented |
-| `tests/test_delivery_source.py` | NEW | local-source globbing + newest-per-prefix selection | n-a |
-| `tests/test_delivery_anki.py` | NEW | migrated 16 assertions from `test_swanki_anki_sync.py` (importPackage-per-item, single sync, v6) | n-a |
-| `tests/test_delivery_markers.py` | NEW | `.delivery.json` round-trip + resume-on-redrain | n-a |
-| `tests/test_zotero_retry.py` | NEW | retry on 502/504/timeout, 404 skips, exhausts after 3 | n-a |
-| `tests/test_swanki_anki_sync.py` | MODIFY | repoint at shim or migrate assertions; keep green | stable |
+| `tests/test_delivery_source.py`                  | NEW       | local-source globbing + newest-per-prefix selection                                               | n-a          |
+| `tests/test_delivery_anki.py`                    | NEW       | migrated 16 assertions from `test_swanki_anki_sync.py` (importPackage-per-item, single sync, v6)  | n-a          |
+| `tests/test_delivery_markers.py`                 | NEW       | `.delivery.json` round-trip + resume-on-redrain                                                   | n-a          |
+| `tests/test_zotero_retry.py`                     | NEW       | retry on 502/504/timeout, 404 skips, exhausts after 3                                             | n-a          |
+| `tests/test_swanki_anki_sync.py`                 | MODIFY    | repoint at shim or migrate assertions; keep green                                                 | stable       |
 
 ## Key Design Decisions
 

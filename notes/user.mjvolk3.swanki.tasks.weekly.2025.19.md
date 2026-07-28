@@ -8,5 +8,3 @@ created: 1746652315093
 ## 2025.05.07
 
 - [x] moved [[tasks.DEPRECATED|user.mjvolk3.swanki.tasks.DEPRECATED]]
-
-

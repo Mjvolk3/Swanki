@@ -67,9 +67,7 @@ class ChapterIndex(BaseModel):
     theorems: list[NumberedTheorem] = Field(default_factory=list)
 
 
-def build_chapter_index(
-    clean_md_files: list[Path], chapter_id: str
-) -> ChapterIndex:
+def build_chapter_index(clean_md_files: list[Path], chapter_id: str) -> ChapterIndex:
     """Extract numbered equations, figures, and theorems from cleaned markdown.
 
     Args:
@@ -129,9 +127,7 @@ def build_chapter_index(
 
 def write_chapter_index(index: ChapterIndex, output_path: Path) -> None:
     """Persist chapter index as YAML."""
-    output_path.write_text(
-        yaml.safe_dump(index.model_dump(), sort_keys=False)
-    )
+    output_path.write_text(yaml.safe_dump(index.model_dump(), sort_keys=False))
 
 
 def load_chapter_index(yaml_path: Path) -> ChapterIndex:

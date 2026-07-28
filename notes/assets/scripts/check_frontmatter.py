@@ -15,10 +15,16 @@ from pathlib import Path
 
 
 def check_frontmatter(file_path: str) -> bool:
-    """Check if a file starts with docstring frontmatter."""
+    """Check if a file starts with docstring frontmatter.
+
+    Accepts a raw module docstring (``r\"\"\"``) as well as a plain one. Ruff's
+    D301 fix rewrites any docstring containing a backslash to the raw form, so
+    a file can satisfy ruff and still look unfrontmattered to a ``== '\"\"\"'``
+    comparison -- which is what happened to table_processor.py.
+    """
     with open(file_path) as f:
         first_line = f.readline().strip()
-    return first_line == '"""'
+    return first_line in ('"""', 'r"""')
 
 
 def to_dendron_fname(file_path: str) -> str:

@@ -16,13 +16,13 @@ This is exactly the follow-up the charter names: `notes/swanki.sync.zotero.md` Â
 
 ## Relevant Files
 
-| Path | Action | Purpose | Stance |
-|------|--------|---------|--------|
-| `swanki/sync/zotero.py` | MODIFY | Add module-level `upload_attachment(...)`; collapse the upload block (~L285-312) to one call | Upload block was provisional/documented-to-replace; the rest of `sync_to_zotero` is stable and frozen |
-| `tests/test_zotero_upload_guard.py` | MODIFY | Rewrite: `attachment_simple` is gone from the path; drive the uploader via ordered `httpx` side-effects | Migrated |
-| `notes/swanki.sync.zotero.md` | MODIFY | Append a dated section documenting this change under the 2026.07.21 charter | Charter note |
-| `scratchpad/zupload.py` | REFERENCE | Verified 4-step prototype; source of the folded logic | Throwaway, not shipped |
-| `site-packages/pyzotero/_client.py` | REFERENCE | Confirms client attrs reused for the group-lib URL (L77-90) | External dep, unpinned (env 1.11.0) |
+| Path                                | Action    | Purpose                                                                                                 | Stance                                                                                                |
+|-------------------------------------|-----------|---------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------|
+| `swanki/sync/zotero.py`             | MODIFY    | Add module-level `upload_attachment(...)`; collapse the upload block (~L285-312) to one call            | Upload block was provisional/documented-to-replace; the rest of `sync_to_zotero` is stable and frozen |
+| `tests/test_zotero_upload_guard.py` | MODIFY    | Rewrite: `attachment_simple` is gone from the path; drive the uploader via ordered `httpx` side-effects | Migrated                                                                                              |
+| `notes/swanki.sync.zotero.md`       | MODIFY    | Append a dated section documenting this change under the 2026.07.21 charter                             | Charter note                                                                                          |
+| `scratchpad/zupload.py`             | REFERENCE | Verified 4-step prototype; source of the folded logic                                                   | Throwaway, not shipped                                                                                |
+| `site-packages/pyzotero/_client.py` | REFERENCE | Confirms client attrs reused for the group-lib URL (L77-90)                                             | External dep, unpinned (env 1.11.0)                                                                   |
 
 ## Key Design Decisions
 

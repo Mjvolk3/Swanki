@@ -10,4 +10,3 @@ created: 1769023873092
 ## 2026.01.21
 
 - [x] Attempted fix latex formatting problem. Putting brackets directly after underscore.
-

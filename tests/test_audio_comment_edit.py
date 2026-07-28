@@ -48,8 +48,13 @@ def _manifest(
         f = f"paper_chunk{i}.mp3"
         (chunks_dir / f).write_bytes(b"old-audio-%d" % i)
         chunks.append(
-            {"index": i, "section": 0, "text": f"shaped text {i}.", "file": f,
-             "boundary": "paragraph"}
+            {
+                "index": i,
+                "section": 0,
+                "text": f"shaped text {i}.",
+                "file": f,
+                "boundary": "paragraph",
+            }
         )
     m = {
         "audio_type": audio_type,
@@ -119,7 +124,10 @@ def test_comment_path_agent_edit_text(safety, tts, restitch, _ctw, tmp_path):
     )
     mp = _manifest(tmp_path)
     res = edit_chunk(
-        mp, 0, comment="say the bits", tts_kwargs=FISH_VERBALIZE,
+        mp,
+        0,
+        comment="say the bits",
+        tts_kwargs=FISH_VERBALIZE,
         model="openai:gpt-5.5",
     )
     assert "one-one-zero" in tts.call_args.kwargs["text"]
@@ -131,7 +139,9 @@ def test_comment_path_agent_edit_text(safety, tts, restitch, _ctw, tmp_path):
 @patch("swanki.audio.comment_edit.restitch_from_chunks")
 @patch("swanki.audio.comment_edit.text_to_speech")
 @patch("swanki.audio.comment_edit.with_safety_retry")
-def test_needs_section_regen_does_not_touch_audio(safety, tts, restitch, _ctw, tmp_path):
+def test_needs_section_regen_does_not_touch_audio(
+    safety, tts, restitch, _ctw, tmp_path
+):
     safety.return_value = SimpleNamespace(
         output=ChunkEditResponse(
             action="needs_section_regen",
@@ -141,7 +151,10 @@ def test_needs_section_regen_does_not_touch_audio(safety, tts, restitch, _ctw, t
     )
     mp = _manifest(tmp_path)
     res = edit_chunk(
-        mp, 0, comment="make the point stronger", tts_kwargs=FISH_KWARGS,
+        mp,
+        0,
+        comment="make the point stronger",
+        tts_kwargs=FISH_KWARGS,
         model="openai:gpt-5.5",
     )
     tts.assert_not_called()
@@ -185,8 +198,15 @@ def test_audit_trail_written(tts, restitch, _ctw, tmp_path):
     assert len(log_lines) == 1
     rec = json.loads(log_lines[0])
     assert set(rec) >= {
-        "ts", "idx", "comment", "old_text", "new_text", "action",
-        "rationale", "output_file", "git_hash",
+        "ts",
+        "idx",
+        "comment",
+        "old_text",
+        "new_text",
+        "action",
+        "rationale",
+        "output_file",
+        "git_hash",
     }
     assert rec["idx"] == 1
     assert rec["action"] == "edit_text"
@@ -206,7 +226,9 @@ def test_speed_resolves_from_manifest(tts, _rs, _ctw, tmp_path):
 @patch("swanki.audio.comment_edit.chunk_time_window", return_value=(0, 1000))
 @patch("swanki.audio.comment_edit.restitch_from_chunks")
 @patch("swanki.audio.comment_edit.text_to_speech")
-def test_speed_falls_back_to_audio_type_map_for_legacy_manifest(tts, _rs, _ctw, tmp_path):
+def test_speed_falls_back_to_audio_type_map_for_legacy_manifest(
+    tts, _rs, _ctw, tmp_path
+):
     # Legacy manifest (no speed field) -> per-audio-type fallback (lecture=1.0),
     # NOT edit_chunk's old hardcoded 1.1.
     mp = _manifest(tmp_path, audio_type="lecture")  # no speed key

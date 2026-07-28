@@ -42,43 +42,43 @@ shim over `swanki/delivery/artifacts.py`.
 
 ## Relevant Files
 
-| Path | Action | Purpose | Stance |
-| --- | --- | --- | --- |
-| `swanki/abs/__init__.py` | NEW | Public API re-exports | n/a |
-| `swanki/abs/client.py` | NEW | Single httpx `ABSClient`: token chain, retry, items, scan, chapters POST, bookmark DELETE | n/a |
-| `swanki/abs/projections.py` | NEW | Pydantic projection models, `load_projections`, `resolve_library`, citation-key/classify/group_key routing | n/a |
-| `swanki/abs/sync.py` | NEW | Zotero zip pull + idempotent `extract_audio` drop (from `swanki_abs_sync.py`) | n/a |
-| `swanki/abs/libraries.py` | NEW | Idempotent library ensure (from `abs_setup_libraries.py`) | n/a |
-| `swanki/abs/collections.py` | NEW | Zotero->ABS collection mirror, reconcile-don't-wipe (from `abs_sync_zotero_collections.py`) | n/a |
-| `swanki/abs/metadata.py` | NEW | Author + cover enrichment (from `abs_enrich_metadata.py`) | n/a |
-| `swanki/abs/chapters.py` | NEW | Stale-chapter clean + retitle, merged (shared filename->content_key derivation) | n/a |
-| `swanki/abs/bookmarks.py` | NEW | `AbsBookmark`, `get_bookmarks`, `clear_bookmarks`, `clear_bookmarks_in_windows` | n/a |
-| `swanki/abs/refresh.py` | NEW | `full_refresh` (7 steps, fcntl lock) + `targeted_refresh` (seconds-scale) | n/a |
-| `swanki/abs/__main__.py` | NEW | `python -m swanki.abs` CLI | n/a |
-| `scripts/abs_refresh.sh` | MODIFY | Becomes exec shim to `python -m swanki.abs refresh "$@"` | stable |
-| `scripts/abs_bookmarks.py` | MODIFY | Becomes re-export shim (imported by `abs_clear_bookmarks.py` and the audio-fix skill) | stable |
-| `scripts/abs_clear_bookmarks.py` | MODIFY | Becomes thin CLI shim; dry-run/`--yes` UX kept verbatim | stable rationale, superseded mechanism |
-| `swanki/delivery/targets/abs.py` | MODIFY | `AbsTarget.refresh` calls `swanki.abs.refresh.full_refresh(wait=True)`, not subprocess | stable |
-| `pyproject.toml` | MODIFY | Declare httpx (direct import today in `swanki/audio/_common.py`, `swanki/sync/zotero.py`; only transitive) | n/a |
-| `.claude/skills/audio-fix-from-annotations/SKILL.md` | MODIFY | Opportunistic: point steps at `python -m swanki.abs`; shims mean nothing breaks if skipped | stable |
-| `scripts/swanki_abs_sync.py` | DELETE | Absorbed into `swanki/abs/sync.py`; referenced only by `abs_refresh.sh` | stable |
-| `scripts/abs_setup_libraries.py` | DELETE | Absorbed into `libraries.py`; referenced only by `abs_refresh.sh` | undocumented |
-| `scripts/abs_setup_collections.py` | DELETE | Referenced by nothing; reconcile behavior captured in module notes | undocumented |
-| `scripts/abs_sync_zotero_collections.py` | DELETE | Absorbed into `collections.py` | undocumented |
-| `scripts/abs_enrich_metadata.py` | DELETE | Absorbed into `metadata.py` | undocumented |
-| `scripts/abs_clean_stale_chapters.py` | DELETE | Absorbed into `chapters.py` | in-flux (04.30 suffix tolerance) |
-| `scripts/abs_set_chapter_titles.py` | DELETE | Absorbed into `chapters.py` | in-flux (05.14 bounds idempotency) |
-| `tests/test_abs_bookmarks.py` | MODIFY | Re-point imports at `swanki.abs.bookmarks`; fixtures unchanged | n/a |
-| `tests/test_abs_client.py`, `_projections.py`, `_chapters.py`, `_sync.py`, `_refresh.py` | NEW | Mocked-transport coverage per module | n/a |
-| `swanki/sync/zotero_client.py` | REFERENCE | Retry pattern donor (`_is_retryable`, `with_zotero_retry`) | stable |
-| `swanki/audio/_common.py` | REFERENCE | `chunk_time_window` (:1973), `chunk_time_window_abs` (:2033) -- window math donors | stable |
-| `swanki/audio/comment_edit.py` | REFERENCE | `edit_chunk` returns NEW-timeline window (:285-308) -- the old-window trap | stable |
-| `swanki/delivery/__main__.py` | REFERENCE | `finalize-abs` subcommand (:71-72, :102) must keep working unchanged | stable |
-| `scripts/swanki_finalize_abs.sbatch`, `scripts/swanki_job.sbatch` | REFERENCE | ABS_DIRTY marker + singleton finalizer; untouched | stable |
-| `swanki/delivery/artifacts.py` | REFERENCE | Newest-artifact-per-content-prefix selection, reused by targeted refresh | stable |
-| `scripts/_swanki_zotero_artifacts.py` | REFERENCE | The shim precedent to copy | stable |
-| `~/Documents/projects/infra/abs/projections.yml` | REFERENCE | External routing config; stays outside the repo and outside Hydra | stable |
-| `scripts/publish_regen_to_abs.sh` (+3 sibling one-shot publish scripts) | REFERENCE | Historical one-shots; keep working through the `abs_refresh.sh` shim, otherwise untouched | n/a |
+| Path                                                                                     | Action    | Purpose                                                                                                    | Stance                                 |
+|------------------------------------------------------------------------------------------|-----------|------------------------------------------------------------------------------------------------------------|----------------------------------------|
+| `swanki/abs/__init__.py`                                                                 | NEW       | Public API re-exports                                                                                      | n/a                                    |
+| `swanki/abs/client.py`                                                                   | NEW       | Single httpx `ABSClient`: token chain, retry, items, scan, chapters POST, bookmark DELETE                  | n/a                                    |
+| `swanki/abs/projections.py`                                                              | NEW       | Pydantic projection models, `load_projections`, `resolve_library`, citation-key/classify/group_key routing | n/a                                    |
+| `swanki/abs/sync.py`                                                                     | NEW       | Zotero zip pull + idempotent `extract_audio` drop (from `swanki_abs_sync.py`)                              | n/a                                    |
+| `swanki/abs/libraries.py`                                                                | NEW       | Idempotent library ensure (from `abs_setup_libraries.py`)                                                  | n/a                                    |
+| `swanki/abs/collections.py`                                                              | NEW       | Zotero->ABS collection mirror, reconcile-don't-wipe (from `abs_sync_zotero_collections.py`)                | n/a                                    |
+| `swanki/abs/metadata.py`                                                                 | NEW       | Author + cover enrichment (from `abs_enrich_metadata.py`)                                                  | n/a                                    |
+| `swanki/abs/chapters.py`                                                                 | NEW       | Stale-chapter clean + retitle, merged (shared filename->content_key derivation)                            | n/a                                    |
+| `swanki/abs/bookmarks.py`                                                                | NEW       | `AbsBookmark`, `get_bookmarks`, `clear_bookmarks`, `clear_bookmarks_in_windows`                            | n/a                                    |
+| `swanki/abs/refresh.py`                                                                  | NEW       | `full_refresh` (7 steps, fcntl lock) + `targeted_refresh` (seconds-scale)                                  | n/a                                    |
+| `swanki/abs/__main__.py`                                                                 | NEW       | `python -m swanki.abs` CLI                                                                                 | n/a                                    |
+| `scripts/abs_refresh.sh`                                                                 | MODIFY    | Becomes exec shim to `python -m swanki.abs refresh "$@"`                                                   | stable                                 |
+| `scripts/abs_bookmarks.py`                                                               | MODIFY    | Becomes re-export shim (imported by `abs_clear_bookmarks.py` and the audio-fix skill)                      | stable                                 |
+| `scripts/abs_clear_bookmarks.py`                                                         | MODIFY    | Becomes thin CLI shim; dry-run/`--yes` UX kept verbatim                                                    | stable rationale, superseded mechanism |
+| `swanki/delivery/targets/abs.py`                                                         | MODIFY    | `AbsTarget.refresh` calls `swanki.abs.refresh.full_refresh(wait=True)`, not subprocess                     | stable                                 |
+| `pyproject.toml`                                                                         | MODIFY    | Declare httpx (direct import today in `swanki/audio/_common.py`, `swanki/sync/zotero.py`; only transitive) | n/a                                    |
+| `.claude/skills/audio-fix-from-annotations/SKILL.md`                                     | MODIFY    | Opportunistic: point steps at `python -m swanki.abs`; shims mean nothing breaks if skipped                 | stable                                 |
+| `scripts/swanki_abs_sync.py`                                                             | DELETE    | Absorbed into `swanki/abs/sync.py`; referenced only by `abs_refresh.sh`                                    | stable                                 |
+| `scripts/abs_setup_libraries.py`                                                         | DELETE    | Absorbed into `libraries.py`; referenced only by `abs_refresh.sh`                                          | undocumented                           |
+| `scripts/abs_setup_collections.py`                                                       | DELETE    | Referenced by nothing; reconcile behavior captured in module notes                                         | undocumented                           |
+| `scripts/abs_sync_zotero_collections.py`                                                 | DELETE    | Absorbed into `collections.py`                                                                             | undocumented                           |
+| `scripts/abs_enrich_metadata.py`                                                         | DELETE    | Absorbed into `metadata.py`                                                                                | undocumented                           |
+| `scripts/abs_clean_stale_chapters.py`                                                    | DELETE    | Absorbed into `chapters.py`                                                                                | in-flux (04.30 suffix tolerance)       |
+| `scripts/abs_set_chapter_titles.py`                                                      | DELETE    | Absorbed into `chapters.py`                                                                                | in-flux (05.14 bounds idempotency)     |
+| `tests/test_abs_bookmarks.py`                                                            | MODIFY    | Re-point imports at `swanki.abs.bookmarks`; fixtures unchanged                                             | n/a                                    |
+| `tests/test_abs_client.py`, `_projections.py`, `_chapters.py`, `_sync.py`, `_refresh.py` | NEW       | Mocked-transport coverage per module                                                                       | n/a                                    |
+| `swanki/sync/zotero_client.py`                                                           | REFERENCE | Retry pattern donor (`_is_retryable`, `with_zotero_retry`)                                                 | stable                                 |
+| `swanki/audio/_common.py`                                                                | REFERENCE | `chunk_time_window` (:1973), `chunk_time_window_abs` (:2033) -- window math donors                         | stable                                 |
+| `swanki/audio/comment_edit.py`                                                           | REFERENCE | `edit_chunk` returns NEW-timeline window (:285-308) -- the old-window trap                                 | stable                                 |
+| `swanki/delivery/__main__.py`                                                            | REFERENCE | `finalize-abs` subcommand (:71-72, :102) must keep working unchanged                                       | stable                                 |
+| `scripts/swanki_finalize_abs.sbatch`, `scripts/swanki_job.sbatch`                        | REFERENCE | ABS_DIRTY marker + singleton finalizer; untouched                                                          | stable                                 |
+| `swanki/delivery/artifacts.py`                                                           | REFERENCE | Newest-artifact-per-content-prefix selection, reused by targeted refresh                                   | stable                                 |
+| `scripts/_swanki_zotero_artifacts.py`                                                    | REFERENCE | The shim precedent to copy                                                                                 | stable                                 |
+| `~/Documents/projects/infra/abs/projections.yml`                                         | REFERENCE | External routing config; stays outside the repo and outside Hydra                                          | stable                                 |
+| `scripts/publish_regen_to_abs.sh` (+3 sibling one-shot publish scripts)                  | REFERENCE | Historical one-shots; keep working through the `abs_refresh.sh` shim, otherwise untouched                  | n/a                                    |
 
 ## Key Design Decisions
 

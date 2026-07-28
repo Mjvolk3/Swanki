@@ -19,20 +19,20 @@ Two deliverables:
 
 ## Relevant Files
 
-| Path | Action | Purpose | Stance |
-| --- | --- | --- | --- |
-| `swanki/audio/_common.py` | MODIFY | Home of `verbalize_bit_strings` (~after L429, next to `apply_pronunciation_overrides`) | provisional — active scrubber module |
-| `swanki/audio/lecture.py` | MODIFY | Insert verbalizer in scrubber chain at ~L855 (after acronym, before pronunciations) | in-flux — scrubber chain live since 2026.05.14 |
-| `swanki/audio/reading.py` | MODIFY | Insert verbalizer at ~L338; add reading prompt addendum in hardcoded system prompt (~L243) | provisional — mirrors lecture + holds hardcoded reading prompt |
-| `swanki/audio/summary.py` | MODIFY | Insert verbalizer at ~L156 (after acronym, before pronunciations) | provisional — mirrors lecture |
-| `swanki/audio/card.py` | MODIFY | Insert verbalizer in `_preprocess_for_tts` at ~L63 (after acronym, before pronunciations) | stable — `_preprocess_for_tts` feeds 5 TTS sites |
-| `swanki/conf/models/fish_speech.yaml` | MODIFY | Add `verbalize_bit_strings: true` + `bit_strings_max_len: 32` under `preprocessor:` (~L31) | stable — has `preprocessor:` block |
-| `swanki/conf/prompts/default.yaml` | MODIFY | Lecture prompt addendum inside `lecture_system` (block ends ~L384) | stable |
-| `tests/test_audio_common.py` | MODIFY | Verbalizer unit tests, mirroring acronym/pronunciation patterns | stable |
-| `notes/swanki.audio._common.md` | MODIFY | Dated rationale section for the new function | provisional — dendron decision log |
-| `.claude/skills/audio-fix-from-annotations/SKILL.md` | REFERENCE | Runbook tooling for ch1-9 surgical edits | reference only |
-| `.claude/skills/zotero-annotations/SKILL.md` | REFERENCE | Extract orange annotations by citation key + color | reference only |
-| `scripts/abs_clear_bookmarks.py` | REFERENCE | Clear ABS bookmarks before ch10 full regen | reference only |
+| Path                                                 | Action    | Purpose                                                                                    | Stance                                                         |
+|------------------------------------------------------|-----------|--------------------------------------------------------------------------------------------|----------------------------------------------------------------|
+| `swanki/audio/_common.py`                            | MODIFY    | Home of `verbalize_bit_strings` (~after L429, next to `apply_pronunciation_overrides`)     | provisional — active scrubber module                           |
+| `swanki/audio/lecture.py`                            | MODIFY    | Insert verbalizer in scrubber chain at ~L855 (after acronym, before pronunciations)        | in-flux — scrubber chain live since 2026.05.14                 |
+| `swanki/audio/reading.py`                            | MODIFY    | Insert verbalizer at ~L338; add reading prompt addendum in hardcoded system prompt (~L243) | provisional — mirrors lecture + holds hardcoded reading prompt |
+| `swanki/audio/summary.py`                            | MODIFY    | Insert verbalizer at ~L156 (after acronym, before pronunciations)                          | provisional — mirrors lecture                                  |
+| `swanki/audio/card.py`                               | MODIFY    | Insert verbalizer in `_preprocess_for_tts` at ~L63 (after acronym, before pronunciations)  | stable — `_preprocess_for_tts` feeds 5 TTS sites               |
+| `swanki/conf/models/fish_speech.yaml`                | MODIFY    | Add `verbalize_bit_strings: true` + `bit_strings_max_len: 32` under `preprocessor:` (~L31) | stable — has `preprocessor:` block                             |
+| `swanki/conf/prompts/default.yaml`                   | MODIFY    | Lecture prompt addendum inside `lecture_system` (block ends ~L384)                         | stable                                                         |
+| `tests/test_audio_common.py`                         | MODIFY    | Verbalizer unit tests, mirroring acronym/pronunciation patterns                            | stable                                                         |
+| `notes/swanki.audio._common.md`                      | MODIFY    | Dated rationale section for the new function                                               | provisional — dendron decision log                             |
+| `.claude/skills/audio-fix-from-annotations/SKILL.md` | REFERENCE | Runbook tooling for ch1-9 surgical edits                                                   | reference only                                                 |
+| `.claude/skills/zotero-annotations/SKILL.md`         | REFERENCE | Extract orange annotations by citation key + color                                         | reference only                                                 |
+| `scripts/abs_clear_bookmarks.py`                     | REFERENCE | Clear ABS bookmarks before ch10 full regen                                                 | reference only                                                 |
 
 ## Key Design Decisions
 

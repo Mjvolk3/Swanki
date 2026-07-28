@@ -14,8 +14,8 @@ without a full pipeline regeneration.
 
 import json
 from collections.abc import Mapping
-from typing import Any
 from pathlib import Path
+from typing import Any
 
 import requests
 
@@ -126,7 +126,5 @@ def regenerate_and_restitch(
     if output_path is None:
         output_path = manifest_path.parent.parent / manifest["output_file"]
     print(f"restitching -> {output_path}")
-    restitch_from_chunks(
-        manifest_path, output_path, section_pause_ms=section_pause_ms
-    )
+    restitch_from_chunks(manifest_path, output_path, section_pause_ms=section_pause_ms)
     return output_path

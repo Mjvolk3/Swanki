@@ -40,17 +40,17 @@ all four prompt sites, and demote the scrubber to per-paper opt-in.
 
 ## Relevant Files
 
-| Path | Action | Purpose | Stance |
-| --- | --- | --- | --- |
-| `swanki/audio/_common.py` | MODIFY | per-card call site (`:144`) -> default False; function body (`:680`) unchanged | in-flux |
-| `swanki/audio/lecture.py` | MODIFY | lecture call site (`:839`) -> default False | in-flux |
-| `swanki/audio/reading.py` | MODIFY | reading call site (`:344`) -> default False; hardcoded rule 10 (`:248`) prompt fix | in-flux |
-| `swanki/audio/summary.py` | MODIFY | summary call site (`:159`) -> default False; ADD corrected binary rule to system prompt (`~:88`) | in-flux |
-| `swanki/conf/prompts/default.yaml` | MODIFY | lecture rule 17 (`:386`) example-list fix + carve-out | n-a |
-| `swanki/conf/prompts/book_voice.yaml` | MODIFY | ADD corrected binary rule to `lecture_system` block (`~:225`) — currently has none | undocumented |
-| `swanki/conf/models/fish_speech.yaml` | MODIFY | flip documented mirror `verbalize_bit_strings: true` -> `false` (`:39`) + comment | stable |
-| `tests/test_audio_common.py` | MODIFY | flip two default-ON preprocess tests; add CH10 opt-in fixture + prompt-example guard | n-a |
-| `notes/plan.bit-string-verbalizer-hamming-annotations.2026.05.29.md` | REFERENCE | `#18` origin of the scrubber + prompt rule | stable |
+| Path                                                                 | Action    | Purpose                                                                                          | Stance       |
+|----------------------------------------------------------------------|-----------|--------------------------------------------------------------------------------------------------|--------------|
+| `swanki/audio/_common.py`                                            | MODIFY    | per-card call site (`:144`) -> default False; function body (`:680`) unchanged                   | in-flux      |
+| `swanki/audio/lecture.py`                                            | MODIFY    | lecture call site (`:839`) -> default False                                                      | in-flux      |
+| `swanki/audio/reading.py`                                            | MODIFY    | reading call site (`:344`) -> default False; hardcoded rule 10 (`:248`) prompt fix               | in-flux      |
+| `swanki/audio/summary.py`                                            | MODIFY    | summary call site (`:159`) -> default False; ADD corrected binary rule to system prompt (`~:88`) | in-flux      |
+| `swanki/conf/prompts/default.yaml`                                   | MODIFY    | lecture rule 17 (`:386`) example-list fix + carve-out                                            | n-a          |
+| `swanki/conf/prompts/book_voice.yaml`                                | MODIFY    | ADD corrected binary rule to `lecture_system` block (`~:225`) — currently has none               | undocumented |
+| `swanki/conf/models/fish_speech.yaml`                                | MODIFY    | flip documented mirror `verbalize_bit_strings: true` -> `false` (`:39`) + comment                | stable       |
+| `tests/test_audio_common.py`                                         | MODIFY    | flip two default-ON preprocess tests; add CH10 opt-in fixture + prompt-example guard             | n-a          |
+| `notes/plan.bit-string-verbalizer-hamming-annotations.2026.05.29.md` | REFERENCE | `#18` origin of the scrubber + prompt rule                                                       | stable       |
 
 ## Key Design Decisions
 

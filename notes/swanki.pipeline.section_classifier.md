@@ -11,6 +11,7 @@ created: 1777608400000
 Foundation classifier for `mode=full`'s integrated routing. Walks per-page cleaned markdown and emits a `ClassificationResult` (one `PageLabel` per page).
 
 **Heading-driven anchors:**
+
 - `## Theory and Problems` → `main_content` (Schaum's chapter body even when heavy Q&A).
 - `## Multiple Choice / Matching / True/False / Completion / Review Questions / Problems / Exercises / Practice Problems` → `review_exercises`.
 - `Preface / Table of Contents / Copyright / Dedication` → `front_matter` (only on first 5 pages, downgrades if other content cues present).
@@ -24,6 +25,7 @@ Foundation classifier for `mode=full`'s integrated routing. Walks per-page clean
 **Override workflow:** classifier persists to `<output_dir>/section-classification.yaml`. To override, hand-edit the YAML and pass `+pipeline.solution_manual.classification_override=path/to/edited.yaml` on the next run.
 
 **Helpers:**
+
 - `merge_main_content` — concat only main_content pages (segmenter input + audio source masking).
 - `filter_files_by_kind` — subset of cleaned-md files by kind (used by `Pipeline.process_full` to route pages).
 - `original_page_indices` — translate filtered-page idx → original-document idx for image-summary lookup.

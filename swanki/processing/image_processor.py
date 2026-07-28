@@ -208,9 +208,7 @@ Context around the image: {image_info["context"]}
         # "url1_partial](url2_full" which 400s at the origin. Skip these
         # so the pipeline keeps moving instead of crashing the whole run.
         if "](" in image_url or "%5D(" in image_url:
-            logger.warning(
-                f"Skipping corrupted nested image URL: {image_url[:120]}"
-            )
+            logger.warning(f"Skipping corrupted nested image URL: {image_url[:120]}")
             return None
 
         if not image_url.startswith("http"):

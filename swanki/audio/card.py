@@ -70,6 +70,8 @@ def generate_card_transcript(
         model: pydantic-ai model string (e.g. ``"openai:gpt-5-mini"``).
         citation_key: Raw citation key to include in front transcript.
         humanized_citation: Pre-humanized citation for consistency.
+        provider: TTS backend the transcript is being shaped for; controls
+            provider-specific phrasing (e.g. Fish Speech tag handling).
 
     Returns:
         Transcript text optimized for TTS.
@@ -289,6 +291,9 @@ def generate_citation_audio(
         min_file_size: Minimum valid file size in bytes.
         force_regenerate: Force regeneration even if cached.
         citation_speed_override: Override speed for citation audio only.
+        **tts_kwargs: Provider-specific TTS options forwarded to the
+            synthesis call (server_url, reference_id, preprocessor /
+            chunking / postprocessor sub-trees, ...).
 
     Returns:
         Path to the generated audio file.
@@ -397,6 +402,9 @@ def generate_card_audio(
         citation_key: Citation key for file naming and content.
         speed: Audio playback speed multiplier.
         force_regenerate_citation: Force regeneration of citation audio.
+        **tts_kwargs: Provider-specific TTS options forwarded to the
+            synthesis call (server_url, reference_id, preprocessor /
+            chunking / postprocessor sub-trees, ...).
 
     Returns:
         Tuple of (front_filename, back_filename). Back may be None.

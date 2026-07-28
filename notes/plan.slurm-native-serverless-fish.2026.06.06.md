@@ -38,29 +38,29 @@ fixes ship now because they are pure improvements that also unblock the SLURM pa
 
 ## Relevant Files
 
-| Path | Action | Purpose | Stance |
-|------|--------|---------|--------|
-| `swanki/ocr/mineru.py` | MODIFY | Drop hardcoded `cuda_visible_devices="3"` (line 100); honor ambient `CUDA_VISIBLE_DEVICES` lazily | in-flux |
-| `swanki/conf/ocr/mineru.yaml` | MODIFY | Remove `cuda_visible_devices:"3"` (line 7) GPU pin; fix stale `~/opt/miniconda3` `python_bin` (line 5) -> `~/miniconda3` | in-flux |
-| `swanki/audio/_common.py` | MODIFY | `_FISH_SPEECH_PORTS` / `_discover_fish_speech_servers` honor a single-element `SWANKI_FISH_PORTS` (lines ~887-952) | in-flux |
-| `scripts/swanki_enqueue.sh` | MODIFY | Becomes a thin `sbatch`-renderer; keep CLI + gilahyper defaults; add `--dependency`/`--after`; emit `sbatch --parsable` jobid | undocumented |
-| `scripts/swanki_queue.sh` | MODIFY | Fill the `slurm` executor branch (line ~96) as a migration bridge; keep `local` drain working | in-flux |
-| `scripts/swanki_dequeue.sh` | MODIFY | Re-point at `squeue`/`scontrol`/`scancel` for the SLURM path | undocumented |
-| `Makefile` | MODIFY | Queue targets re-point at `squeue`/`scancel` | undocumented |
-| `.claude/skills/swanki-queue/SKILL.md` | MODIFY | Skill inspects/edits via `squeue`/`scontrol` for SLURM jobs | undocumented |
-| `scripts/swanki_job.sbatch` | NEW | Per-paper sbatch template: free-port -> apptainer Fish -> native swanki -> delivery -> teardown | n-a |
-| `scripts/slurm_cutover.sh` | NEW | USER-RUN cutover/acceptance script (node resume, QOS, image build, decommission) | n-a |
-| `notes/runbook.slurm-cutover.md` | NEW | USER-RUN dendron runbook for the live cutover | n-a |
-| `tests/test_ocr_mineru_gpu_pin.py` | NEW | Unit test: mineru honors ambient `CUDA_VISIBLE_DEVICES`, no "3" leak | n-a |
-| `tests/test_audio_fish_port_resolution.py` | NEW | Unit test: single-element `SWANKI_FISH_PORTS` discovery | n-a |
-| `swanki/delivery/__main__.py` | REFERENCE | Delivery CLI (`deliver`/`finalize-abs`); module unchanged, only call site relocates | stable |
-| `swanki/delivery/` (orchestrator/anki/abs) | REFERENCE | SyncSource x SyncTarget; AnkiTarget importPackage+sync; AbsTarget `abs_refresh.sh --wait` | stable |
-| `~/Documents/projects/fish-speech/docker/Dockerfile` | MODIFY (runbook) | Bake deps + model cache into image so `apptainer --writable-tmpfs` needs no re-download | n-a |
-| `~/Documents/projects/fish-speech/slurm/fish-speech-server.sbatch` | DELETE (runbook) | Standalone Docker-Fish sbatch (`docker run --gpus device=$FISH_GPU -p`) superseded by in-job apptainer | n-a |
-| `swanki-queue.service` (systemd --user) | DELETE (runbook) | Drainer unit retired once SLURM is the scheduler | n-a |
-| `tests/test_ocr_mineru_split.py`, `tests/test_ocr_dispatch.py` | REFERENCE | Existing OCR tests to keep green | stable |
-| `tests/test_audio_common.py` | REFERENCE | Existing TTS discovery tests to keep green | stable |
-| `tests/test_delivery_*.py` | REFERENCE | Existing delivery tests to keep green | stable |
+| Path                                                               | Action           | Purpose                                                                                                                       | Stance       |
+|--------------------------------------------------------------------|------------------|-------------------------------------------------------------------------------------------------------------------------------|--------------|
+| `swanki/ocr/mineru.py`                                             | MODIFY           | Drop hardcoded `cuda_visible_devices="3"` (line 100); honor ambient `CUDA_VISIBLE_DEVICES` lazily                             | in-flux      |
+| `swanki/conf/ocr/mineru.yaml`                                      | MODIFY           | Remove `cuda_visible_devices:"3"` (line 7) GPU pin; fix stale `~/opt/miniconda3` `python_bin` (line 5) -> `~/miniconda3`      | in-flux      |
+| `swanki/audio/_common.py`                                          | MODIFY           | `_FISH_SPEECH_PORTS` / `_discover_fish_speech_servers` honor a single-element `SWANKI_FISH_PORTS` (lines ~887-952)            | in-flux      |
+| `scripts/swanki_enqueue.sh`                                        | MODIFY           | Becomes a thin `sbatch`-renderer; keep CLI + gilahyper defaults; add `--dependency`/`--after`; emit `sbatch --parsable` jobid | undocumented |
+| `scripts/swanki_queue.sh`                                          | MODIFY           | Fill the `slurm` executor branch (line ~96) as a migration bridge; keep `local` drain working                                 | in-flux      |
+| `scripts/swanki_dequeue.sh`                                        | MODIFY           | Re-point at `squeue`/`scontrol`/`scancel` for the SLURM path                                                                  | undocumented |
+| `Makefile`                                                         | MODIFY           | Queue targets re-point at `squeue`/`scancel`                                                                                  | undocumented |
+| `.claude/skills/swanki-queue/SKILL.md`                             | MODIFY           | Skill inspects/edits via `squeue`/`scontrol` for SLURM jobs                                                                   | undocumented |
+| `scripts/swanki_job.sbatch`                                        | NEW              | Per-paper sbatch template: free-port -> apptainer Fish -> native swanki -> delivery -> teardown                               | n-a          |
+| `scripts/slurm_cutover.sh`                                         | NEW              | USER-RUN cutover/acceptance script (node resume, QOS, image build, decommission)                                              | n-a          |
+| `notes/runbook.slurm-cutover.md`                                   | NEW              | USER-RUN dendron runbook for the live cutover                                                                                 | n-a          |
+| `tests/test_ocr_mineru_gpu_pin.py`                                 | NEW              | Unit test: mineru honors ambient `CUDA_VISIBLE_DEVICES`, no "3" leak                                                          | n-a          |
+| `tests/test_audio_fish_port_resolution.py`                         | NEW              | Unit test: single-element `SWANKI_FISH_PORTS` discovery                                                                       | n-a          |
+| `swanki/delivery/__main__.py`                                      | REFERENCE        | Delivery CLI (`deliver`/`finalize-abs`); module unchanged, only call site relocates                                           | stable       |
+| `swanki/delivery/` (orchestrator/anki/abs)                         | REFERENCE        | SyncSource x SyncTarget; AnkiTarget importPackage+sync; AbsTarget `abs_refresh.sh --wait`                                     | stable       |
+| `~/Documents/projects/fish-speech/docker/Dockerfile`               | MODIFY (runbook) | Bake deps + model cache into image so `apptainer --writable-tmpfs` needs no re-download                                       | n-a          |
+| `~/Documents/projects/fish-speech/slurm/fish-speech-server.sbatch` | DELETE (runbook) | Standalone Docker-Fish sbatch (`docker run --gpus device=$FISH_GPU -p`) superseded by in-job apptainer                        | n-a          |
+| `swanki-queue.service` (systemd --user)                            | DELETE (runbook) | Drainer unit retired once SLURM is the scheduler                                                                              | n-a          |
+| `tests/test_ocr_mineru_split.py`, `tests/test_ocr_dispatch.py`     | REFERENCE        | Existing OCR tests to keep green                                                                                              | stable       |
+| `tests/test_audio_common.py`                                       | REFERENCE        | Existing TTS discovery tests to keep green                                                                                    | stable       |
+| `tests/test_delivery_*.py`                                         | REFERENCE        | Existing delivery tests to keep green                                                                                         | stable       |
 
 ## Key Design Decisions
 
@@ -136,6 +136,7 @@ Execution order, why-before-what:
 
 **(i) Core code fixes + unit tests.** These are pure correctness wins independent of
 SLURM and unblock per-job GPU isolation, so they land first.
+
 - `swanki/ocr/mineru.py`: replace the `ocr_config.get("cuda_visible_devices","3")` at
   line 100 with a lazy read of the ambient `CUDA_VISIBLE_DEVICES` (only default if
   unset); the subprocess env (line 127) inherits it. `tests/test_ocr_mineru_gpu_pin.py`
@@ -230,6 +231,7 @@ services. No real `sbatch`/`.sif`/Docker mutation by the agent.
 ## Verification
 
 **Agent-safe (run in the worktree, no live side effects):**
+
 - `shellcheck scripts/swanki_job.sbatch scripts/swanki_enqueue.sh scripts/swanki_queue.sh
   scripts/swanki_dequeue.sh scripts/slurm_cutover.sh` — clean.
 - `bash -n` on every modified/new shell script.
@@ -243,6 +245,7 @@ services. No real `sbatch`/`.sif`/Docker mutation by the agent.
   (`test_ocr_mineru_gpu_pin`, `test_audio_fish_port_resolution`).
 
 **USER-RUN manual acceptance gates (in the runbook, NOT run by the agent):**
+
 - Node resume, then `srun --gres=gpu:1 nvidia-smi -L` shows **exactly one** GPU (the GRES
   isolation gate; not a code blocker — gres.conf already maps `gpu:rtx6000:4 ->
   /dev/nvidia[0-3]` and cgroup.conf has `ConstrainDevices=yes`).

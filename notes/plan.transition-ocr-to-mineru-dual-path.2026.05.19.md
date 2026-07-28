@@ -66,11 +66,11 @@ Implementation order respects dependencies: runner script -> ocr package -> pipe
 
 **Skeleton:**
 
-\`\`\`python
+```python
 """
 swanki/ocr/__init__.py
 [[swanki.ocr]]
-https://github.com/Mjvolk3/Swanki/tree/main/swanki/ocr/__init__.py
+<https://github.com/Mjvolk3/Swanki/tree/main/swanki/ocr/__init__.py>
 Test file: tests/test_ocr_dispatch.py
 
 OCR provider dispatch (mathpix | mineru) returning per-page markdown paths.
@@ -82,14 +82,13 @@ from swanki.ocr.mineru import convert_pdf_mineru
 
 __all__ = ["convert_to_markdown", "convert_pages_mathpix", "convert_pdf_mineru"]
 
-
 def convert_to_markdown(provider, *, pages, pdf_path, output_base, ocr_config):
     if provider == "mathpix":
         return convert_pages_mathpix(pages, output_base)
     if provider == "mineru":
         return convert_pdf_mineru(pdf_path, output_base, ocr_config)
     raise ValueError(f"Unknown OCR provider {provider!r}; use 'mathpix' or 'mineru'")
-\`\`\`
+```
 
 ### `swanki/ocr/mathpix.py` (NEW)
 
@@ -148,10 +147,10 @@ def convert_to_markdown(provider, *, pages, pdf_path, output_base, ocr_config):
 
 **Skeleton:**
 
-\`\`\`python
+```python
 from typing import Any
 from PyPDF2 import PdfReader
-from swanki.processing.markdown_cleaner import _natural_sort_key
+from swanki.processing.markdown_cleaner import_natural_sort_key
 
 def convert_pdf_mineru(pdf_path, output_base, ocr_config):
     if pdf_path is None:
@@ -186,7 +185,7 @@ def convert_pdf_mineru(pdf_path, output_base, ocr_config):
     pages = split_content_list_to_pages(
         raw_dir / f"{stem}_content_list.json", raw_dir, output_base, num_pages)
     return sorted(pages, key=_natural_sort_key)
-\`\`\`
+```
 
 ### `swanki/pipeline/pipeline.py` (MODIFY)
 
@@ -219,7 +218,7 @@ def convert_pdf_mineru(pdf_path, output_base, ocr_config):
 
 **Current state:** `models: {llm, tts}`. **Change:** add sibling `ocr` block:
 
-\`\`\`yaml
+```yaml
   ocr:
     provider: mathpix          # mathpix | mineru
     # --- mineru-only knobs (ignored when provider=mathpix) ---
@@ -235,7 +234,7 @@ def convert_pdf_mineru(pdf_path, output_base, ocr_config):
     lang: en
     method: auto               # auto | txt | ocr
     timeout: 3600
-\`\`\`
+```
 
 ### `swanki/conf/models/fish_speech.yaml` and `fish_speech_{audrey,bechtel,hamming}.yaml` (MODIFY)
 
@@ -245,9 +244,9 @@ def convert_pdf_mineru(pdf_path, output_base, ocr_config):
 
 **Change:** add to `[project.optional-dependencies]` (Directive 3, marker only -- real install is the conda env):
 
-\`\`\`toml
+```toml
 mineru = ["mineru[pipeline]>=2.0.0,<3", "torch<2.11", "torchvision<0.26", "huggingface_hub>=0.23"]
-\`\`\`
+```
 
 Add a comment that this extra is documentation/discoverability; production install uses the isolated `swanki-mineru` conda env (see `env/swanki-mineru-requirements.txt`). Do NOT add to core `dependencies` (PyPI bloat).
 
@@ -255,17 +254,23 @@ Add a comment that this extra is documentation/discoverability; production insta
 
 **Purpose:** isolated MinerU env, cloned from `iBioFoundry-AI/env/ibfai-mineru-requirements.txt`.
 
-\`\`\`
+```
+
 # env/swanki-mineru-requirements.txt
+
 # Isolated MinerU 2.x OCR env. MinerU bundles its own torch CUDA runtime +
+
 # torch-based PaddleOCR fork; keep it out of the swanki (3.13) env.
+
 # Create: mamba create -n swanki-mineru python=3.11 && pip install -r env/swanki-mineru-requirements.txt
+
 # Runner: scripts/run_mineru_swanki.py
+
 mineru[pipeline]>=2.0.0,<3
 torch<2.11
 torchvision<0.26
 huggingface_hub>=0.23
-\`\`\`
+```
 
 ### `scripts/setup-mineru-env.sh` (NEW)
 
@@ -280,6 +285,7 @@ huggingface_hub>=0.23
 ### `tests/test_ocr_dispatch.py` (NEW)
 
 **Test cases:**
+
 - `test_dispatch_mathpix_routes_to_mathpix` -- monkeypatch `swanki.ocr.convert_pages_mathpix` to a sentinel; assert `convert_to_markdown("mathpix", ...)` calls it with `pages`/`output_base`.
 - `test_dispatch_mineru_routes_to_mineru` -- monkeypatch `convert_pdf_mineru`; assert called with `pdf_path`/`ocr_config`.
 - `test_dispatch_unknown_provider_raises` -- `pytest.raises(ValueError)` for `provider="paddle"`.
@@ -287,6 +293,7 @@ huggingface_hub>=0.23
 ### `tests/test_ocr_mineru_split.py` (NEW)
 
 **Test cases:**
+
 - `test_split_groups_blocks_by_page` -- given a fixture `content_list.json` with blocks across `page_idx` 0/1/2, assert three `page-1.md`/`page-2.md`/`page-3.md` written, content partitioned correctly.
 - `test_split_renders_headings_and_equations` -- `text_level` -> `##`, equation block preserved.
 - `test_split_copies_images_and_rewrites_path` -- image block's `img_path` file is copied into `md-singles/` and the emitted `![](...)` points at the copied name.
@@ -295,6 +302,7 @@ huggingface_hub>=0.23
 ### `tests/test_ocr_mathpix.py` (NEW)
 
 **Test cases:**
+
 - `test_mathpix_skips_failed_pages` -- monkeypatch `subprocess.run` to fail for `page-2.pdf`, succeed others; assert it's omitted and others returned sorted.
 - `test_mathpix_raises_when_all_fail` -- all fail -> `RuntimeError`.
 - `test_mathpix_natural_sort` -- `page-10.md` sorts after `page-2.md`.
@@ -334,15 +342,15 @@ huggingface_hub>=0.23
 
 To implement, start a new Claude Code session in a worktree:
 
-\`\`\`
+```
 /read-codebase pipeline ocr audio
-\`\`\`
+```
 
 Then:
 
-\`\`\`
+```
 Implement the plan at notes/plan.transition-ocr-to-mineru-dual-path.2026.05.19.md. Read the plan first. Implement file specs in the stated order (runner -> ocr package -> pipeline wiring -> config -> deps/env -> GPU helper -> tests). For Edge Case 1, run MinerU on a real PDF first to capture the true content_list.json schema before writing the splitter. Run verification after each file. Commit with /update-notes -> /stage -> /commit after each logical unit.
-\`\`\`
+```
 
 ## Critic Review
 

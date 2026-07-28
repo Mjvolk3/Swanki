@@ -20,19 +20,19 @@ This is adjacent to the glossary carry-context work (`#21`) only in that definit
 
 ## Relevant Files
 
-| path | action | purpose | stance |
-| --- | --- | --- | --- |
-| `swanki/pipeline/card_correctness.py` | NEW | `run_correctness_gate()` — per-card concurrent assessment, returns kept list + audit | n-a |
-| `swanki/conf/card_correctness_gate/default.yaml` | NEW | Hydra config group: `enabled`, nullable `model` override | n-a |
-| `tests/test_card_correctness.py` | NEW | unit tests with mocked agent + Alcamo smoke check | n-a |
-| `notes/swanki.pipeline.card_correctness.md` | NEW | paired dendron module note + dated rationale section | n-a |
-| `swanki/models/cards.py` | MODIFY | add `CardCorrectnessAssessment` + `CardAuditEntry` Pydantic models | stable |
-| `swanki/llm/agents.py` | MODIFY | add `card_correctness_agent`, model via `get_model_string` + override | stable |
-| `swanki/pipeline/pipeline.py` | MODIFY | call gate as a late stage inside `generate_outputs` (~line 533/1904) | in-flux |
-| `swanki/llm/safety.py` | REFERENCE | `with_safety_retry(agent, prompt, instructions=, model=, label=)` wraps each call | stable |
-| `swanki/processing/apkg_exporter.py` | REFERENCE | consumes the post-gate kept list; GUID = sha256(Front, Back, Feedback) | stable |
-| `swanki/pipeline/problem_set.py` | REFERENCE | `audit_coverage()` runs before the gate; enumeration/pairing already sealed | in-flux |
-| `swanki/conf/models/default.yaml` | REFERENCE | pins `model: gpt-5.5`; gate's default model resolves from here | stable |
+| path                                             | action    | purpose                                                                              | stance  |
+|--------------------------------------------------|-----------|--------------------------------------------------------------------------------------|---------|
+| `swanki/pipeline/card_correctness.py`            | NEW       | `run_correctness_gate()` — per-card concurrent assessment, returns kept list + audit | n-a     |
+| `swanki/conf/card_correctness_gate/default.yaml` | NEW       | Hydra config group: `enabled`, nullable `model` override                             | n-a     |
+| `tests/test_card_correctness.py`                 | NEW       | unit tests with mocked agent + Alcamo smoke check                                    | n-a     |
+| `notes/swanki.pipeline.card_correctness.md`      | NEW       | paired dendron module note + dated rationale section                                 | n-a     |
+| `swanki/models/cards.py`                         | MODIFY    | add `CardCorrectnessAssessment` + `CardAuditEntry` Pydantic models                   | stable  |
+| `swanki/llm/agents.py`                           | MODIFY    | add `card_correctness_agent`, model via `get_model_string` + override                | stable  |
+| `swanki/pipeline/pipeline.py`                    | MODIFY    | call gate as a late stage inside `generate_outputs` (~line 533/1904)                 | in-flux |
+| `swanki/llm/safety.py`                           | REFERENCE | `with_safety_retry(agent, prompt, instructions=, model=, label=)` wraps each call    | stable  |
+| `swanki/processing/apkg_exporter.py`             | REFERENCE | consumes the post-gate kept list; GUID = sha256(Front, Back, Feedback)               | stable  |
+| `swanki/pipeline/problem_set.py`                 | REFERENCE | `audit_coverage()` runs before the gate; enumeration/pairing already sealed          | in-flux |
+| `swanki/conf/models/default.yaml`                | REFERENCE | pins `model: gpt-5.5`; gate's default model resolves from here                       | stable  |
 
 ## Key Design Decisions
 

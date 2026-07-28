@@ -30,23 +30,23 @@ a POST-MERGE RUNBOOK, captured in
 
 ## Relevant Files
 
-| Path | Action | Purpose | Stance |
-|------|--------|---------|--------|
-| `swanki/audio/_common.py` | MODIFY | 3-knob split in `combine_audio_with_section_pauses` + `_accumulate_timeline`; trailing-pause site; `restitch_from_chunks` 3 new overrides + persist-to-manifest | provisional / core change |
-| `swanki/conf/models/fish_speech.yaml` | MODIFY | 3 new postprocessor keys (300/2000/1500) | provisional |
-| `swanki/conf/prompts/book_voice.yaml` | MODIFY | refine existing conclusion rule (~L341) | provisional |
-| `swanki/audio/lecture.py` | MODIFY | read 3 keys from `post_cfg`, forward to combine, persist in manifest postprocessor (~L987/L1019) | provisional |
-| `swanki/audio/reading.py` | MODIFY | same call-site forward + manifest persist (~L470) | provisional |
-| `swanki/audio/summary.py` | MODIFY | same call-site forward + manifest persist (~L293) | stable / YAML-driven, inherits |
-| `scripts/regen_hamming_bookends_ch1_10.py` | MODIFY | pass + persist new values on the all-chapter restitch loop | provisional |
-| `swanki/audio/surgical.py` | REFERENCE | must stay safe (L93 asserts postprocessor present, not shape); do NOT add knobs | reference |
-| `swanki/audio/comment_edit.py` | REFERENCE | reads manifest postprocessor + restitches; must stay safe | reference |
-| `swanki/audio/card.py` | REFERENCE | uses `combine_audio` (no bookends); untouched | reference |
-| `swanki/models/cards.py` | REFERENCE | `LectureTranscriptFeedback.meets_length_target` word-count guardrail for prompt change | reference |
-| `tests/test_audio_common.py` | MODIFY | asymmetric bookend test + keyless-manifest restitch regression | provisional |
-| `tests/test_audio_timeline.py` | MODIFY | check/adjust any `bookend_pause_ms` timeline assertions | provisional |
-| `notes/swanki.audio._common.md` | MODIFY | dated rationale section | provisional |
-| `notes/swanki.audio.hamming-comments-runbook.2026.05.29.md` | REFERENCE | post-merge runbook extends here | reference |
+| Path                                                        | Action    | Purpose                                                                                                                                                         | Stance                         |
+|-------------------------------------------------------------|-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------|
+| `swanki/audio/_common.py`                                   | MODIFY    | 3-knob split in `combine_audio_with_section_pauses` + `_accumulate_timeline`; trailing-pause site; `restitch_from_chunks` 3 new overrides + persist-to-manifest | provisional / core change      |
+| `swanki/conf/models/fish_speech.yaml`                       | MODIFY    | 3 new postprocessor keys (300/2000/1500)                                                                                                                        | provisional                    |
+| `swanki/conf/prompts/book_voice.yaml`                       | MODIFY    | refine existing conclusion rule (~L341)                                                                                                                         | provisional                    |
+| `swanki/audio/lecture.py`                                   | MODIFY    | read 3 keys from `post_cfg`, forward to combine, persist in manifest postprocessor (~L987/L1019)                                                                | provisional                    |
+| `swanki/audio/reading.py`                                   | MODIFY    | same call-site forward + manifest persist (~L470)                                                                                                               | provisional                    |
+| `swanki/audio/summary.py`                                   | MODIFY    | same call-site forward + manifest persist (~L293)                                                                                                               | stable / YAML-driven, inherits |
+| `scripts/regen_hamming_bookends_ch1_10.py`                  | MODIFY    | pass + persist new values on the all-chapter restitch loop                                                                                                      | provisional                    |
+| `swanki/audio/surgical.py`                                  | REFERENCE | must stay safe (L93 asserts postprocessor present, not shape); do NOT add knobs                                                                                 | reference                      |
+| `swanki/audio/comment_edit.py`                              | REFERENCE | reads manifest postprocessor + restitches; must stay safe                                                                                                       | reference                      |
+| `swanki/audio/card.py`                                      | REFERENCE | uses `combine_audio` (no bookends); untouched                                                                                                                   | reference                      |
+| `swanki/models/cards.py`                                    | REFERENCE | `LectureTranscriptFeedback.meets_length_target` word-count guardrail for prompt change                                                                          | reference                      |
+| `tests/test_audio_common.py`                                | MODIFY    | asymmetric bookend test + keyless-manifest restitch regression                                                                                                  | provisional                    |
+| `tests/test_audio_timeline.py`                              | MODIFY    | check/adjust any `bookend_pause_ms` timeline assertions                                                                                                         | provisional                    |
+| `notes/swanki.audio._common.md`                             | MODIFY    | dated rationale section                                                                                                                                         | provisional                    |
+| `notes/swanki.audio.hamming-comments-runbook.2026.05.29.md` | REFERENCE | post-merge runbook extends here                                                                                                                                 | reference                      |
 
 ## Key Design Decisions
 

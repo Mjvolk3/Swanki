@@ -250,6 +250,7 @@ Persistence (in `swanki/pipeline/section_classifier.py`): after `classify_sectio
 **Overlap density:**
 
 For each `main_content` section, count problem-shaped patterns and divide by content length:
+
 - `^\d+\.\d+\s` lines (numbered theory-problem starters)
 - `^\d+\.\s+(?:[A-Z]|\()` lines following an MC-style stem
 - "Review Questions" or "Practice Problems" subheadings within the section
@@ -1457,6 +1458,7 @@ def run_solution_manual_override(
    ```
 
    Then in `PlainCard`:
+
    ```python
    @field_validator("tags", mode="before")
    def validate_tags(cls, v):
@@ -1790,6 +1792,7 @@ System prompts are NOT bound to the agents at construction time — they are pas
          # ... per-segment card-gen + image-card interleaving uses seg_to_original_pages
          #     so image_summaries[page_idx] resolves correctly ...
      ```
+
    - Returns `list[PlainCard]` (existing return type).
 
    The classifier dispatch site in `process_full` now computes both lists together:
@@ -1954,6 +1957,7 @@ def generate_lecture_audio(
 **Changes:** Same signature widening as `lecture.py`. When `source_text` is provided, use it instead. Reading audio that includes problem sets read aloud is undesirable; the filtered text excludes them.
 
 ### `swanki/audio/summary.py` — NO CHANGE.
+
 Summary audio is generated from `DocumentSummary` (already an LLM-distilled artifact, not raw page text), so it is unaffected by the section split. Document this explicitly in the dendron note.
 
 ### `swanki/models/__init__.py` (MODIFY)
@@ -2354,6 +2358,7 @@ if __name__ == "__main__":
 **Fixtures:** Add `tests/fixtures/problem_set/` (NEW directory; `tests/fixtures/` does not currently exist, must be created at the same time):
 
 - `schaum_ch01_clean.md` — sketch:
+
   ```markdown
   # CHAPTER 1 / Introduction to Microbiology
 
@@ -2391,6 +2396,7 @@ if __name__ == "__main__":
   ```
 
 - `bishop_ch01_clean.md` — short fixture with one numbered problem referencing equation `(1.2)` from a (mock) prior chapter:
+
   ```markdown
   # Chapter 1 / Linear Models
 
@@ -2401,6 +2407,7 @@ if __name__ == "__main__":
   ```
 
 - `prior_chapter_index.yaml`:
+
   ```yaml
   chapter_id: bishop2024_CH00
   equations:
@@ -2568,4 +2575,3 @@ After each logical unit, run verification (pytest + mypy + ruff for that file). 
 
 When all files are complete, run the integration smoke test from the Verification section above.
 ```
-

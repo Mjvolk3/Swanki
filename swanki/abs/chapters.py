@@ -139,17 +139,13 @@ def find_books_with_stale_chapters(
         if not chapters:
             continue
         current_stems = {
-            _stem(af.get("metadata", {}).get("filename", ""))
-            for af in audio_files
+            _stem(af.get("metadata", {}).get("filename", "")) for af in audio_files
         }
-        chapter_titles = {
-            ch.get("title", "") for ch in chapters if ch.get("title")
-        }
+        chapter_titles = {ch.get("title", "") for ch in chapters if ch.get("title")}
 
         def _valid(title: str) -> bool:
             return any(
-                stem == title or stem.startswith(f"{title}-")
-                for stem in current_stems
+                stem == title or stem.startswith(f"{title}-") for stem in current_stems
             )
 
         if not all(_valid(t) for t in chapter_titles):
@@ -176,9 +172,7 @@ def clean_stale_chapters(client: ABSClient, db_path: str | None = None) -> int:
 
 def find_books_needing_chapter_titles(
     db_path: str,
-) -> list[
-    tuple[str, str, str, list[dict[str, Any]], list[dict[str, Any]]]
-]:
+) -> list[tuple[str, str, str, list[dict[str, Any]], list[dict[str, Any]]]]:
     """Return rows for every book whose chapters need setting or refreshing.
 
     A book needs an update when its chapters JSON is empty OR any existing
@@ -197,9 +191,7 @@ def find_books_needing_chapter_titles(
     ).fetchall()
     con.close()
 
-    needing: list[
-        tuple[str, str, str, list[dict[str, Any]], list[dict[str, Any]]]
-    ] = []
+    needing: list[tuple[str, str, str, list[dict[str, Any]], list[dict[str, Any]]]] = []
     for row in rows:
         audio_files = json.loads(row["audioFiles"] or "[]")
         if not audio_files:
@@ -211,9 +203,7 @@ def find_books_needing_chapter_titles(
         current = json.loads(current_raw) if current_raw else []
         if _chapters_match(current, desired):
             continue
-        needing.append(
-            (row["li_id"], row["book_id"], row["title"], current, desired)
-        )
+        needing.append((row["li_id"], row["book_id"], row["title"], current, desired))
     return needing
 
 
@@ -235,8 +225,7 @@ def set_chapter_titles(client: ABSClient, db_path: str | None = None) -> int:
         elif len(current) != len(desired):
             action = f"refresh ({len(current)}->{len(desired)} chapters)"
         elif any(
-            (c.get("title") or "") != d["title"]
-            for c, d in zip(current, desired)
+            (c.get("title") or "") != d["title"] for c, d in zip(current, desired)
         ):
             action = "refresh (titles changed)"
         else:

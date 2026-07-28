@@ -48,7 +48,10 @@ class TestFindOrCreateSyncNote:
         zot.everything.return_value = [_attachment("A1", "book_CH01.zip")]
         zot.item_template.return_value = {"note": ""}
         zot.create_items.return_value = {"successful": {"0": {"key": "NEW"}}}
-        zot.item.return_value = {"key": "NEW", "data": {"note": "<h2>Swanki Sync Log</h2>\n"}}
+        zot.item.return_value = {
+            "key": "NEW",
+            "data": {"note": "<h2>Swanki Sync Log</h2>\n"},
+        }
 
         item, html = _find_or_create_sync_note(zot, "PARENT")
 

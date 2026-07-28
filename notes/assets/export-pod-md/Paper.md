@@ -2,7 +2,6 @@ Michael Volk
 
 ## ABSTRACT
 
-
 Swanki (pronounced "swanky") is an open-source Python application that leverages artificial intelligence to transform PDFs into Anki flashcards, addressing the underutilization of evidence-based learning techniques in STEM education. While spaced repetition flashcard applications have demonstrated effectiveness in medical education, showing Anki users achieving higher USMLE Step 1 scores, adoption remains limited in chemistry, engineering, and other STEM disciplines due to high content creation costs and misconceptions about flashcard utility. Swanki employs a modular pipeline architecture turning PDFs into high quality Anki flashcards and optional audio files. The system's user controlled hierarchical configuration framework allows educators to customize AI prompts for specific learning objectives, generating three card types: standard question-answer, cloze deletion, and image-based cards that preserve LaTeX mathematical notation critical for STEM content. Four optional audio modes include complementary card narration, summaries, complete transcript readings, and lectures allowing for multimodal learning experiences. By automating the translation of educational materials into interactive study tools while maintaining educator oversight, Swanki directly supports the U.S. Executive Order on Advancing Artificial Intelligence Education for American Youth, enabling educators and students to both utilize and understand AI technologies. Future developments include support for chemical structure parsing via SMILE strings, programmatic visualization generation, and an Model Context Protocol server for natural language interaction helping democratize evidence-based educational content creation across chemistry subdisciplines and independent study more broadly.
 
 ## GRAPHICAL ABSTRACT
@@ -22,7 +21,6 @@ To fill this perceived gap we developed a python application named Swanki (prono
 There are recent anki plugins [AnkiBrain](https://github.com/RosettaTechnologies/AnkiBrain) for supporting the use of large language models (LLMs) for card generation from source material. There also a number of online services that now allow for similar types of content creation including [NotebookLM](https://notebooklm.google/), [Limbiks](https://www.limbiks.com/), [Anki-decks](https://anki-decks.com/), [Algor Education](https://www.algoreducation.com/en), [Knowt](https://knowt.com/), and many more. We differentiate primarily by making the entire content creation process configurable by the user so they can modify prompts to customize output for individual learning goals and by supporting the creation of image cards and other optional audio output options. During development we have found that it is difficult to know the depth of information that any one individual may desire. For example it can be difficult to create cards on implementation details of a multiline algorithm, but if the user specifies this by modifying configurable prompts this type of card creation becomes feasible.
 
 ## METHODS
-
 
 ### Architecture
 

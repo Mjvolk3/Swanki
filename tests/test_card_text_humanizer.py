@@ -9,8 +9,6 @@ like MAT-CH1-3) and chapter / section scaffolding tokens so Fish Speech
 reads them as natural prose instead of garbled letter sequences.
 """
 
-import pytest
-
 from swanki.utils.formatting import humanize_card_text_for_tts
 
 
@@ -18,90 +16,113 @@ class TestShortFormLabels:
     """The card-gen prompt enforces short-form labels like ``T/F 12:``."""
 
     def test_true_false_short(self) -> None:
-        assert humanize_card_text_for_tts(
-            "T/F 12: Microorganisms form the foundations."
-        ) == "True or false 12: Microorganisms form the foundations."
+        assert (
+            humanize_card_text_for_tts("T/F 12: Microorganisms form the foundations.")
+            == "True or false 12: Microorganisms form the foundations."
+        )
 
     def test_multiple_choice_short(self) -> None:
-        assert humanize_card_text_for_tts(
-            "MC 13: Robert Koch is remembered."
-        ) == "Multiple choice 13: Robert Koch is remembered."
+        assert (
+            humanize_card_text_for_tts("MC 13: Robert Koch is remembered.")
+            == "Multiple choice 13: Robert Koch is remembered."
+        )
 
     def test_matching_already_full_word_unchanged(self) -> None:
-        assert humanize_card_text_for_tts(
-            "Matching 6: Match the cell-shape description."
-        ) == "Matching 6: Match the cell-shape description."
+        assert (
+            humanize_card_text_for_tts("Matching 6: Match the cell-shape description.")
+            == "Matching 6: Match the cell-shape description."
+        )
 
     def test_completion_already_full_word_unchanged(self) -> None:
-        assert humanize_card_text_for_tts(
-            "Completion 7: The six-carbon sugar is ____."
-        ) == "Completion 7: The six-carbon sugar is ____."
+        assert (
+            humanize_card_text_for_tts("Completion 7: The six-carbon sugar is ____.")
+            == "Completion 7: The six-carbon sugar is ____."
+        )
 
     def test_problem_canonical_form_unchanged(self) -> None:
         # Theory problems use book-canonical "N.M" — readable by TTS as-is.
-        assert humanize_card_text_for_tts(
-            "Problem 1.30: Why are viruses not organisms?"
-        ) == "Problem 1.30: Why are viruses not organisms?"
+        assert (
+            humanize_card_text_for_tts("Problem 1.30: Why are viruses not organisms?")
+            == "Problem 1.30: Why are viruses not organisms?"
+        )
 
 
 class TestLongFormLabels:
     """Defense-in-depth: the canonical problem_id form (LLM regression)."""
 
     def test_long_tf_form(self) -> None:
-        assert humanize_card_text_for_tts(
-            "TF-CH1-12: Microorganisms form the foundations."
-        ) == "True or false 12: Microorganisms form the foundations."
+        assert (
+            humanize_card_text_for_tts(
+                "TF-CH1-12: Microorganisms form the foundations."
+            )
+            == "True or false 12: Microorganisms form the foundations."
+        )
 
     def test_long_mc_form(self) -> None:
-        assert humanize_card_text_for_tts(
-            "MC-CH1-13: Robert Koch is remembered."
-        ) == "Multiple choice 13: Robert Koch is remembered."
+        assert (
+            humanize_card_text_for_tts("MC-CH1-13: Robert Koch is remembered.")
+            == "Multiple choice 13: Robert Koch is remembered."
+        )
 
     def test_long_matching_form(self) -> None:
-        assert humanize_card_text_for_tts(
-            "MAT-CH1-3: Match the description."
-        ) == "Matching 3: Match the description."
+        assert (
+            humanize_card_text_for_tts("MAT-CH1-3: Match the description.")
+            == "Matching 3: Match the description."
+        )
 
     def test_long_completion_form(self) -> None:
-        assert humanize_card_text_for_tts(
-            "CMP-CH2-9: Fill in the blank."
-        ) == "Completion 9: Fill in the blank."
+        assert (
+            humanize_card_text_for_tts("CMP-CH2-9: Fill in the blank.")
+            == "Completion 9: Fill in the blank."
+        )
 
     def test_occurrence_indexed_matching_form(self) -> None:
         # Repeated same-type section: the middle occurrence segment expands to
         # a spoken "set N" so Fish Speech doesn't garble "MAT-CH3-2-7".
-        assert humanize_card_text_for_tts(
-            "MAT-CH3-2-7: Match the description."
-        ) == "Matching set 2 7: Match the description."
+        assert (
+            humanize_card_text_for_tts("MAT-CH3-2-7: Match the description.")
+            == "Matching set 2 7: Match the description."
+        )
 
     def test_occurrence_indexed_mc_form(self) -> None:
-        assert humanize_card_text_for_tts(
-            "MC-CH3-1-15: The condenser controls light."
-        ) == "Multiple choice set 1 15: The condenser controls light."
+        assert (
+            humanize_card_text_for_tts("MC-CH3-1-15: The condenser controls light.")
+            == "Multiple choice set 1 15: The condenser controls light."
+        )
 
 
 class TestChapterSectionAbbreviations:
     def test_chapter_with_period_abbrev(self) -> None:
-        assert humanize_card_text_for_tts("See Ch. 1 for details.") == \
-            "See chapter 1 for details."
+        assert (
+            humanize_card_text_for_tts("See Ch. 1 for details.")
+            == "See chapter 1 for details."
+        )
 
     def test_chapter_full_word_unchanged_form(self) -> None:
         # "Chapter 1" already reads naturally; we still normalize to lowercase
         # for consistent voicing.
-        assert humanize_card_text_for_tts("Chapter 1 covers the basics.") == \
-            "chapter 1 covers the basics."
+        assert (
+            humanize_card_text_for_tts("Chapter 1 covers the basics.")
+            == "chapter 1 covers the basics."
+        )
 
     def test_chapter_bare_uppercase(self) -> None:
-        assert humanize_card_text_for_tts("Also CH3 mentions photosynthesis.") == \
-            "Also chapter 3 mentions photosynthesis."
+        assert (
+            humanize_card_text_for_tts("Also CH3 mentions photosynthesis.")
+            == "Also chapter 3 mentions photosynthesis."
+        )
 
     def test_section_with_period_abbrev(self) -> None:
-        assert humanize_card_text_for_tts("See Sec. 4 for the proof.") == \
-            "See section 4 for the proof."
+        assert (
+            humanize_card_text_for_tts("See Sec. 4 for the proof.")
+            == "See section 4 for the proof."
+        )
 
     def test_section_bare_uppercase(self) -> None:
-        assert humanize_card_text_for_tts("Refer to SEC2 for syntax.") == \
-            "Refer to section 2 for syntax."
+        assert (
+            humanize_card_text_for_tts("Refer to SEC2 for syntax.")
+            == "Refer to section 2 for syntax."
+        )
 
 
 class TestChoiceLabels:
@@ -132,7 +153,7 @@ class TestChoiceLabels:
     def test_mc_choices_stripped_with_elevenlabs_pause(self) -> None:
         text = "MC 2: stem\n(a) one\n(b) two"
         expected = (
-            'Multiple choice 2: stem\n'
+            "Multiple choice 2: stem\n"
             'A. <break time="0.3s" /> one\n'
             'B. <break time="0.3s" /> two'
         )
@@ -239,10 +260,7 @@ class TestEdgeCases:
         # a comma-separated form ("Alcamo Schaums Outline Microbiology, 2010,
         # CH01"), then this humanizer expands "CH01" (word-bounded) and the
         # short label "T/F 12:".
-        text = (
-            "Alcamo Schaums Outline Microbiology, 2010, CH01: "
-            "T/F 12: The statement."
-        )
+        text = "Alcamo Schaums Outline Microbiology, 2010, CH01: T/F 12: The statement."
         assert humanize_card_text_for_tts(text) == (
             "Alcamo Schaums Outline Microbiology, 2010, chapter 1: "
             "True or false 12: The statement."

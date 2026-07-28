@@ -274,9 +274,7 @@ def run_correctness_gate(
         "passed": sum(1 for e in audit if e.verdict == "pass"),
         "fixed": sum(1 for e in audit if e.verdict == "fixed"),
         "dropped": sum(1 for e in audit if e.verdict == "dropped"),
-        "assessment_failed": sum(
-            1 for e in audit if e.verdict == "assessment_failed"
-        ),
+        "assessment_failed": sum(1 for e in audit if e.verdict == "assessment_failed"),
     }
     logger.info(
         "correctness gate: %d cards -> %d kept (%d pass, %d fixed, "

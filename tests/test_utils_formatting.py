@@ -167,18 +167,12 @@ def test_humanize_chapter_slug_spoken_no_trailing_roman_unchanged():
 
 
 def test_humanize_chapter_slug_spoken_tolerates_hyphenated_input():
-    assert (
-        humanize_chapter_slug_spoken("digital-filters-iv")
-        == "digital filters four"
-    )
+    assert humanize_chapter_slug_spoken("digital-filters-iv") == "digital filters four"
 
 
 def test_humanize_chapter_slug_spoken_does_not_touch_mid_slug_letters():
     # "n" in "n dimensional space" is not the trailing token; left alone.
-    assert (
-        humanize_chapter_slug_spoken("n dimensional space")
-        == "n dimensional space"
-    )
+    assert humanize_chapter_slug_spoken("n dimensional space") == "n dimensional space"
 
 
 def test_humanize_chapter_slug_spoken_empty():
@@ -205,9 +199,7 @@ def test_parse_chapter_key_ch_prefix_identical_to_legacy():
     # the pipeline (build_bookend_text etc.) is form-agnostic.
     assert parse_chapter_key(
         "hammingArtDoingScience2020_07_artificial-intelligence-ii"
-    ) == parse_chapter_key(
-        "hammingArtDoingScience2020_CH07_artificial-intelligence-ii"
-    )
+    ) == parse_chapter_key("hammingArtDoingScience2020_CH07_artificial-intelligence-ii")
 
 
 def test_parse_chapter_key_ch_prefix_with_at_sign():

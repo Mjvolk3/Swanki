@@ -39,4 +39,3 @@ The CLI had drifted from [[swanki.voice_clone.refs]]: it imported `FishSpeechSta
 - New `fetch_youtube_meta` runs `yt-dlp --skip-download --print` before extraction and stamps `channel`/`channel_url`/`video_title`/`upload_date` into `clip.json` (previously only the bare URL was recorded). See [[swanki.voice_clone.refs]] for the new `YoutubeSource` fields.
 
 Used to build the Philip Ball (`fish_speech_ball`) and Christopher Bishop (`fish_speech_bishop`) voices.
-

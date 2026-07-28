@@ -48,8 +48,7 @@ def _manifest(tmp, *, tail_trim=0):
     for idx, sec, fn, ms, b in specs:
         _mk(ck / fn, ms)
         chunks.append(
-            {"index": idx, "section": sec, "text": f"t{idx}", "file": fn,
-             "boundary": b}
+            {"index": idx, "section": sec, "text": f"t{idx}", "file": fn, "boundary": b}
         )
     manifest = {
         "audio_type": "lecture",
@@ -81,9 +80,7 @@ def test_sidecar_equals_independent_oracle(tmp_path):
     mp, ck, specs = _manifest(tmp_path)
     out = tmp_path / "paper-lecture-audio.mp3"
     restitch_from_chunks(mp, out)
-    tl = ChunkTimeline.model_validate_json(
-        (ck / TIMELINE_FILENAME).read_text()
-    )
+    tl = ChunkTimeline.model_validate_json((ck / TIMELINE_FILENAME).read_text())
     bmap = {"paragraph": 1100, "sentence": 500}
 
     # Oracle: replay the exact assembly arithmetic over the *loaded* lengths.
@@ -117,9 +114,7 @@ def test_total_matches_restitched_file(tmp_path):
     mp, ck, _ = _manifest(tmp_path)
     out = tmp_path / "o.mp3"
     restitch_from_chunks(mp, out)
-    tl = ChunkTimeline.model_validate_json(
-        (ck / TIMELINE_FILENAME).read_text()
-    )
+    tl = ChunkTimeline.model_validate_json((ck / TIMELINE_FILENAME).read_text())
     actual = len(AudioSegment.from_mp3(str(out)))
     # mp3 re-encode adds a little frame padding; tight tolerance.
     assert abs(tl.total_duration_ms - actual) <= 60
@@ -141,11 +136,11 @@ def test_absolute_offset_and_abs_helper(tmp_path):
     base = chunk_time_window(ck, "lecture", 3)
     shifted = chunk_time_window(ck, "lecture", 3, absolute_offset_ms=120000)
     assert shifted == (base[0] + 120000, base[1] + 120000)
-    assert chunk_time_window_abs(
-        ck, "lecture", 3, preceding_chapter_durations_ms=120000
-    ) == shifted
-    assert time_to_chunk(ck, "lecture", shifted[0] + 1,
-                         absolute_offset_ms=120000) == 3
+    assert (
+        chunk_time_window_abs(ck, "lecture", 3, preceding_chapter_durations_ms=120000)
+        == shifted
+    )
+    assert time_to_chunk(ck, "lecture", shifted[0] + 1, absolute_offset_ms=120000) == 3
 
 
 def test_audio_type_mismatch_raises(tmp_path):
@@ -176,9 +171,7 @@ def test_tail_trim_is_measured_not_predicted(tmp_path):
     # c1 is 900ms of pure silence -> _load's silence-aware trim fires.
     raw_c1 = len(AudioSegment.from_mp3(str(ck / "c1.mp3")))
     restitch_from_chunks(mp, tmp_path / "o.mp3")
-    tl = ChunkTimeline.model_validate_json(
-        (ck / TIMELINE_FILENAME).read_text()
-    )
+    tl = ChunkTimeline.model_validate_json((ck / TIMELINE_FILENAME).read_text())
     c1 = next(c for c in tl.chunks if c.index == 1)
     assert c1.duration_ms < raw_c1, (
         f"trimmed duration {c1.duration_ms} not < raw {raw_c1} "
@@ -198,7 +191,8 @@ def test_sidecar_missing_recompute_fallback(tmp_path):
 
 def test_restitch_old_manifest_without_bookend_keys_uses_defaults(tmp_path):
     """A manifest predating the asymmetric bookend keys must restitch without
-    crashing and resolve to the new global defaults (300/2000/1500)."""
+    crashing and resolve to the new global defaults (300/2000/1500).
+    """
     ck = tmp_path / "lecture_chunks"
     ck.mkdir(parents=True)
     _mk(ck / "bs.mp3", 700)
@@ -212,8 +206,13 @@ def test_restitch_old_manifest_without_bookend_keys_uses_defaults(tmp_path):
         # No bookend_*_pause_ms keys -- as written before this change.
         "postprocessor": {"section_pause_ms": 5000, "chunk_pause_ms": 700},
         "chunks": [
-            {"index": 0, "section": 0, "text": "t0", "file": "c0.mp3",
-             "boundary": "paragraph"},
+            {
+                "index": 0,
+                "section": 0,
+                "text": "t0",
+                "file": "c0.mp3",
+                "boundary": "paragraph",
+            },
         ],
     }
     mp = ck / "chunk_manifest.json"

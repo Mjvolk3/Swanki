@@ -67,7 +67,9 @@ def _card_manifest(
     front_chunks: list[dict] = []
     base = 0
     if front_citation:
-        front_chunks.append({"index": 0, "type": "citation", "file": "key_citation.mp3"})
+        front_chunks.append(
+            {"index": 0, "type": "citation", "file": "key_citation.mp3"}
+        )
         base = 1
     front_chunks += _tts("front", front_tts, base)
 
@@ -159,8 +161,9 @@ def test_synthetic_manifest_shape(tts, _rs, _ctw, combine, tmp_path):
 
     with patch(
         "swanki.audio.card_edit.edit_chunk",
-        side_effect=lambda p, idx, **k: _capture(p)
-        or SimpleNamespace(action="speech_only", rationale="r"),
+        side_effect=lambda p, idx, **k: (
+            _capture(p) or SimpleNamespace(action="speech_only", rationale="r")
+        ),
     ):
         edit_card_chunk(mp, "front", 0, speech_only=True, tts_kwargs=FISH_KWARGS)
 
@@ -207,7 +210,9 @@ def test_speed_falls_back_to_card_default(tts, _rs, _ctw, combine, tmp_path):
 @patch("swanki.audio.comment_edit.text_to_speech")
 def test_audit_writeback_and_cleanup(tts, _rs, _ctw, combine, tmp_path):
     mp = _card_manifest(tmp_path)
-    res = edit_card_chunk(mp, "front", 1, new_text="Edited second.", tts_kwargs=FISH_KWARGS)
+    res = edit_card_chunk(
+        mp, "front", 1, new_text="Edited second.", tts_kwargs=FISH_KWARGS
+    )
     assert res.action == "edit_text"
 
     sideedit = mp.parent / "_sideedit"

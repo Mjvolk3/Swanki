@@ -25,23 +25,27 @@ Card count = `num_segments * (cards_per_segment + cloze_per_segment) + images*ca
 Edit `swanki/pipeline/section_classifier.py`.
 
 1. Anchor `_BACK_MATTER` to a markdown heading (kills prose matches):
+
    ```python
    _BACK_MATTER = re.compile(
        r"^#{1,6}\s+(Index|Glossary|Bibliography|References)\b",
        re.IGNORECASE | re.MULTILINE,
    )
    ```
+
    Rejects "index registers", "original references" (not heading-anchored). Catches "## References", "# Bibliography", "## Bibliography and Notes". A real un-promoted back-matter line now falls to main_content (benign: a few extra cards) instead of dropping content (malignant) — and the LLM fallback still covers it.
 
 2. Positional guard on the back_matter flip. Before the loop: `total = len(texts)`. In the back_matter branch (lines ~158-166) add `and i >= int(total * 0.8)` so only the last ~20% of pages may start a back_matter run. ch04 page-3 (i=3 of 9 = 0.33) is rejected; paper References (last page) still caught. For very short docs `int(total*0.8)` keeps the last page eligible.
 
 3. Anchor `_FRONT_MATTER` the same way and keep its existing positional guard:
+
    ```python
    _FRONT_MATTER = re.compile(
        r"^#{1,6}\s+(Preface|Table of Contents|Copyright|Dedication)\b",
        re.IGNORECASE | re.MULTILINE,
    )
    ```
+
    Keep `i < 5` (works; out of scope to make it %-based). Anchoring removes the symmetric prose false-positive ("a preface to...").
 
 4. Leave stickiness, confidence, `_pair_answer_keys`, `_REVIEW_*`, `_THEORY_HEADING`, `_CHAPTER_HEADER`, the LLM fallback, and all configs UNCHANGED. The two guards above fix the trigger; the existing cascade then behaves correctly for both false (now never starts mid-doc) and true (heading in tail region -> cascades through the real multi-page back-matter) cases.
@@ -62,6 +66,7 @@ Keep existing `join_pages` tests untouched. Match the file's inline/parametric s
 
 1. `pytest tests/test_section_classifier.py -q` green.
 2. Re-run classification on ch04's existing clean-md-singles and assert all `main_content`:
+
    ```python
    from swanki.pipeline.section_classifier import classify_sections
    from pathlib import Path
@@ -70,6 +75,7 @@ Keep existing `join_pages` tests untouched. Match the file's inline/parametric s
    r = classify_sections(files, {})
    assert all(l.kind=="main_content" for l in r.page_labels)
    ```
+
 3. Sanity: re-run classify on a real paper with a tail References page (e.g. `campagneClinicalPharmacokineticsPharmacodynamics2021`) -> last page still `back_matter`.
 
 ## Module note
@@ -79,6 +85,7 @@ Append a `## 2026.06.01 - Back-matter false-positive: anchor cues + positional g
 ## Post-merge: re-gen ch04 (delivery, after PR merges to main)
 
 Run under `conda activate swanki` from repo root:
+
 ```bash
 swanki pdf_path=/scratch/hammingArtDoingScience2020/ch04_clean.pdf \
   citation_key=hammingArtDoingScience2020 \
@@ -88,6 +95,7 @@ swanki pdf_path=/scratch/hammingArtDoingScience2020/ch04_clean.pdf \
   models=fish_speech_hamming prompts=book_voice +author="Richard Hamming" \
   pipeline.processing.confirm_before_generation=false
 ```
+
 Expect ~14 cards (output dir auto-increments; new dir then becomes canonical). Verify apkg media>0; delete the live 4-card `hammingArtDoingScience2020_CH04_history-of-computers-software` Anki deck via AnkiConnect, importPackage the new apkg, one AnkiWeb sync. Zotero re-sync is automatic (`zotero=sync`); prune handles the prior CH04 zip.
 
 ## Scope / out-of-scope

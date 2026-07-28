@@ -42,6 +42,7 @@ Removed `model: str = "openai:gpt-5-mini"` defaults from `generate_card_transcri
 Card audio bypasses `clean_markdown_for_tts` and `add_tts_pauses` (cards are short and arrive already TTS-shaped) so the pre-TTS scrubber pipeline didn't naturally land here. Added `_preprocess_for_tts(text, tts_kwargs)` helper at module level that runs the same scrubber chain as lecture/summary/reading: `strip_chapter_filename_slug` -> `expand_acronyms_for_tts` (fish only) -> `apply_pronunciation_overrides` -> `strip_forbidden_fish_tags` (fish only).
 
 All 5 `text_to_speech` call sites now wrap their text arg with this helper:
+
 - `generate_citation_audio` line 332 (citation announcement)
 - `generate_card_audio` line 493 (single-chunk front)
 - `generate_card_audio` line 514 (multi-chunk front loop)

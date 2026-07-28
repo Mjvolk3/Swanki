@@ -450,14 +450,14 @@ A full-codebase critic review was performed. All findings addressed below.
 
 ### Specification Quality Summary
 
-| File Spec | Rating | Notes |
-|-----------|--------|-------|
-| `swanki/audio/_common.py` | GREEN | Complete implementations shown |
-| `swanki/audio/lecture.py` | GREEN | Detailed code snippets for all 5 changes |
-| `swanki/audio/reading.py` | GREEN (upgraded from YELLOW) | Same pattern as lecture, differences noted in C3 |
-| `swanki/audio/summary.py` | GREEN (upgraded from YELLOW) | Same pattern as lecture, differences noted in C3 |
-| `swanki/audio/card.py` | GREEN (upgraded from RED) | Race condition resolved via C1, citation path via C2, imports via F1 |
-| `swanki/audio/__init__.py` | GREEN | Simple re-export |
-| `tests/test_audio_common.py` | GREEN | Test cases clear, setup patterns match existing tests |
+| File Spec                    | Rating                       | Notes                                                                |
+|------------------------------|------------------------------|----------------------------------------------------------------------|
+| `swanki/audio/_common.py`    | GREEN                        | Complete implementations shown                                       |
+| `swanki/audio/lecture.py`    | GREEN                        | Detailed code snippets for all 5 changes                             |
+| `swanki/audio/reading.py`    | GREEN (upgraded from YELLOW) | Same pattern as lecture, differences noted in C3                     |
+| `swanki/audio/summary.py`    | GREEN (upgraded from YELLOW) | Same pattern as lecture, differences noted in C3                     |
+| `swanki/audio/card.py`       | GREEN (upgraded from RED)    | Race condition resolved via C1, citation path via C2, imports via F1 |
+| `swanki/audio/__init__.py`   | GREEN                        | Simple re-export                                                     |
+| `tests/test_audio_common.py` | GREEN                        | Test cases clear, setup patterns match existing tests                |
 
 All RED ratings resolved. No remaining gaps.

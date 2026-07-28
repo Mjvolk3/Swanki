@@ -120,9 +120,7 @@ class TestPushProjection:
             patch("swanki_anki_sync.zotero.Zotero", return_value=zot_inst),
             patch(_TARGET_POST) as post,
         ):
-            n = sas.push_projection(
-                "p", cfg, "key", "http://x", tmp_path, dry_run=True
-            )
+            n = sas.push_projection("p", cfg, "key", "http://x", tmp_path, dry_run=True)
         assert n == 1
         post.assert_not_called()
         assert zot_inst.file.call_count == 0

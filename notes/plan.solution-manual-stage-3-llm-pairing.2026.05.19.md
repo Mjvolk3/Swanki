@@ -183,6 +183,7 @@ Two surgical changes to `swanki/pipeline/problem_set.py`, one prompt sharpening,
 **Imports affected:** `..llm.agents.problem_pairing_agent`, `..models.problem_set.ProblemPairingResponse`. Both already exist; no model-layer changes.
 
 **Edge cases:**
+
 - Bishop chapter that has no `## Exercises` heading (e.g. a chapter cut without exercises): partition returns `(full_text, None)`, Stage-3 short-circuits on `solutions_region is None`, `audit_coverage` correctly raises if the chapter genuinely has unsolved problems.
 - LLM returns a `problem_id` that isn't in `unpaired` (hallucination): `pairings_by_id.get(loc.problem_id)` returns None, the entry is dropped silently. Don't add a warning — keep the code dense; the audit surfaces gaps.
 - LLM returns a solution for a problem that's already paired (rare; agent ignored "unpaired" framing): append anyway, audit doesn't care about multiple solutions per problem.
@@ -239,6 +240,7 @@ Keep the surrounding YAML structure (`prompts: solution_manual:` parent keys) un
 **Purpose:** real-data fixture for enumerator-dedup + Stage-3 tests, snapshotted from the CH02 validation artifacts (no re-OCR cost).
 
 **Source:** trim `/scratch/bishop_ch02_solman_validation/bishopDeepLearningFoundations2024_CH02_probabilities/clean-md-singles/page-{36,37,38}.md` into ~80-120 lines covering:
+
 - Page 36 (chapter Exercises): `## Exercises` heading + statements `2.1 (*) ...`, `$2.2(\star \star)$ ...`, `2.3 (*) ...` (three statements is enough).
 - Page 37 (solution manual): `## Chapter 2 Probabilities` heading + bare `2.1 We first compute $p(T=1)$ ...` (full solution for 2.1) + bare `2.3 The change-of-variables formula ...` (full solution for 2.3 — note: NO `2.2` solution to exercise the "omit if no match" contract).
 
@@ -313,6 +315,7 @@ Same fixture, but `config["pipeline"]["solution_manual"]["stage3_enabled"] = Fal
 **Current state:** module note with dated sections (line 18 documents Stage-3 as "wired but not yet exercised"; line 30 lists it as "deferred to follow-up").
 
 **Change:** Append a dated section `## 2026.05.19 — Stage-3 LLM pairing + enumerator region partition`. Body covers:
+
 - The Bishop CH02 motivating case (cite the validation log `/scratch/bishop_ch02_solman_validation/...` and the 13-IDs CoverageError).
 - The two-part fix: `_partition_statement_solution_regions` for enumerator dedup; activate `problem_pairing_agent` in Stage 3.
 - Why region-aware partition over post-hoc dedup (deterministic, no extra LLM cost, Schaum's regression-free).

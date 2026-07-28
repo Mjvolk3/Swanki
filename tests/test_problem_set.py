@@ -56,9 +56,7 @@ class TestEnumerateMultipleChoice:
         text = (FIXTURE_DIR / "schaum_ch01_mc_section.md").read_text()
         problems = _enumerate_multiple_choice(text, "1")
         assert len(problems) == 15
-        assert [p.problem_id for p in problems] == [
-            f"MC-CH1-{n}" for n in range(1, 16)
-        ]
+        assert [p.problem_id for p in problems] == [f"MC-CH1-{n}" for n in range(1, 16)]
 
     def test_each_item_carries_all_choices(self) -> None:
         text = (FIXTURE_DIR / "schaum_ch01_mc_section.md").read_text()
@@ -108,16 +106,16 @@ class TestEnumerateTrueFalse:
         text = (FIXTURE_DIR / "schaum_ch01_true_false_section.md").read_text()
         problems = _enumerate_true_false(text, "1")
         assert len(problems) == 15
-        assert [p.problem_id for p in problems] == [
-            f"TF-CH1-{n}" for n in range(1, 16)
-        ]
+        assert [p.problem_id for p in problems] == [f"TF-CH1-{n}" for n in range(1, 16)]
 
     def test_strips_blank_marker_from_statement(self) -> None:
         text = (FIXTURE_DIR / "schaum_ch01_true_false_section.md").read_text()
         problems = _enumerate_true_false(text, "1")
         for p in problems:
             assert "$\\_\\_\\_\\_$" not in p.statement
-            assert p.statement.startswith(f"{p.problem_id.split('-')[-1]}. True or false:")
+            assert p.statement.startswith(
+                f"{p.problem_id.split('-')[-1]}. True or false:"
+            )
             # The "originally underlined term" framing was dropped — Mathpix
             # strips the underline markup so the front cannot reference it.
             assert "originally underlined" not in p.statement
@@ -129,7 +127,9 @@ class TestEnumerateCompletion:
         problems = _enumerate_completion(text, "2")
         assert len(problems) == 15
         for p in problems:
-            assert p.statement.startswith(p.problem_id.split("-")[-1] + ". Fill in the blank:")
+            assert p.statement.startswith(
+                p.problem_id.split("-")[-1] + ". Fill in the blank:"
+            )
             assert "____" in p.statement
 
     def test_skips_numbered_prose_without_blank(self) -> None:
@@ -236,7 +236,10 @@ class TestPartitionOcrAgnostic:
         text = (FIXTURE_DIR / "schaum_mineru_back_of_book.md").read_text()
         part = _partition_back_of_book(text)
         assert part["1"]["Multiple Choice"][0].startswith("1. c 2. c 3. a")
-        assert part["1"]["Matching"][0] == "1. c 2. d 3. e 4. c 5. b 6. a 7. b 8. e 9. c 10. a"
+        assert (
+            part["1"]["Matching"][0]
+            == "1. c 2. d 3. e 4. c 5. b 6. a 7. b 8. e 9. c 10. a"
+        )
         assert part["2"]["Completion"][0].startswith("1. elements 2. nitrogen")
 
     def test_mineru_and_mathpix_produce_same_bodies(self) -> None:
@@ -250,10 +253,7 @@ class TestPartitionOcrAgnostic:
             (FIXTURE_DIR / "schaum_ch01_back_of_book.md").read_text()
         )
         assert mineru["1"]["Matching"][0] == mathpix["1"]["Matching"][0]
-        assert (
-            mineru["1"]["Multiple Choice"][0]
-            == mathpix["1"]["Multiple Choice"][0]
-        )
+        assert mineru["1"]["Multiple Choice"][0] == mathpix["1"]["Multiple Choice"][0]
 
 
 class TestTwoMatchingSections:
@@ -354,9 +354,7 @@ class TestOrphanPreFirstChapterSpill:
     def test_set_two_item_one_pairs_to_d(self) -> None:
         problems = enumerate_problems([self.FIXTURE], "alcamo2010_CH05")
         result = pair_problems_across_pages(problems, [self.FIXTURE], {})
-        s2_1 = [
-            p for p in result.pairings if p.problem_id == "MAT-CH5-2-1"
-        ]
+        s2_1 = [p for p in result.pairings if p.problem_id == "MAT-CH5-2-1"]
         assert len(s2_1) == 1
         assert len(s2_1[0].solutions) == 1
         assert s2_1[0].solutions[0].text == "(d) Thermophile"
@@ -364,9 +362,7 @@ class TestOrphanPreFirstChapterSpill:
     def test_every_matching_item_single_solution(self) -> None:
         problems = enumerate_problems([self.FIXTURE], "alcamo2010_CH05")
         result = pair_problems_across_pages(problems, [self.FIXTURE], {})
-        mat = [
-            p for p in result.pairings if p.problem_id.startswith("MAT-CH5")
-        ]
+        mat = [p for p in result.pairings if p.problem_id.startswith("MAT-CH5")]
         assert len(mat) == 20
         assert all(len(p.solutions) == 1 for p in mat)
 
@@ -374,9 +370,7 @@ class TestOrphanPreFirstChapterSpill:
         # The orphan Ch3 `# Completion` line (nanometer, mycoplasmas, …) must
         # never reach a Chapter-5 Matching statement.
         problems = enumerate_problems([self.FIXTURE], "alcamo2010_CH05")
-        assert not any(
-            "nanometer" in p.statement for p in problems
-        )
+        assert not any("nanometer" in p.statement for p in problems)
 
 
 # ── Audit tests ─────────────────────────────────────────────────────────
@@ -407,13 +401,21 @@ def _build_audit_inputs(
             ProblemPairing(
                 problem_id=pid,
                 statement=ProblemLocation(
-                    problem_id=pid, role="statement", page_idx=0,
-                    start_char=0, end_char=1, text="Q",
+                    problem_id=pid,
+                    role="statement",
+                    page_idx=0,
+                    start_char=0,
+                    end_char=1,
+                    text="Q",
                 ),
                 solutions=[
                     ProblemLocation(
-                        problem_id=pid, role="solution", page_idx=0,
-                        start_char=0, end_char=1, text="A",
+                        problem_id=pid,
+                        role="solution",
+                        page_idx=0,
+                        start_char=0,
+                        end_char=1,
+                        text="A",
                     )
                 ],
             )
@@ -452,19 +454,19 @@ class TestAuditCoverage:
         target = next(p for p in pairings.pairings if p.problem_id == "MC-CH1-7")
         target.solutions = []
         with pytest.raises(CoverageError) as exc:
-            audit_coverage(problems, pairings, cards, "alcamo2010", allow_unsolved=False)
+            audit_coverage(
+                problems, pairings, cards, "alcamo2010", allow_unsolved=False
+            )
         assert "MC-CH1-7" in exc.value.unsolved
 
     def test_missing_main_card_raises(self) -> None:
         problems, pairings, cards = _build_audit_inputs()
         # Remove TF-CH1-3's card.
-        cards = [
-            c
-            for c in cards
-            if "alcamo2010.problem.TF-CH1-3" not in c.tags
-        ]
+        cards = [c for c in cards if "alcamo2010.problem.TF-CH1-3" not in c.tags]
         with pytest.raises(CoverageError) as exc:
-            audit_coverage(problems, pairings, cards, "alcamo2010", allow_unsolved=False)
+            audit_coverage(
+                problems, pairings, cards, "alcamo2010", allow_unsolved=False
+            )
         assert "TF-CH1-3" in exc.value.missing
 
 
@@ -495,9 +497,7 @@ class TestPromptDispatch:
             / "prompts"
             / "solution_manual.yaml"
         )
-        prompts_data = OmegaConf.to_container(
-            OmegaConf.load(prompt_path), resolve=True
-        )
+        prompts_data = OmegaConf.to_container(OmegaConf.load(prompt_path), resolve=True)
         config = {
             "prompts": {"prompts": prompts_data["prompts"]},
             "models": {"models": {"llm": {}}},
@@ -547,9 +547,7 @@ class TestPromptDispatch:
             "swanki.pipeline.problem_set.problem_card_gen_agent.run_sync",
             side_effect=fake_run_sync,
         ):
-            generate_cards_for_problem(
-                problem, plan, doc_summary, "alcamo2010", config
-            )
+            generate_cards_for_problem(problem, plan, doc_summary, "alcamo2010", config)
 
         assert expected_key_fragment in captured["instructions"], (
             f"Subtype {subtype} did not load the expected system prompt. "

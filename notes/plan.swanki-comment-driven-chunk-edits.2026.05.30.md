@@ -16,21 +16,21 @@ The goal is 0-shot audio quality; precise edits are the bridge until we get ther
 
 ## Relevant Files
 
-| Path | Action | Purpose | Stance |
-|---|---|---|---|
-| `swanki/audio/comment_edit.py` | NEW | `chunk_edit_agent` invocation, `edit_chunk` dispatcher, preprocessor-on-new-text, `_edits/` audit trail | the new engine |
-| `swanki/audio/_common.py` | MODIFY | Extract public `preprocess_for_tts(...)` as the single scrubber-chain source of truth | stable/recently in-flux; touch only the new helper |
-| `swanki/audio/card.py` | MODIFY | Delegate private `_preprocess_for_tts` to the new shared helper (`add_pauses=False`) | stable; minimal delegation only |
-| `swanki/models/cards.py` | MODIFY | Add `ChunkEditResponse` beside `AudioTranscriptFeedback`/`LectureTranscriptFeedback` | provisional |
-| `swanki/llm/agents.py` | MODIFY | Register `chunk_edit_agent` | stable; one-line additive |
-| `swanki/audio/surgical.py` | REFERENCE | Share leaf primitives; do NOT add a preprocess hook here | stable; leave alone |
-| `swanki/llm/safety.py` | REFERENCE | Wrap the agent call in `with_safety_retry` | stable |
-| `scripts/abs_bookmarks.py` | REFERENCE | Comment source (ABS bookmarks) consumed by the skill | stable |
-| `scripts/zotero_annotations.py` | REFERENCE | Comment source (orange Zotero highlights) consumed by the skill | stable |
-| `.claude/skills/audio-fix-from-annotations/SKILL.md` | MODIFY | Phase 5 calls `edit_chunk` instead of `regenerate_and_restitch` directly; classification + gate + publish unchanged | living doc |
-| `notes/swanki.audio.comment_edit.md` | NEW | Dendron module note (rationale/decision log) | new |
-| `tests/test_audio_comment_edit.py` | NEW | Unit tests with fake manifest + patched TTS/restitch | new |
-| `tests/test_audio_common.py` | MODIFY | Tests for `preprocess_for_tts` (pause vs no-pause, idempotence) | new tests, existing file |
+| Path                                                 | Action    | Purpose                                                                                                             | Stance                                             |
+|------------------------------------------------------|-----------|---------------------------------------------------------------------------------------------------------------------|----------------------------------------------------|
+| `swanki/audio/comment_edit.py`                       | NEW       | `chunk_edit_agent` invocation, `edit_chunk` dispatcher, preprocessor-on-new-text, `_edits/` audit trail             | the new engine                                     |
+| `swanki/audio/_common.py`                            | MODIFY    | Extract public `preprocess_for_tts(...)` as the single scrubber-chain source of truth                               | stable/recently in-flux; touch only the new helper |
+| `swanki/audio/card.py`                               | MODIFY    | Delegate private `_preprocess_for_tts` to the new shared helper (`add_pauses=False`)                                | stable; minimal delegation only                    |
+| `swanki/models/cards.py`                             | MODIFY    | Add `ChunkEditResponse` beside `AudioTranscriptFeedback`/`LectureTranscriptFeedback`                                | provisional                                        |
+| `swanki/llm/agents.py`                               | MODIFY    | Register `chunk_edit_agent`                                                                                         | stable; one-line additive                          |
+| `swanki/audio/surgical.py`                           | REFERENCE | Share leaf primitives; do NOT add a preprocess hook here                                                            | stable; leave alone                                |
+| `swanki/llm/safety.py`                               | REFERENCE | Wrap the agent call in `with_safety_retry`                                                                          | stable                                             |
+| `scripts/abs_bookmarks.py`                           | REFERENCE | Comment source (ABS bookmarks) consumed by the skill                                                                | stable                                             |
+| `scripts/zotero_annotations.py`                      | REFERENCE | Comment source (orange Zotero highlights) consumed by the skill                                                     | stable                                             |
+| `.claude/skills/audio-fix-from-annotations/SKILL.md` | MODIFY    | Phase 5 calls `edit_chunk` instead of `regenerate_and_restitch` directly; classification + gate + publish unchanged | living doc                                         |
+| `notes/swanki.audio.comment_edit.md`                 | NEW       | Dendron module note (rationale/decision log)                                                                        | new                                                |
+| `tests/test_audio_comment_edit.py`                   | NEW       | Unit tests with fake manifest + patched TTS/restitch                                                                | new                                                |
+| `tests/test_audio_common.py`                         | MODIFY    | Tests for `preprocess_for_tts` (pause vs no-pause, idempotence)                                                     | new tests, existing file                           |
 
 ## Key Design Decisions
 
@@ -57,6 +57,7 @@ The goal is 0-shot audio quality; precise edits are the bridge until we get ther
 **Classification path.** When the skill hands `edit_chunk` a comment but no explicit `new_text`, the function invokes `chunk_edit_agent` via `with_safety_retry(chunk_edit_agent, user_msg, instructions=..., model=get_model_string(cfg), label="chunk edit <idx>")`. The agent sees the comment, the chunk's current text, and the section/context; it returns a `ChunkEditResponse`. `action == "edit_text"` carries `revised_text`; `action == "speech_only"` means "text is fine, delivery isn't"; `needs_section_regen`/`cannot_fix` are non-applicable terminals that `edit_chunk` surfaces (returns/raises with the rationale) so the human escalates — the dispatcher never silently no-ops. When the skill passes an explicit human-authored `new_text`, the agent is bypassed and the action is forced to `edit_text` (the human is final arbiter, per the skill's gate).
 
 **Render path.** Guard `tts_kwargs` (Decision 4) and assert the manifest has a `postprocessor` block (matching `surgical.py:93`) and the right `audio_type`. Resolve the chunk dict by `index`. Then dispatch on action:
+
 - `speech_only`: `render_text = chunk["text"]` (verbatim).
 - `edit_text`: `render_text = preprocess_for_tts(revised_or_new_text, tts_kwargs, add_pauses=True)` and persist the *raw* revised text into `chunk["text"]` (so the manifest transcript stays the post-pause shape — match what lecture.py stores: it stores the post-`add_tts_pauses` chunk text; therefore persist the preprocessed `render_text`, not the raw agent prose, to keep manifest semantics identical to a fresh gen). Write the manifest back.
 

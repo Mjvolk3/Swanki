@@ -65,9 +65,7 @@ def test_chapters_from_audiofiles_cumulative_bounds_in_index_order():
 def test_chapters_match_tolerates_subsecond_drift():
     desired = [{"id": 0, "title": "t", "start": 0.0, "end": 100.0}]
     assert _chapters_match([{"title": "t", "start": 0.4, "end": 100.4}], desired)
-    assert not _chapters_match(
-        [{"title": "t", "start": 0.0, "end": 100.6}], desired
-    )
+    assert not _chapters_match([{"title": "t", "start": 0.0, "end": 100.6}], desired)
     assert not _chapters_match(
         [{"title": "other", "start": 0.0, "end": 100.0}], desired
     )
@@ -79,7 +77,9 @@ def test_chapters_match_tolerates_subsecond_drift():
 def _db(tmp_path, *, chapters: list, audio_files: list) -> str:
     path = str(tmp_path / "absdatabase.sqlite")
     con = sqlite3.connect(path)
-    con.execute("CREATE TABLE books (id TEXT, title TEXT, chapters TEXT, audioFiles TEXT)")
+    con.execute(
+        "CREATE TABLE books (id TEXT, title TEXT, chapters TEXT, audioFiles TEXT)"
+    )
     con.execute("CREATE TABLE libraryItems (id TEXT, mediaId TEXT)")
     con.execute(
         "INSERT INTO books VALUES ('B1', 'hamming', ?, ?)",

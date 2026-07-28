@@ -48,7 +48,7 @@ Five locked design decisions:
 
 **Changes:**
 
-1. **Fix `_MC_ANSWER_BLOCK` regex** (lines 98-101). The current pattern `^Chapter\s+([0-9]+)\s*\n+\s*Multiple Choice\s*\n+\s*((?:[0-9]+\.\s*[a-z]\s*)+)` does not match the actual OCR output `## Chapter 1\n\n## Multiple Choice\n\n1. c 2. c ...`. Replace with a permissive pattern accepting both `## ` prefixes and bare forms. Same fix applies to all four new subtype back-of-book regexes.
+1. **Fix `_MC_ANSWER_BLOCK` regex** (lines 98-101). The current pattern `^Chapter\s+([0-9]+)\s*\n+\s*Multiple Choice\s*\n+\s*((?:[0-9]+\.\s*[a-z]\s*)+)` does not match the actual OCR output `## Chapter 1\n\n## Multiple Choice\n\n1. c 2. c ...`. Replace with a permissive pattern accepting both `##` prefixes and bare forms. Same fix applies to all four new subtype back-of-book regexes.
 
    ```python
    # Optional `## ` prefix on the chapter and section headers (Mathpix promotes
@@ -95,6 +95,7 @@ Five locked design decisions:
    - Locate MC section span using `_MC_SECTION` lookahead to next section (`_MATCHING_SECTION | _TF_SECTION | _COMPLETION_SECTION | r"^##" | \Z`).
    - Within the span, match each item: `^(\d+)\.\s+(.+?)\n((?:\([a-z]\)\s+.+?\n){2,5})` with **`re.MULTILINE` ONLY (NOT `re.DOTALL`)**. Group 1 = item number, group 2 = stem, group 3 = choices block (lines like `(a) text\n(b) text\n(c) text\n(d) text`). DOTALL was tested empirically and reduced the match count from 15 to 1 because the lazy `(.+?)` greedily consumes newlines before the choices block. Without DOTALL all 15 items match. Choice quantifier widened to `\([a-z]\)` and `{2,5}` to handle Bishop or 5-choice variants.
    - For each match build:
+
      ```python
      statement = f"{item_num}. {stem}\n{choices_block}".strip()
      pid = f"MC-CH{chapter}-{item_num}"
@@ -115,6 +116,7 @@ Five locked design decisions:
    - **Column A items**: `^(?:\$(?:\\_)+\$\s+)?(\d+)\.\s+(.+?)(?=^(?:\$(?:\\_)+\$\s+)?\d+\.\s|^##|\Z)` (multiline+DOTALL). The `$\_\_\_\_$` prefix is Mathpix's rendering of an answer-blank line and must be stripped; some items lack it. **Note:** the actual OCR is `$\_\_\_\_$` (alternating backslash-underscore pairs, NOT a single backslash followed by multiple underscores). The regex must use `\$(?:\\_)+\$`, NOT `\$\\_+\$`.
    - **Column B options**: `^\(([a-e])\)\s+(.+)$` per line — build a `dict[str, str]` mapping letter → option text.
    - For each Column A item:
+
      ```python
      pid = f"MAT-CH{chapter}-{item_num}"
      # Statement must include Column B options inline for self-containment
@@ -129,15 +131,17 @@ Five locked design decisions:
          char_count=len(statement),
      )
      ```
+
    - **OCR drift handling**: Schaum's CH01 OCR is missing item 5 in Column A (Mathpix glitch). Enumerator must NOT fabricate missing items — just enumerate what's present. The audit will flag the back-of-book entry for item 5 as `unpaired_solutions` (because no problem was enumerated to pair it to). That's the right signal.
 
    **`_enumerate_true_false(full_text, chapter)`:**
 
    - Locate T/F section span: `_TF_SECTION` to next section.
    - Match each item: `^(?:\$(?:\\_)+\$\s+)?(\d+)\.\s+(.+?)(?=^(?:\$(?:\\_)+\$\s+)?\d+\.\s|^##|\Z)` (multiline+DOTALL). **Same blank-token form as Matching:** `\$(?:\\_)+\$`, NOT `\$\\_+\$`.
-   - The `$\_\_\_\_$ ` prefix is Mathpix's answer-blank line marker — strip it from the captured statement.
+   - The `$\_\_\_\_$` prefix is Mathpix's answer-blank line marker — strip it from the captured statement.
    - The underlined word is **not preserved** in the OCR. The card's statement carries the full prose; the back will be `T` or the replacement word. Learners self-identify the underlined word from the correction.
    - Build:
+
      ```python
      pid = f"TF-CH{chapter}-{item_num}"
      statement = f"{item_num}. True or false: {stmt_text}\n\nIf false, what word replaces the originally underlined term?"
@@ -156,6 +160,7 @@ Five locked design decisions:
    - Locate Completion section span. Schaum's CH01 doesn't have Completion; CH02 does (back-of-book at page 12 line 26). Anchor on `_COMPLETION_SECTION`.
    - Match each item: `^(\d+)\.\s+(.+?\$(?:\\_)+\$.+?)(?=^\d+\.\s|^##|\Z)` (multiline+DOTALL). The body MUST contain a `$\_\_\_\_$` token (Mathpix's blank rendering) — that's how Completion items are distinguished from numbered prose. **Same blank-token form as Matching/T-F:** `\$(?:\\_)+\$`, NOT `\$\\_+\$`.
    - Build:
+
      ```python
      pid = f"CMP-CH{chapter}-{item_num}"
      # Replace mathpix blank token with a readable placeholder
@@ -751,15 +756,15 @@ Minor fixes:
 
 After revisions:
 
-| File | Rating |
-|---|---|
-| `swanki/models/problem_set.py` (MODIFY) | GREEN — single regex change, fully specified |
-| `swanki/pipeline/problem_set.py` (MODIFY) | GREEN — all regexes verified against real OCR; helpers (`_partition_back_of_book`, `_extract_column_b`, `_try_pair_or_unpaired`) have signatures + skeletons |
-| `swanki/conf/prompts/solution_manual.yaml` (MODIFY) | GREEN — four prompt strings with format-specific instructions |
-| `tests/fixtures/problem_set/` (NEW) | GREEN — fixture build commands inline, real-OCR sourced |
-| `tests/test_problem_set.py` (NEW) | GREEN — enumeration + pairing + audit + dispatch coverage |
-| `tests/test_problem_set_models.py` (NEW) | GREEN — round-trip tests for all chapter-prefixed forms |
-| `notes/swanki.pipeline.problem_set.md` (MODIFY) | GREEN — append-only dated section |
-| `notes/swanki.models.problem_set.md` (MODIFY) | GREEN — append-only dated section noting tag-regex update |
+| File                                                | Rating                                                                                                                                                       |
+|-----------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `swanki/models/problem_set.py` (MODIFY)             | GREEN — single regex change, fully specified                                                                                                                 |
+| `swanki/pipeline/problem_set.py` (MODIFY)           | GREEN — all regexes verified against real OCR; helpers (`_partition_back_of_book`, `_extract_column_b`, `_try_pair_or_unpaired`) have signatures + skeletons |
+| `swanki/conf/prompts/solution_manual.yaml` (MODIFY) | GREEN — four prompt strings with format-specific instructions                                                                                                |
+| `tests/fixtures/problem_set/` (NEW)                 | GREEN — fixture build commands inline, real-OCR sourced                                                                                                      |
+| `tests/test_problem_set.py` (NEW)                   | GREEN — enumeration + pairing + audit + dispatch coverage                                                                                                    |
+| `tests/test_problem_set_models.py` (NEW)            | GREEN — round-trip tests for all chapter-prefixed forms                                                                                                      |
+| `notes/swanki.pipeline.problem_set.md` (MODIFY)     | GREEN — append-only dated section                                                                                                                            |
+| `notes/swanki.models.problem_set.md` (MODIFY)       | GREEN — append-only dated section noting tag-regex update                                                                                                    |
 
 Plan is ready for `/wt-implement` on a fresh context.

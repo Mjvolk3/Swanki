@@ -332,9 +332,27 @@ def parse_chapter_key(citation_key: str) -> tuple[str, str, str] | None:
 
 
 _CARDINAL_WORDS = (
-    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
-    "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
-    "sixteen", "seventeen", "eighteen", "nineteen", "twenty",
+    "zero",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
+    "twenty",
 )
 
 
@@ -397,11 +415,26 @@ def humanize_chapter_slug(citation_key: str) -> str | None:
 
 
 _ROMAN_TO_WORD = {
-    "i": "one", "ii": "two", "iii": "three", "iv": "four", "v": "five",
-    "vi": "six", "vii": "seven", "viii": "eight", "ix": "nine", "x": "ten",
-    "xi": "eleven", "xii": "twelve", "xiii": "thirteen", "xiv": "fourteen",
-    "xv": "fifteen", "xvi": "sixteen", "xvii": "seventeen", "xviii": "eighteen",
-    "xix": "nineteen", "xx": "twenty",
+    "i": "one",
+    "ii": "two",
+    "iii": "three",
+    "iv": "four",
+    "v": "five",
+    "vi": "six",
+    "vii": "seven",
+    "viii": "eight",
+    "ix": "nine",
+    "x": "ten",
+    "xi": "eleven",
+    "xii": "twelve",
+    "xiii": "thirteen",
+    "xiv": "fourteen",
+    "xv": "fifteen",
+    "xvi": "sixteen",
+    "xvii": "seventeen",
+    "xviii": "eighteen",
+    "xix": "nineteen",
+    "xx": "twenty",
 }
 
 
@@ -459,9 +492,7 @@ def humanize_chapter_slug_spoken(slug: str) -> str:
 _PROBLEM_LABEL_LONG = re.compile(
     r"(?m)(?:^|(?<=[:\s]))(MC|TF|MAT|CMP)-CH\d+(?:-(\d+))?-(\d+(?:\.\d+)?)\s*:"
 )
-_PROBLEM_LABEL_SHORT = re.compile(
-    r"(?m)(?:^|(?<=[:\s]))(MC|T/F)\s+(\d+(?:\.\d+)?)\s*:"
-)
+_PROBLEM_LABEL_SHORT = re.compile(r"(?m)(?:^|(?<=[:\s]))(MC|T/F)\s+(\d+(?:\.\d+)?)\s*:")
 _LABEL_EXPANSION = {
     "MC": "Multiple choice",
     "T/F": "True or false",
@@ -508,6 +539,7 @@ def _llm_guess_shorthand(token: str) -> str | None:
     # TODO(2026-05-19): wire Haiku/GPT-nano fallback per user request.
     _ = token
     return None
+
 
 # Negative lookbehind shared by all chapter / section patterns: skip tokens
 # preceded by another letter, digit, hyphen, or underscore (i.e. identifier-
@@ -624,6 +656,7 @@ def humanize_card_text_for_tts(text: str, provider: str = "fish_speech") -> str:
     out = _PROBLEM_LABEL_LONG.sub(_expand_problem_label, text)
     out = _PROBLEM_LABEL_SHORT.sub(_expand_problem_label, out)
     out = _CHOICE_LABEL.sub(_choice, out)
+
     # Inline (prose) parens — strip to commas. Runs AFTER choice-label
     # expansion so single-letter "(a)" at line start is already converted
     # and only multi-char inline parens remain to match. Skips content that

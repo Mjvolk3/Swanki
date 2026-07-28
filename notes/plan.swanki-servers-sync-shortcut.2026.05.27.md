@@ -16,21 +16,21 @@ This PR adds the missing half. New `scripts/swanki_anki_sync.py` mirrors `script
 
 ## Relevant Files
 
-| Path | Tag | Purpose | Classification |
-|---|---|---|---|
-| `scripts/swanki_abs_sync.py` | MODIFY | Extract `latest_zips` into shared helper; otherwise untouched. | stable |
-| `scripts/abs_refresh.sh` | REFERENCE | Existing audio refresh pipeline; called by the new shell shortcut. | stable |
-| `scripts/publish_regen_to_abs.sh` | REFERENCE | Sibling one-shot script; pattern source for the wrapper layout. | stable |
-| `swanki/sync/zotero.py` | REFERENCE | Defines the apkg-naming + fox-tag conventions the new script depends on. | stable |
-| `swanki/pipeline/pipeline.py` | REFERENCE | Generator of the `.apkg` files this PR consumes; not edited. | stable |
-| `infra/abs/projections.yml` | MODIFY | Add `push_audio` / `push_anki` per-projection toggles. | stable (no paired note; infra config) |
-| `scripts/_swanki_zotero_artifacts.py` | NEW | Shared module: `_latest_artifact(zot, item_key, suffix)` plus `latest_zips` / `latest_apkgs` thin wrappers. | n/a (new) |
-| `scripts/swanki_anki_sync.py` | NEW | Mirror of `swanki_abs_sync.py` for the AnkiConnect side. | n/a (new) |
-| `scripts/swanki_sync.sh` | NEW | User-facing shorthand wrapping `abs_refresh.sh` + `swanki_anki_sync.py`. | n/a (new) |
-| `notes/scripts.swanki_anki_sync.md` | NEW | Paired dendron note for the new Python script. | n/a (new) |
-| `notes/scripts.swanki_sync.md` | NEW | Paired dendron note for the new shell wrapper. | n/a (new) |
-| `notes/scripts._swanki_zotero_artifacts.md` | NEW | Paired dendron note for the shared artifact helper. | n/a (new) |
-| `tests/test_swanki_anki_sync.py` | NEW | Unit tests with mocked pyzotero + mocked AnkiConnect HTTP. | n/a (new) |
+| Path                                        | Tag       | Purpose                                                                                                     | Classification                        |
+|---------------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------|---------------------------------------|
+| `scripts/swanki_abs_sync.py`                | MODIFY    | Extract `latest_zips` into shared helper; otherwise untouched.                                              | stable                                |
+| `scripts/abs_refresh.sh`                    | REFERENCE | Existing audio refresh pipeline; called by the new shell shortcut.                                          | stable                                |
+| `scripts/publish_regen_to_abs.sh`           | REFERENCE | Sibling one-shot script; pattern source for the wrapper layout.                                             | stable                                |
+| `swanki/sync/zotero.py`                     | REFERENCE | Defines the apkg-naming + fox-tag conventions the new script depends on.                                    | stable                                |
+| `swanki/pipeline/pipeline.py`               | REFERENCE | Generator of the `.apkg` files this PR consumes; not edited.                                                | stable                                |
+| `infra/abs/projections.yml`                 | MODIFY    | Add `push_audio` / `push_anki` per-projection toggles.                                                      | stable (no paired note; infra config) |
+| `scripts/_swanki_zotero_artifacts.py`       | NEW       | Shared module: `_latest_artifact(zot, item_key, suffix)` plus `latest_zips` / `latest_apkgs` thin wrappers. | n/a (new)                             |
+| `scripts/swanki_anki_sync.py`               | NEW       | Mirror of `swanki_abs_sync.py` for the AnkiConnect side.                                                    | n/a (new)                             |
+| `scripts/swanki_sync.sh`                    | NEW       | User-facing shorthand wrapping `abs_refresh.sh` + `swanki_anki_sync.py`.                                    | n/a (new)                             |
+| `notes/scripts.swanki_anki_sync.md`         | NEW       | Paired dendron note for the new Python script.                                                              | n/a (new)                             |
+| `notes/scripts.swanki_sync.md`              | NEW       | Paired dendron note for the new shell wrapper.                                                              | n/a (new)                             |
+| `notes/scripts._swanki_zotero_artifacts.md` | NEW       | Paired dendron note for the shared artifact helper.                                                         | n/a (new)                             |
+| `tests/test_swanki_anki_sync.py`            | NEW       | Unit tests with mocked pyzotero + mocked AnkiConnect HTTP.                                                  | n/a (new)                             |
 
 Paired-note check: `swanki_abs_sync.md`, `abs_refresh.md`, `swanki.sync.zotero.md`, `publish_regen_to_abs.md` are all stable with dated entries documenting current invariants; `latest_zips`'s evolution ("single newest" → "newest per prefix") is explicit in `swanki_abs_sync.md`'s 2026.04.26 entry. `infra/abs/projections.yml` has no paired dendron note (infra-side config) but the schema has not shifted since 2026.04.20.
 
@@ -114,4 +114,3 @@ The Zotero attachment fetch is the one place we permit a narrow `try/except` —
   - Click Sync on the Mac Anki desktop and confirm the deck appears.
 - Regression: `bash scripts/abs_refresh.sh` standalone still works exactly as before — the only `swanki_abs_sync.py` change is the import line, the constant deletion, the local-function deletion, and the `push_audio` early-return guard; functional behavior on the existing projections (both default `push_audio: true`) is unchanged.
 - Any existing tests covering `latest_zips` / `ZIP_PATTERN` must be re-pointed at the new shared module.
-

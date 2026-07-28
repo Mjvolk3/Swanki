@@ -1456,7 +1456,7 @@ def validate_audio_file(
 
 
 def filter_metadata(content: str) -> str:
-    """Remove academic paper metadata (authors, affiliations, references).
+    r"""Remove academic paper metadata (authors, affiliations, references).
 
     Two-tier skip logic:
 

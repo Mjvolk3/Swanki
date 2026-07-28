@@ -230,9 +230,7 @@ def targeted_refresh(
     mp3s = _newest_local_mp3s(output_dir, citation_key)
     if not mp3s:
         lock.close()
-        raise FileNotFoundError(
-            f"no mp3s for {citation_key!r} under {output_dir}"
-        )
+        raise FileNotFoundError(f"no mp3s for {citation_key!r} under {output_dir}")
 
     # Drop into every routed projection that already carries the group.
     touched: set[tuple[str, str]] = set()  # (projection, audiotype_lower)

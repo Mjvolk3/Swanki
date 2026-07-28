@@ -15,9 +15,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-SectionKind = Literal[
-    "main_content", "review_exercises", "front_matter", "back_matter"
-]
+SectionKind = Literal["main_content", "review_exercises", "front_matter", "back_matter"]
 
 
 class PageLabel(BaseModel):
@@ -46,7 +44,8 @@ class PageLabel(BaseModel):
         description="When set, this page contains answers paired with the question section that owns the linked page.",
     )
     note: str | None = Field(
-        default=None, description="Freeform diagnostic (e.g. 're-classified after pairing')."
+        default=None,
+        description="Freeform diagnostic (e.g. 're-classified after pairing').",
     )
 
 

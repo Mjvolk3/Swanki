@@ -36,7 +36,9 @@ def _fake_run_factory(tmp_path: Path, fail_stems: set[str]):
         if rc == 0:
             md_dir.mkdir(parents=True, exist_ok=True)
             dst.write_text(f"# {stem}\n")
-        return subprocess.CompletedProcess(cmd, rc, stdout="", stderr="boom" if rc else "")
+        return subprocess.CompletedProcess(
+            cmd, rc, stdout="", stderr="boom" if rc else ""
+        )
 
     return fake_run
 
@@ -62,7 +64,9 @@ def test_mathpix_raises_when_all_fail(tmp_path, monkeypatch):
 
 def test_mathpix_natural_sort(tmp_path, monkeypatch):
     pages = _make_pages(tmp_path, 10)
-    monkeypatch.setattr(subprocess, "run", _fake_run_factory(tmp_path, fail_stems=set()))
+    monkeypatch.setattr(
+        subprocess, "run", _fake_run_factory(tmp_path, fail_stems=set())
+    )
     result = convert_pages_mathpix(pages, tmp_path)
     names = [p.name for p in result]
     assert names.index("page-2.md") < names.index("page-10.md")

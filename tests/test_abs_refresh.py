@@ -97,12 +97,18 @@ def _abs_tree(tmp_path: Path) -> Path:
 def _abs_client(posted_chapters: list, scanned: list) -> ABSClient:
     libs = {
         "libraries": [
-            {"id": "L1", "folders": [
-                {"fullPath": "/audiobooks/mv-ll/Swanki-Book-Lecture"}]},
-            {"id": "L2", "folders": [
-                {"fullPath": "/audiobooks/mirror/Swanki-Book-Lecture"}]},
-            {"id": "L3", "folders": [
-                {"fullPath": "/audiobooks/off/Swanki-Book-Lecture"}]},
+            {
+                "id": "L1",
+                "folders": [{"fullPath": "/audiobooks/mv-ll/Swanki-Book-Lecture"}],
+            },
+            {
+                "id": "L2",
+                "folders": [{"fullPath": "/audiobooks/mirror/Swanki-Book-Lecture"}],
+            },
+            {
+                "id": "L3",
+                "folders": [{"fullPath": "/audiobooks/off/Swanki-Book-Lecture"}],
+            },
         ]
     }
     item = {

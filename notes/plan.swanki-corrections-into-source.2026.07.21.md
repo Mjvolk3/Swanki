@@ -11,6 +11,7 @@ created: 1784696291901
 The Kuchel sweep (`notes/swanki.audio.kuchel-comments-runbook.2026.06.09.md`, 2026.07.21 section) produced a hand-authored, hand-verified list of source-fidelity fixes: 14 spoken overrides plus a silent-restoration list. Today those exist only as prose in a runbook and get replayed by throwaway scratchpad scripts (`scratchpad/apply_edits.py`). This plan makes a **Swanki correction** a first-class, structured, durable source feature: a `{wrong_text, corrected_text, reason, kind}` record, authored per chapter in YAML, applied to the reading/lecture **manifest chunk text** and re-TTS'd through the shipped surgical edit path.
 
 Two behaviors, branched purely on the authored `kind`:
+
 - **override** — the source is genuinely wrong. Substitute the corrected prose AND splice a spoken `[pause] Swanki correction: the source says X, but Y is correct, because ... [pause]` note into the chunk so the listener hears the dispute.
 - **restoration** — a mechanical fix (number-bug, splice removal, OCR-garble to readable, Try->Tyr). Substitute **silently**; no spoken note.
 
@@ -18,20 +19,20 @@ This builds directly on the report-only critic `swanki/audio/reading_correctness
 
 ## Relevant Files
 
-| Path | Action | Purpose | Stance |
-|---|---|---|---|
-| `swanki/audio/source_corrections.py` | NEW | The apply layer: load YAML spec, per-correction substitute + (override) splice note, verbatim re-TTS via chunk-edit, one restitch/track, JSON audit. | new |
-| `swanki/models/cards.py` | MODIFY | Add `SourceCorrection` (authored spec row, `Literal` kind + `@model_validator`) and `CorrectionAuditEntry` (emitted outcome). | stable pattern (add near `ReadingChunkFidelity` ~1356) |
-| `swanki/audio/comment_edit.py` | MODIFY | `edit_chunk` gains optional `restitch=False` so a multi-chunk batch re-TTS's each chunk then restitches ONCE per track. | in-flux |
-| `swanki/audio/reading_correctness.py` | MODIFY | Update the header note: the "next layer" now exists at `source_corrections.py`; critic stays report-only. | in-flux (merged 2026.07.21) |
-| `swanki/pipeline/pipeline.py` | MODIFY | After the reading/lecture audit hooks (L2372-2407 / L2449-2496), invoke the apply layer when config enables it. | in-flux |
-| `swanki/conf/audio_correctness_gate/default.yaml` | MODIFY | Add a `corrections` sub-block (`apply_corrections: false`, `spec_dir`) beside the reserved `report_only` slot. | reference |
-| `swanki/conf/config.yaml` | REFERENCE | Gate already registered (defaults L13, top-level null L30); no change unless a new group. | stable |
-| `swanki/audio/_common.py` | REFERENCE | `append_chunk_pause` L223 (strips boundary pauses), `preprocess_for_tts` L129, `verbalize_large_numbers` L838, `expand_acronyms_for_tts` L661, `write_chunk_manifest` L1900. | stable |
-| `swanki/pipeline/card_correctness.py` | REFERENCE | `run_correctness_gate` / `write_audit` shape to mirror (pass/fixed/dropped, atomic JSON). | stable |
-| `swanki/conf/corrections/<citation_key>.yaml` (or `spec_dir`) | NEW (data) | Hand-authored per-chapter corrections spec. | new |
-| `tests/test_source_corrections.py` | NEW | Fixture-driven tests from the Kuchel 14-spoken/silent list. | new |
-| `notes/swanki.audio.source-corrections.md` | NEW | Paired dendron module note. | new |
+| Path                                                          | Action     | Purpose                                                                                                                                                                      | Stance                                                 |
+|---------------------------------------------------------------|------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------|
+| `swanki/audio/source_corrections.py`                          | NEW        | The apply layer: load YAML spec, per-correction substitute + (override) splice note, verbatim re-TTS via chunk-edit, one restitch/track, JSON audit.                         | new                                                    |
+| `swanki/models/cards.py`                                      | MODIFY     | Add `SourceCorrection` (authored spec row, `Literal` kind + `@model_validator`) and `CorrectionAuditEntry` (emitted outcome).                                                | stable pattern (add near `ReadingChunkFidelity` ~1356) |
+| `swanki/audio/comment_edit.py`                                | MODIFY     | `edit_chunk` gains optional `restitch=False` so a multi-chunk batch re-TTS's each chunk then restitches ONCE per track.                                                      | in-flux                                                |
+| `swanki/audio/reading_correctness.py`                         | MODIFY     | Update the header note: the "next layer" now exists at `source_corrections.py`; critic stays report-only.                                                                    | in-flux (merged 2026.07.21)                            |
+| `swanki/pipeline/pipeline.py`                                 | MODIFY     | After the reading/lecture audit hooks (L2372-2407 / L2449-2496), invoke the apply layer when config enables it.                                                              | in-flux                                                |
+| `swanki/conf/audio_correctness_gate/default.yaml`             | MODIFY     | Add a `corrections` sub-block (`apply_corrections: false`, `spec_dir`) beside the reserved `report_only` slot.                                                               | reference                                              |
+| `swanki/conf/config.yaml`                                     | REFERENCE  | Gate already registered (defaults L13, top-level null L30); no change unless a new group.                                                                                    | stable                                                 |
+| `swanki/audio/_common.py`                                     | REFERENCE  | `append_chunk_pause` L223 (strips boundary pauses), `preprocess_for_tts` L129, `verbalize_large_numbers` L838, `expand_acronyms_for_tts` L661, `write_chunk_manifest` L1900. | stable                                                 |
+| `swanki/pipeline/card_correctness.py`                         | REFERENCE  | `run_correctness_gate` / `write_audit` shape to mirror (pass/fixed/dropped, atomic JSON).                                                                                    | stable                                                 |
+| `swanki/conf/corrections/<citation_key>.yaml` (or `spec_dir`) | NEW (data) | Hand-authored per-chapter corrections spec.                                                                                                                                  | new                                                    |
+| `tests/test_source_corrections.py`                            | NEW        | Fixture-driven tests from the Kuchel 14-spoken/silent list.                                                                                                                  | new                                                    |
+| `notes/swanki.audio.source-corrections.md`                    | NEW        | Paired dendron module note.                                                                                                                                                  | new                                                    |
 
 ## Key Design Decisions
 
@@ -51,7 +52,7 @@ This builds directly on the report-only critic `swanki/audio/reading_correctness
 
 8. **Reading substitution FAILS LOUD when `wrong_text` is not found.** A correction that no longer matches (source re-OCR'd, chunk boundaries shifted) is a real error, not a no-op. Reading raises; lecture records `not_applicable` (its prose is expected to diverge).
 
-9. **The note is spliced MID-chunk, never at chunk start/end.** `append_chunk_pause` strips leading+trailing `[pause]` tags for Fish (comment_edit / _common.py L223) — a boundary note's framing pauses would vanish and Fish would run it into the neighbor. Splicing mid-chunk keeps the internal `[pause]` tags intact.
+9. **The note is spliced MID-chunk, never at chunk start/end.** `append_chunk_pause` strips leading+trailing `[pause]` tags for Fish (comment_edit /_common.py L223) — a boundary note's framing pauses would vanish and Fish would run it into the neighbor. Splicing mid-chunk keeps the internal `[pause]` tags intact.
 
 10. **Idempotency via per-chunk applied-ids in the manifest.** Each correction has a stable id; on apply the id/hash is stored on the chunk record, and an already-present id short-circuits. Re-running the spec is a no-op (apply-twice == apply-once), so a chapter can be re-swept safely.
 
@@ -85,11 +86,13 @@ This builds directly on the report-only critic `swanki/audio/reading_correctness
 The default spoken note (when `note_text` is absent) is `[pause] Swanki correction: the source says {wrong_text}, but {corrected_text} is correct, because {reason} [pause]`; `_splice_after_substitution` inserts it after the substitution sentence — never at `chunk[0]`/`[-1]`, where `append_chunk_pause` would strip the framing pauses — and stores the result verbatim to `chunk["text"]` for the `speech_only` re-roll.
 
 **Config wiring.** In `audio_correctness_gate/default.yaml` add under the existing block:
+
 ```yaml
   corrections:
     apply_corrections: false            # opt-in apply layer; never on by default
     spec_dir: null                      # dir of <citation_key>.yaml specs
 ```
+
 Read it in `pipeline.py` with the **double-nested** access already used for the gate (`self.config.get("audio_correctness_gate",{}).get("audio_correctness_gate",{})`, L2375/2452) — a single `.get` silently returns `{}`. Both `config.yaml` sites already register the group (defaults L13, null slot L30); no new registration needed.
 
 **Pipeline hook.** After `write_reading_audit` (L2406) and `write_lecture_audit` (L2495), when `corrections.apply_corrections` and a spec exists for `citation_key`, call `apply_source_corrections` on the just-written manifest(s), then re-run the targeted ABS refresh path already used by surgical edits (bookmarks do not migrate — the restitch rewrites `chunk_timeline.json`).

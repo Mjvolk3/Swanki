@@ -52,10 +52,7 @@ def _cmd_bookmarks(args: argparse.Namespace) -> int:
         return 0
     for b in bms:
         t = int(b.time_s)
-        print(
-            f"[{b.item_title}] @ {t // 60}:{t % 60:02d}  "
-            f"item={b.library_item_id}"
-        )
+        print(f"[{b.item_title}] @ {t // 60}:{t % 60:02d}  item={b.library_item_id}")
         print(f"  {b.note}")
     return 0
 
@@ -63,9 +60,7 @@ def _cmd_bookmarks(args: argparse.Namespace) -> int:
 def _cmd_clear_bookmarks(args: argparse.Namespace) -> int:
     from swanki.abs.bookmarks import clear_bookmarks
 
-    windows = (
-        [(float(s), float(e)) for s, e in args.window] if args.window else None
-    )
+    windows = [(float(s), float(e)) for s, e in args.window] if args.window else None
     clear_bookmarks(
         citation_key=args.citation_key,
         windows=windows,

@@ -14,22 +14,22 @@ The user asked for two things beyond the bug: make this parsing **robust and gen
 
 ## Relevant Files
 
-| Path | Action | Purpose | Stance |
-| --- | --- | --- | --- |
-| `swanki/pipeline/problem_set.py` | MODIFY | Loosen 3 header regexes; list-valued partition; all-occurrence forward enumeration; k-th pairing; occurrence-indexed IDs | Provisional / in-flux (this is the hot file) |
-| `swanki/models/problem_set.py` | MODIFY | Extend `_PROBLEM_TAG_RE` (L171-173) to tolerate optional middle occurrence segment | Stable — change is additive |
-| `swanki/utils/formatting.py` | MODIFY | Update `_PROBLEM_LABEL_LONG`/`_SHORT` (L459-464) capture groups in lockstep with new ID shape | Stable — change is additive |
-| `swanki/pdf_prep.py` | NEW | Chapter chop + (possibly multiple) answer-key range concat via pure-Python `pypdf` | New module, top-level sibling to `swanki/cut.py` |
-| `swanki/cut.py` | MODIFY | Migrate `PyPDF2 import` (L16) to `pypdf`; reference for existing chop idiom | Reference / minimal touch |
-| `scripts/schaum_chapter_pack.py` | MODIFY -> shim | Reduce to thin back-compat wrapper importing `swanki.pdf_prep` | Keep existing `.sh`/queue invocations working |
-| `pyproject.toml` | MODIFY | Replace bare `"PyPDF2"` (L26) and mypy override (L140) with `pypdf>=4` | Stable |
-| `tests/test_problem_set.py` | MODIFY | Partition/pairing tests on MinerU `#` + Mathpix `##` fixtures, two-Matching, page-spill | — |
-| `tests/test_problem_set_models.py` | MODIFY | `ProblemTag` round-trip for bare and occurrence IDs | — |
-| `tests/fixtures/problem_set/` | NEW fixtures | MinerU `#` fixture, two-Matching fixture, page-spill fixture (existing fixtures are all Mathpix `##`) | — |
-| `notes/swanki.pipeline.problem_set.md` | MODIFY | Append dated rationale section | Docs |
-| `notes/swanki.pdf_prep.md` | NEW | Module note for new `pdf_prep` | Docs |
-| `swanki/ocr/mineru.py` | REFERENCE | Emits answer-key titles as H1 `#` — the trigger | Read-only |
-| `swanki/ocr/mathpix.py` | REFERENCE | Emits the same titles as H2 `##` — the May-era assumption | Read-only |
+| Path                                   | Action         | Purpose                                                                                                                  | Stance                                           |
+|----------------------------------------|----------------|--------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------|
+| `swanki/pipeline/problem_set.py`       | MODIFY         | Loosen 3 header regexes; list-valued partition; all-occurrence forward enumeration; k-th pairing; occurrence-indexed IDs | Provisional / in-flux (this is the hot file)     |
+| `swanki/models/problem_set.py`         | MODIFY         | Extend `_PROBLEM_TAG_RE` (L171-173) to tolerate optional middle occurrence segment                                       | Stable — change is additive                      |
+| `swanki/utils/formatting.py`           | MODIFY         | Update `_PROBLEM_LABEL_LONG`/`_SHORT` (L459-464) capture groups in lockstep with new ID shape                            | Stable — change is additive                      |
+| `swanki/pdf_prep.py`                   | NEW            | Chapter chop + (possibly multiple) answer-key range concat via pure-Python `pypdf`                                       | New module, top-level sibling to `swanki/cut.py` |
+| `swanki/cut.py`                        | MODIFY         | Migrate `PyPDF2 import` (L16) to `pypdf`; reference for existing chop idiom                                              | Reference / minimal touch                        |
+| `scripts/schaum_chapter_pack.py`       | MODIFY -> shim | Reduce to thin back-compat wrapper importing `swanki.pdf_prep`                                                           | Keep existing `.sh`/queue invocations working    |
+| `pyproject.toml`                       | MODIFY         | Replace bare `"PyPDF2"` (L26) and mypy override (L140) with `pypdf>=4`                                                   | Stable                                           |
+| `tests/test_problem_set.py`            | MODIFY         | Partition/pairing tests on MinerU `#` + Mathpix `##` fixtures, two-Matching, page-spill                                  | —                                                |
+| `tests/test_problem_set_models.py`     | MODIFY         | `ProblemTag` round-trip for bare and occurrence IDs                                                                      | —                                                |
+| `tests/fixtures/problem_set/`          | NEW fixtures   | MinerU `#` fixture, two-Matching fixture, page-spill fixture (existing fixtures are all Mathpix `##`)                    | —                                                |
+| `notes/swanki.pipeline.problem_set.md` | MODIFY         | Append dated rationale section                                                                                           | Docs                                             |
+| `notes/swanki.pdf_prep.md`             | NEW            | Module note for new `pdf_prep`                                                                                           | Docs                                             |
+| `swanki/ocr/mineru.py`                 | REFERENCE      | Emits answer-key titles as H1 `#` — the trigger                                                                          | Read-only                                        |
+| `swanki/ocr/mathpix.py`                | REFERENCE      | Emits the same titles as H2 `##` — the May-era assumption                                                                | Read-only                                        |
 
 ## Key Design Decisions
 
@@ -52,6 +52,7 @@ The user asked for two things beyond the bug: make this parsing **robust and gen
 ### Stage 1 — OCR header fix (critical, ship-alone-correct)
 
 Loosen exactly three `##`-hardcoded regexes to `^#{1,3}\s+`:
+
 - `_BACK_CHAPTER_HEADER` (L161): `^##\s+Chapter\s+(\d+)\s*$` -> `^#{1,3}\s+Chapter\s+(\d+)\s*$`
 - `_BACK_SECTION_HEADER` (L162-165): `^##\s+(Multiple Choice|Matching|True/False|Completion)\s*$` -> `^#{1,3}\s+(...)\s*$`
 - `column_b_re` (L373): `^##\s+Column B\s*$` -> `^#{1,3}\s+Column B\s*$`

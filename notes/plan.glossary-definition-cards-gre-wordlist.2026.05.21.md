@@ -31,6 +31,7 @@ Add a `mode=glossary` whole-document override that turns a vocabulary/definition
 ## File specs
 
 ### NEW swanki/models/glossary.py (mirror swanki/models/problem_set.py)
+
 - `slugify_term(term: str) -> str` -- lowercase, strip, non-alnum runs -> single hyphen, trim hyphens.
 - `GlossaryUnit(BaseModel)`: `term: str`, `definition: str`, `char_count: int = 0`.
 - `DefinitionCardPlan(BaseModel)`: `n_cards: int = Field(ge=1, le=5)`, `include_main: bool = True`; `@model_validator(mode="after")` enforcing `n_cards == int(include_main)` (extend when elaboration lands). Mirror `CardPlan` (models/problem_set.py:58).
@@ -38,6 +39,7 @@ Add a `mode=glossary` whole-document override that turns a vocabulary/definition
 - `_GLOSSARY_TAG_RE = re.compile(r"^([^.]+)\.glossary\.([a-z0-9-]+)$")` and `GlossaryTag(BaseModel){citation_key, term_slug}` with `render()` -> `f"{citation_key}.glossary.{term_slug}"` and `classmethod parse(tag, citation_key) -> GlossaryTag | None` (mirror ProblemTag, models/problem_set.py:173). Build the regex against real slugs (hyphenated, digit-bearing) and round-trip test before relying on the audit (problem_set 2026.05.04 trap).
 
 ### NEW swanki/pipeline/glossary.py (mirror swanki/pipeline/problem_set.py)
+
 - `from .problem_set import CoverageError`.
 - `enumerate_glossary(clean_md_files, config) -> list[GlossaryUnit]`: join page texts, read prompt at `config["prompts"]["prompts"]["glossary"]["definition_enumeration"]`, `glossary_enumeration_agent.run_sync(..., model=get_model_string(models_llm))`, set `char_count`, return units.
 - `classify_definition_plan(unit, glossary_cfg) -> DefinitionCardPlan` (heuristic, returns 1 card).
@@ -46,18 +48,22 @@ Add a `mode=glossary` whole-document override that turns a vocabulary/definition
 - `run_glossary_override(pipeline, cleaned_files, doc_summary, strict=True) -> list[PlainCard]`: enumerate -> (strict: raise if zero units) -> plan -> generate -> dump `glossary-units.yaml` + `cards-debug.yaml` (with `n_cards` and tag list) -> audit -> return cards. Mirror run_solution_manual_override (problem_set.py:936) but return only cards (no provenance).
 
 ### MODIFY swanki/models/cards.py
+
 - Extend the `PlainCard.card_subtype` Literal (cards.py:707-718) with `"definition_main"`, `"definition_example"`, `"definition_elaboration"`. (Also extend the `CardSubtype` alias in models/problem_set.py:24 for typing parity.)
 
 ### MODIFY swanki/llm/agents.py
+
 - After the solution-manual agents block (agents.py:43-58) add:
   `glossary_enumeration_agent: Agent[None, GlossaryEnumerationResponse] = Agent(output_type=GlossaryEnumerationResponse, retries=3)` and
   `definition_card_gen_agent: Agent[None, DefinitionCardBatchResponse] = Agent(output_type=DefinitionCardBatchResponse, retries=3)`.
   Import the two response types from `..models.glossary`.
 
 ### MODIFY swanki/pipeline/pipeline.py
+
 - Add `elif mode == "glossary":` immediately after the `solution_manual` branch (pipeline.py:311-335), before the `else` (full). Mirror the solution_manual branch: `from .glossary import run_glossary_override`; set `self.citation_key = effective_key`; `self.state.current_stage = "glossary"`; `all_cards = run_glossary_override(self, cleaned_files, doc_summary)`; `self.state.cards_generated = len(all_cards)`; `self.state.current_stage = "output_generation"`; `outputs = self.generate_outputs(all_cards, doc_summary, self.output_base)`. No provenance. The downstream audio/apkg/zotero blocks are card-format-agnostic and need no change.
 
 ### NEW swanki/conf/pipeline/glossary.yaml
+
 ```
 defaults: [default, _self_]
 processing:
@@ -71,9 +77,11 @@ glossary:
 ```
 
 ### NEW swanki/conf/prompts/glossary.yaml
+
 `defaults: [default, _self_]`; under `prompts.glossary`: `definition_enumeration` and `definition_card_gen` system prompts encoding the rules above (front=`**term**`, back=definition sentence + `*e.g.*` line, bold only headword, <=500 chars, emit exactly the requested count).
 
 ### NEW swanki/conf/output/glossary.yaml (mirror output/problem_set.yaml)
+
 ```
 defaults: [default, _self_]
 output:
@@ -81,15 +89,18 @@ output:
 ```
 
 ### MODIFY swanki/conf/config.yaml + swanki/__main__.py
+
 - config.yaml: extend the `mode` comment to list `glossary`.
 - __main__.py help text: add `mode=glossary`, `pipeline=glossary`, `prompts=glossary`, `output=glossary`, and an example invocation (mirror the solution_manual example at __main__.py:147).
 
 ### NEW tests (mirror tests/test_problem_set*.py; offline, agents mocked)
+
 - `tests/test_glossary_models.py`: `DefinitionCardPlan` validator (n_cards must equal include_main count); `GlossaryTag` render/parse round-trip incl. hyphenated/digit slugs and a non-matching tag returning None; `slugify_term` cases.
 - `tests/test_glossary.py`: `enumerate_glossary` with `definition_card_gen_agent`/`glossary_enumeration_agent` patched to return a fixed `GlossaryEnumerationResponse` built from `tests/fixtures/glossary/gre_p1.md`; `classify_definition_plan` -> 1 card; `generate_cards_for_terms` patched agent -> asserts `card_subtype=="definition_main"`, canonical `GlossaryTag` tag present, one card per term; `audit_coverage` raises `CoverageError` on missing/duplicate/extra; a `mode=glossary` dispatch test mirroring `tests/test_pipeline_mode.py` (mock heavy methods, assert `generate_outputs` called and the glossary path taken). Use `--llm`/`--integration` markers for any agent-real test.
 - `tests/fixtures/glossary/gre_p1.md`: real MinerU OCR of the first GRE word page, captured once (see Verification).
 
 ### NEW dendron notes
+
 - `notes/swanki.pipeline.glossary.md`, `notes/swanki.models.glossary.md` (paired notes, dated section describing the design).
 - Append dated sections to `notes/swanki.models.cards.md`, `notes/swanki.llm.agents.md`, `notes/swanki.pipeline.pipeline.md`, `notes/swanki.__main__.md` per the update-src-notes convention.
 

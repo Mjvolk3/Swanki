@@ -97,9 +97,7 @@ class LocalSource:
             for suffix in _AUDIO_SUFFIXES
             for p in sorted(self.output_dir.glob(f"*{suffix}"))
         )
-        return ArtifactSet(
-            key=key, content_key=content_key, apkgs=apkgs, audio=audio
-        )
+        return ArtifactSet(key=key, content_key=content_key, apkgs=apkgs, audio=audio)
 
 
 class ZoteroSource:
@@ -165,6 +163,4 @@ class ZoteroSource:
         zips = self._download(
             zot, with_zotero_retry(lambda: latest_zips(zot, item_key)), dest
         )
-        return ArtifactSet(
-            key=key, content_key=content_key, apkgs=apkgs, audio=zips
-        )
+        return ArtifactSet(key=key, content_key=content_key, apkgs=apkgs, audio=zips)

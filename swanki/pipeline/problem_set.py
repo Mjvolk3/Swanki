@@ -59,6 +59,7 @@ class CoverageError(RuntimeError):
         unsolved: set[str] | None = None,
         duplicated: set[str] | None = None,
     ) -> None:
+        """Build the error, composing a message from the non-empty diagnostic sets."""
         self.missing = missing or set()
         self.extra = extra or set()
         self.unsolved = unsolved or set()
@@ -611,7 +612,7 @@ _SOLUTION_BODY_START = re.compile(
 def _partition_statement_solution_regions(
     full_text: str,
 ) -> tuple[str, str | None]:
-    """Split a packed-document into (statements_region, solutions_region).
+    r"""Split a packed-document into (statements_region, solutions_region).
 
     Bishop-style packed PDFs concatenate the book chapter (ending with a
     ``# Exercises`` section whose problems carry difficulty markers like

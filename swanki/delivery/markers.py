@@ -50,11 +50,11 @@ class DeliveryMarkers:
 
     def _write(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(self.data, indent=2, ensure_ascii=False)
-        )
+        self.path.write_text(json.dumps(self.data, indent=2, ensure_ascii=False))
 
-    def mark(self, target: str, status: str = "done", *, when: str | None = None) -> None:
+    def mark(
+        self, target: str, status: str = "done", *, when: str | None = None
+    ) -> None:
         """Record a target's delivery status and persist immediately.
 
         Args:

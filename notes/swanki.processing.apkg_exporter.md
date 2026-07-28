@@ -25,4 +25,3 @@ Tests covering the change: `test_basic_model_has_feedback_field`, `test_cloze_mo
 ## 2026.05.29 - Feedback field at ord 2 finalized in both genanki models
 
 WIP checkpoint for the .apkg side of the review-time triage channel. `ApkgExporter` reads `card.get("user_feedback", "")`, adds `Feedback` to the per-card fields dict (alongside Front/Back or Text/Back Extra), and appends it as the 3rd `\x1f`-joined value (ord 2) in the genanki `flds` for both the Basic and Cloze models. Both model definitions (`_basic_model_json`, `_cloze_model_json`) register a `Feedback` field at ord 2; templates are untouched so cards render identically. Field names land as `[Front, Back, Feedback]` and `[Text, Back Extra, Feedback]`. Model seeds stay stable so migrated collections (via [[scripts.anki_add_feedback_field]]) re-use the same model ids. Mirrors [[swanki.processing.anki_processor]] and [[swanki.models.cards]]; tests in [[tests.test_apkg_exporter]].
-

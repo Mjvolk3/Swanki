@@ -22,7 +22,7 @@ def _safety_refusal_exception(marker: str) -> Exception:
     """Build an exception whose str(exc) contains a biosec-refusal marker."""
     return RuntimeError(
         f"status_code: 400, body: {{'code': 'invalid_prompt', 'message': "
-        f"\"...{marker}...\"}}"
+        f'"...{marker}..."}}'
     )
 
 
@@ -170,7 +170,8 @@ def test_model_settings_omitted_when_none():
 
 def test_constants_exposed():
     """The constants are part of the public API for callers that need to detect
-    safety refusals downstream (e.g., lecture.py's empty-string fallback)."""
+    safety refusals downstream (e.g., lecture.py's empty-string fallback).
+    """
     assert "invalid_prompt" in SAFETY_REFUSAL_MARKERS
     assert "limited access to this content for safety" in SAFETY_REFUSAL_MARKERS
     assert "EDUCATIONAL CONTEXT" in EDU_CONTEXT_PREAMBLE
@@ -191,9 +192,12 @@ def test_augment_string_message():
 
 def test_augment_multimodal_list_preserves_image():
     """Multimodal list ``[text, image]``: preamble goes to text only; image
-    object passed through unchanged (the image_processor.py:265 shape)."""
+    object passed through unchanged (the image_processor.py:265 shape).
+    """
     image_obj = object()  # sentinel for a BinaryContent / ImageUrl
-    out = _augment_with_preamble(["Describe this figure.", image_obj], EDU_CONTEXT_PREAMBLE)
+    out = _augment_with_preamble(
+        ["Describe this figure.", image_obj], EDU_CONTEXT_PREAMBLE
+    )
     assert isinstance(out, list)
     assert len(out) == 2
     assert out[0] == EDU_CONTEXT_PREAMBLE + "Describe this figure."
@@ -217,7 +221,8 @@ def test_augment_list_no_string_inserts_preamble():
 
 def test_multimodal_safety_refusal_retries_correctly():
     """End-to-end: a multimodal call that safety-refuses on attempt 1 should
-    retry with the preamble prepended to the text portion of the list."""
+    retry with the preamble prepended to the text portion of the list.
+    """
     agent = MagicMock()
     expected = MagicMock()
     image_obj = object()
@@ -249,7 +254,8 @@ def test_multimodal_safety_refusal_retries_correctly():
 def test_instructions_omitted_when_none():
     """When ``instructions`` is None (default), the kwarg is NOT passed to
     ``agent.run_sync`` -- needed because the image-summary call site doesn't
-    use a system prompt."""
+    use a system prompt.
+    """
     agent = MagicMock()
     agent.run_sync.return_value = MagicMock()
 
