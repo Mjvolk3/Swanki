@@ -41,6 +41,84 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 logger = logging.getLogger(__name__)
 
 
+_MATH_SPAN_RE = re.compile(
+    r"\$\$(.+?)\$\$|\$([^$]+)\$|\\\((.+?)\\\)|\\\[(.+?)\\\]", re.DOTALL
+)
+
+
+def _math_spans_balanced(text: str) -> bool:
+    r"""Report whether every math span in ``text`` has balanced curly braces.
+
+    Used to gate the single-level subscript repairs: sound math must never be
+    rewritten by them. Text with no math spans counts as balanced.
+
+    Args:
+        text: Card text possibly containing ``$…$``, ``$$…$$``, ``\\(…\\)`` or
+            ``\\[…\\]`` spans.
+
+    Returns:
+        True when no span has a brace imbalance.
+    """
+    for m in _MATH_SPAN_RE.finditer(text):
+        content = next(g for g in m.groups() if g is not None)
+        depth = 0
+        for i, c in enumerate(content):
+            if content[i - 1 : i] == "\\":  # escaped \{ or \} is a literal
+                continue
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth < 0:
+                    return False
+        if depth:
+            return False
+    return True
+
+
+def _promote_single_brace_clozes(text: str) -> str:
+    r"""Rewrite single-brace ``{c1::...}`` deletions as ``{{c1::...}}``.
+
+    Only the brace that actually closes each deletion is doubled, found by
+    counting nesting depth from the opener. Braces belonging to LaTeX inside
+    or outside the deletion are left alone -- the previous blanket
+    ``re.sub(r"([^}])\\}([^}]|$)", ...)`` doubled every closing brace in the
+    field and silently corrupted math such as ``\\text{control}``.
+
+    Args:
+        text: Card text that contains at least one ``{c<n>::`` opener.
+
+    Returns:
+        The text with each single-brace cloze deletion properly closed. An
+        unterminated deletion is left untouched rather than guessed at.
+    """
+    out: list[str] = []
+    pos = 0
+    for m in re.finditer(r"\{c\d+::", text):
+        if m.start() < pos:  # opener already consumed by an outer deletion
+            continue
+        depth = 1
+        i = m.end()
+        while i < len(text) and depth:
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if not depth:
+                    break
+            i += 1
+        if depth:  # unbalanced -- leave this deletion exactly as written
+            logger.warning("Unterminated cloze deletion in card text; left as-is")
+            continue
+        out.append(text[pos : m.start()])
+        out.append("{{c1::")
+        out.append(text[m.end() : i])
+        out.append("}}")
+        pos = i + 1
+    out.append(text[pos:])
+    return "".join(out)
+
+
 class CardContent(BaseModel):
     """Structured content for a card side.
 
@@ -109,11 +187,13 @@ class CardContent(BaseModel):
         """
         import re
 
-        # First, fix cloze deletion format
-        # Fix single braces to double braces for cloze deletions
-        if "{c" in v and "{{c" not in v:
-            v = re.sub(r"\{c(\d+)::", r"{{c1::", v)
-            v = re.sub(r"([^}])\}([^}]|$)", r"\1}}\2", v)
+        # First, fix cloze deletion format: promote single-brace {c1::...} to
+        # {{c1::...}}. The guard must match REAL cloze syntax -- a bare "{c"
+        # substring also occurs in ordinary LaTeX (\text{control}, \mathrm{cm},
+        # k_{cat}), and the old blanket brace-doubling below then corrupted
+        # every closing brace in the field. See [[swanki.models.cards]].
+        if re.search(r"\{c\d+::", v) and "{{c" not in v:
+            v = _promote_single_brace_clozes(v)
 
         # Check for multiple cloze numbers (c1, c2, c3) which should be avoided
         cloze_pattern = r"\{\{c(\d+)::"
@@ -357,24 +437,30 @@ class CardContent(BaseModel):
         # Check for unformatted mathematical content
         # This checks for common patterns that indicate math but aren't wrapped in LaTeX
 
-        # FIRST: Fix incomplete subscript braces (e.g., X_{0 → X_{0}, X_p} → X_{p})
-        # This prevents validation errors from malformed LaTeX
-        v = re.sub(
-            r"([A-Z])_\{([a-z0-9]+)(?!\})", r"\1_{\2}", v
-        )  # Add missing closing brace
-        v = re.sub(
-            r"([A-Z])_([a-z0-9]+)\}", r"\1_{\2}", v
-        )  # Fix orphaned closing brace
+        # The subscript repairs below are single-level regexes: they assume a
+        # subscript group holds no nested braces. That is false for ordinary
+        # LaTeX (``_{\mathrm{out}}``, ``\frac{a_{i}}{b_{j}}``), where they
+        # delete a brace the expression needs and leave the span unbalanced --
+        # which is how well-formed model output reached Anki corrupted. Only
+        # run them when the math is ALREADY broken; never rewrite sound math.
+        if not _math_spans_balanced(v):
+            # Fix incomplete subscript braces (e.g., X_{0 → X_{0}, X_p} → X_{p})
+            v = re.sub(
+                r"([A-Z])_\{([a-z0-9]+)(?!\})", r"\1_{\2}", v
+            )  # Add missing closing brace
+            v = re.sub(
+                r"([A-Z])_([a-z0-9]+)\}", r"\1_{\2}", v
+            )  # Fix orphaned closing brace
 
-        # Fix split subscripts like W_{i}j} → W_{ij} (brace closes too early)
-        v = re.sub(r"([A-Za-z])_\{([a-z0-9]+)\}([a-z0-9]+)\}", r"\1_{\2\3}", v)
+            # Fix split subscripts like W_{i}j} → W_{ij} (brace closes too early)
+            v = re.sub(r"([A-Za-z])_\{([a-z0-9]+)\}([a-z0-9]+)\}", r"\1_{\2\3}", v)
 
-        # Also fix subscripts without any braces at all (X_0 → X_{0})
-        v = re.sub(r"([A-Z])_([a-z0-9]+)(?![}{])", r"\1_{\2}", v)
+            # Also fix subscripts without any braces at all (X_0 → X_{0})
+            v = re.sub(r"([A-Z])_([a-z0-9]+)(?![}{])", r"\1_{\2}", v)
 
-        # Fix double closing braces in subscripts inside LaTeX: _{ij}} → _{ij}
-        # The LLM sometimes generates extra } after subscripts
-        v = re.sub(r"(_\{[^}]+\})\}", r"\1", v)
+            # Fix double closing braces in subscripts inside LaTeX: _{ij}} → _{ij}
+            # The LLM sometimes generates extra } after subscripts
+            v = re.sub(r"(_\{[^}]+\})\}", r"\1", v)
 
         # Auto-fix unbalanced braces inside $...$ spans
         # Missing }: $\sigma_{\mathrm{DNA}$ → $\sigma_{\mathrm{DNA}}$

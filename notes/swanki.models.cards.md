@@ -113,3 +113,37 @@ Two models for the post-generation correctness gate ([[swanki.pipeline.card_corr
 ## 2026.06.12
 
 `CardContent` gained `image_summary_perceptual: str | None`. Existing `image_summary` is unchanged and remains the interpretive (back-card) text every current consumer expects (card_correctness, provenance, back-audio); the new field carries the perceptual front-card description. The split is forward-only: old cards lack the field (defaults `None`) and the front-audio picker falls back to `image_summary`. See [[plan.two-field-image-descriptions-audio-only.2026.06.12]].
+
+## 2026.08.07 - `validate_text_content` was corrupting well-formed LaTeX
+
+Two independent bugs in the `text` field validator rewrote sound math into
+unbalanced math, which then reached Anki and rendered as raw source. Both were
+reproduced byte-for-byte against live cards before fixing.
+
+**1. The cloze guard matched LaTeX.** `if "{c" in v and "{{c" not in v:` was
+meant to detect single-brace `{c1::…}` deletions, but the bare substring `{c`
+also occurs in ordinary math — `\text{control}`, `\mathrm{corr}`,
+`\mathrm{cm}`, `k_{cat}`. On a false trigger the follow-up
+`re.sub(r"([^}])\}([^}]|$)", r"\1}}\2", v)` blanket-doubled closing braces
+across the whole field. Because `re.sub` consumes the trailing character and
+does not overlap, only *some* braces doubled — which is why the damage looked
+random. Now gated on `re.search(r"\{c\d+::", v)`, and the promotion itself
+moved to `_promote_single_brace_clozes`, which finds each deletion's real
+closing brace by depth-counting and doubles only that one. An unterminated
+deletion is left as written rather than guessed at.
+
+**2. The subscript repairs assumed no nesting.** `re.sub(r"(_\{[^}]+\})\}",
+r"\1", v)` reads `_{\mathrm{out}}` as a subscript plus a stray brace, because
+`[^}]+` stops at the inner `}` — so it deleted a brace the expression needed.
+That is the `\frac{[\mathrm{ion}]_{\mathrm{out}}{…\right)}}` corruption seen on
+kuchel CH02. The four single-level subscript regexes now run only when
+`_math_spans_balanced(v)` is False: **already-sound math is never rewritten.**
+Genuinely broken math (`\(X_{0\)`, `\(\mathrm{IPP}}\)`) is still repaired.
+
+Neither bug was the model's: the same cards' audio was always correct, because
+`humanize_latex` runs on the transcript path and never sees the validator.
+The correctness gate passed them too — by design, it is factual-only and reads
+brace damage as "formatting/notation" ([[project_card_correctness_gate]]).
+
+Regression tests in [[tests.test_models_validation]] (`TestLatexNotCorruptedByValidator`)
+carry the exact live expressions; 15 of them fail on the pre-fix validator.

@@ -275,3 +275,65 @@ class TestLectureTranscriptFeedback:
             feedback=[], done=True, word_count=100, meets_length_target=True
         )
         assert fb.si_balance is True
+
+
+class TestLatexNotCorruptedByValidator:
+    """Regression tests: ``CardContent.text`` must not rewrite sound LaTeX.
+
+    Two validator bugs shipped corrupted math to Anki. Both are reproduced
+    here with the exact expressions that reached the live collection.
+    """
+
+    # Well-formed math whose only crime was containing a nested brace group.
+    SOUND_MATH = [
+        # `{c` in \mathrm{ctrl}/\text{control} used to trip the cloze guard,
+        # which then blanket-doubled every closing brace in the field.
+        r"Here \(\delta = \text{perturbed} - \text{control}\) holds.",
+        r"\(\mathrm{PearsonDelta}(\hat{\mathbf y},\mathbf y)"
+        r"=\mathrm{corr}(\hat{\mathbf y}-\mathbf y^{\mathrm{ctrl}},"
+        r"\mathbf y-\mathbf y^{\mathrm{ctrl}})\)",
+        r"Density is \(1.35\,\mathrm{g}\,\mathrm{cm}^{-3}\) here.",
+        r"\(V_{max}=3.0\,\mu\mathrm{mol}\,L^{-1}\,min^{-1}\)"
+        r" and \(k_{cat}=300\,min^{-1}\)",
+        # Nested subscript groups: the `_{...}}` repair used to eat a needed brace.
+        r"Use \(\Delta G=RT\ln\!\left(\frac{[\mathrm{ion}]_{\mathrm{out}}}"
+        r"{[\mathrm{ion}]_{\mathrm{in}}}\right)\).",
+        r"\(\mathrm{pI}=\frac{pK_{a,\mathrm{low}}+pK_{a,\mathrm{high}}}{2}\)",
+        r"\(L_{2}(\hat{\mathbf y},\mathbf y)=\sqrt{\sum_g(\hat y_g-y_g)^2}\)",
+    ]
+
+    @pytest.mark.parametrize("text", SOUND_MATH)
+    def test_sound_math_round_trips_unchanged(self, text: str) -> None:
+        assert CardContent(text=text).text == text
+
+    @pytest.mark.parametrize("text", SOUND_MATH)
+    def test_sound_math_stays_brace_balanced(self, text: str) -> None:
+        from swanki.models.cards import _math_spans_balanced
+
+        assert _math_spans_balanced(CardContent(text=text).text)
+
+    def test_genuinely_broken_math_is_still_repaired(self) -> None:
+        assert CardContent(text=r"The value \(X_{0\) is set.").text == (
+            r"The value \(X_{0}\) is set."
+        )
+        assert CardContent(text=r"Result \(\mathrm{IPP}}\) here.").text == (
+            r"Result \(\mathrm{IPP}\) here."
+        )
+
+    def test_single_brace_cloze_still_promoted(self) -> None:
+        assert CardContent(text=r"The capital is {c1::Paris}.").text == (
+            r"The capital is {{c1::Paris}}."
+        )
+
+    def test_cloze_promotion_preserves_inner_latex_braces(self) -> None:
+        """The closing brace of the deletion is doubled -- not the LaTeX ones."""
+        assert CardContent(text=r"Energy is {c1::\frac{1}{2}mv^2} here.").text == (
+            r"Energy is {{c1::\frac{1}{2}mv^2}} here."
+        )
+
+    def test_unterminated_cloze_left_untouched(self) -> None:
+        from swanki.models.cards import _promote_single_brace_clozes
+
+        assert (
+            _promote_single_brace_clozes("broken {c1::no end") == "broken {c1::no end"
+        )
