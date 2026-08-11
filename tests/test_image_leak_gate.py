@@ -167,3 +167,41 @@ class TestAudit:
         rows = json.loads(out.read_text())
         assert rows[0]["verdict"] == "clean"
         assert "original_description" in rows[0]
+
+
+class TestSpokenLengthCap:
+    """The front description is read aloud before answering, so it is bounded."""
+
+    def test_perceptual_at_the_cap_is_accepted(self):
+        from swanki.models.document import PERCEPTUAL_MAX_CHARS, ImageDescription
+
+        d = ImageDescription(perceptual="x" * PERCEPTUAL_MAX_CHARS, interpretive="ok")
+        assert len(d.perceptual) == PERCEPTUAL_MAX_CHARS
+
+    def test_over_cap_is_rejected_so_the_agent_retries(self):
+        import pydantic
+
+        from swanki.models.document import PERCEPTUAL_MAX_CHARS, ImageDescription
+
+        with pytest.raises(pydantic.ValidationError):
+            ImageDescription(
+                perceptual="x" * (PERCEPTUAL_MAX_CHARS + 1), interpretive="ok"
+            )
+
+    def test_interpretive_is_not_capped(self):
+        """Only the front is read before answering; the back may be as long as needed."""
+        from swanki.models.document import PERCEPTUAL_MAX_CHARS, ImageDescription
+
+        d = ImageDescription(
+            perceptual="short", interpretive="y" * (PERCEPTUAL_MAX_CHARS * 3)
+        )
+        assert len(d.interpretive) == PERCEPTUAL_MAX_CHARS * 3
+
+    def test_gate_rewrite_prompt_states_the_shared_cap(self):
+        from swanki.models.document import PERCEPTUAL_MAX_WORDS
+        from swanki.pipeline.image_leak_gate import REWRITE_PROMPT
+
+        rendered = REWRITE_PROMPT.format(
+            question="q", extra="", max_words=PERCEPTUAL_MAX_WORDS
+        )
+        assert f"under {PERCEPTUAL_MAX_WORDS} words" in rendered

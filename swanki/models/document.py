@@ -89,6 +89,23 @@ class ImageSummary(BaseModel):
         return v
 
 
+PERCEPTUAL_MAX_WORDS = 80
+"""Spoken-length budget for a front-card figure description.
+
+The front description is read aloud before the learner answers, so it is dead
+time between seeing the question and recalling it. Descriptions ran to ~150
+words before this cap, which is roughly a minute of narration per card.
+"""
+
+PERCEPTUAL_MAX_CHARS = 700
+"""Structural backstop on ``ImageDescription.perceptual``.
+
+Sized to sit just above ``PERCEPTUAL_MAX_WORDS`` of ordinary prose. Exceeding it
+raises, which trips the pydantic-ai retry and makes the model shorten -- the cap
+is enforced by the schema rather than hoped for from the prompt.
+"""
+
+
 class ImageDescription(BaseModel):
     """Dual description of a figure produced in one vision call.
 
@@ -101,10 +118,12 @@ class ImageDescription(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     perceptual: str = Field(
+        max_length=PERCEPTUAL_MAX_CHARS,
         description="Only what is visually present in the figure (shapes, labels, "
         "axes, arrangement, colors, what stands out). NEVER state, name, or imply "
         "the answer to any question the figure supports, or the figure's "
-        "conclusion. Spoken on the card front."
+        f"conclusion. Spoken on the card front, so keep it under "
+        f"{PERCEPTUAL_MAX_WORDS} words -- it is read aloud.",
     )
     interpretive: str = Field(
         description="Full takeaway summary: what the figure shows and what it "

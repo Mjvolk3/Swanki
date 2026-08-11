@@ -70,7 +70,7 @@ to picture the figure from your words alone.
 CRITICAL: this plays BEFORE the answer is revealed. You must NOT state, name, paraphrase,
 or imply the answer to the question above, nor the figure's conclusion or takeaway. If a
 visual element would give the answer away, describe its appearance and position without
-naming what it demonstrates. Keep it under 90 words -- it is read aloud.
+naming what it demonstrates. Keep it under {max_words} words -- it is read aloud.
 {extra}
 For the `interpretive` field, give the normal full takeaway (it is not used here)."""
 

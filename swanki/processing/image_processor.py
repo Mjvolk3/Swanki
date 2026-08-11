@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from ..llm.agents import image_description_agent
 from ..llm.safety import with_safety_retry
-from ..models.document import ImageDescription
+from ..models.document import PERCEPTUAL_MAX_WORDS, ImageDescription
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +194,8 @@ Context around the image: {image_info["context"]}
    flashcard FRONT to an audio-only learner who cannot see the image, so it must
    let them picture the figure WITHOUT being told the answer. NEVER state, name,
    or imply the conclusion, the takeaway, or the answer to any question the
-   figure supports.
+   figure supports. Keep it under {PERCEPTUAL_MAX_WORDS} words -- it is read
+   aloud on the card front, so length is dead time before the learner answers.
 
 2. interpretive -- The full takeaway: what the image shows and means, how it
    relates to the surrounding text, and any important details. 2-4 sentences.
