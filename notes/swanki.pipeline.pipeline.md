@@ -233,3 +233,14 @@ Added an `elif mode == "glossary":` branch in `process_full`, parallel to `solut
 ## 2026.06.12
 
 `process_images` carries `perceptual` into each `ImageSummary`; the image-card summary lookup captures `image_summary_perceptual_text` alongside `image_summary_text`, and every placement branch sets `image_summary_perceptual` on the same side it sets `image_summary`. Both descriptions travel to the card (placement front/back is decided here, after generation) so the per-side audio picker selects which to speak. See [[plan.two-field-image-descriptions-audio-only.2026.06.12]].
+
+## 2026.08.10 - Image-leak gate wired into generate_outputs
+
+`_apply_image_leak_gate` runs directly after `_apply_correctness_gate`, so cards
+quarantined for factual errors are never assessed and the leak audit describes
+only cards that actually ship. Config lives at `image_leak_gate.image_leak_gate`
+(the doubly-nested shape every group in `conf/` uses -- the group file declares
+its own top-level key, so the Hydra override path is
+`image_leak_gate.image_leak_gate.enabled=false`, not `image_leak_gate.enabled`).
+Descriptions are repaired in place; the card list is returned unchanged in
+length because this gate never drops. See [[swanki.pipeline.image_leak_gate]].

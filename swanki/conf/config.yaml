@@ -10,6 +10,7 @@ defaults:
 - refinement: default
 - zotero: default
 - card_correctness_gate: default
+- image_leak_gate: default
 - audio_correctness_gate: default
 - delivery: default
 pdf_path: null
@@ -27,6 +28,7 @@ anki: null
 refinement: null
 zotero: null
 card_correctness_gate: null
+image_leak_gate: null
 audio_correctness_gate: null
 delivery: null
 hydra:

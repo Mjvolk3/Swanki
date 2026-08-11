@@ -1,0 +1,16 @@
+image_leak_gate:
+  # Post-generation gate on the figure description spoken aloud on a card FRONT.
+  # The description is written at image-processing time, before cards exist, so it
+  # cannot know what the card ends up asking -- a faithful description of a figure
+  # becomes a spoiler for the one question that figure supports. When enabled,
+  # every front-image card is judged against its own answer and the description is
+  # regenerated question-aware until it stops leaking. Cards are never dropped:
+  # a description that cannot be cleaned keeps its best answer-blind attempt and is
+  # logged `unresolved` to image-leak-assessment.json. ON by default.
+  enabled: true
+  # Optional model override (pydantic-ai string). Null reuses models.llm.
+  model: null
+  # Concurrency bound for per-card judge/rewrite calls.
+  max_workers: 8
+  # Regeneration attempts before keeping the best effort and moving on.
+  max_attempts: 2

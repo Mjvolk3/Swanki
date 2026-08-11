@@ -14,6 +14,7 @@ from ..models.cards import (
     CardFeedback,
     CardGenerationResponse,
     ChunkEditResponse,
+    ImageLeakVerdict,
     LectureFactualAssessment,
     LectureTranscriptFeedback,
 )
@@ -57,6 +58,9 @@ lecture_factual_agent: Agent[None, LectureFactualAssessment] = Agent(
 )
 image_description_agent: Agent[None, ImageDescription] = Agent(
     output_type=ImageDescription, retries=3
+)
+image_leak_judge_agent: Agent[None, ImageLeakVerdict] = Agent(
+    output_type=ImageLeakVerdict, retries=2
 )
 
 # ── Solution-manual mode agents ────────────────────────────────────────

@@ -88,3 +88,11 @@ enabled." Dead config, harmless, left in place for the non-reasoning case.
 
 The Responses API also serves non-reasoning OpenAI models, so this prefix is
 safe if `models.llm.model` is later moved back to a gpt-4o-class model.
+
+## 2026.08.10 - image_leak_judge_agent
+
+Structured-output agent for the image-leak gate
+([[swanki.pipeline.image_leak_gate]]), returning `ImageLeakVerdict`. Sits beside
+`image_description_agent`, which the gate reuses for the rewrite half -- the
+judge decides, the existing description agent regenerates, so there is only one
+place that knows how to write a figure description.

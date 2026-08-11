@@ -36,7 +36,13 @@ import re
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1823,3 +1829,61 @@ class EnhancedCardGenerationResponse(CardGenerationResponse):
     refinement_history: RefinementHistory | None = Field(
         None, description="History of refinement iterations"
     )
+
+
+class ImageLeakVerdict(BaseModel):
+    """LLM verdict on whether a card's spoken figure description gives its answer away.
+
+    The description attached to a card FRONT is read aloud before the learner
+    responds, so it must let an audio-only learner picture the figure without
+    handing them the answer. The judge assesses MEANING, not word overlap: a
+    description may share vocabulary with the answer and still pass if it only
+    reports what is visibly present, while a description in entirely different
+    words still leaks if it states or implies the relationship being tested.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    leaks: bool = Field(
+        description="True if hearing the description before answering substantially "
+        "gives away the answer or the key concept the question tests."
+    )
+    severity: Literal["none", "minor", "moderate", "severe"] = Field(
+        description="none when leaks is False; otherwise how much is given away."
+    )
+    what_leaks: str = Field(
+        default="",
+        description="The specific concept given away, or '' when nothing leaks. "
+        "Name the idea, not the shared words.",
+    )
+    reasoning: str = Field(description="One or two sentences justifying the verdict.")
+
+    @model_validator(mode="after")
+    def _severity_matches_leaks(self) -> "ImageLeakVerdict":
+        """Keep ``severity`` and ``leaks`` consistent so the gate can trust either."""
+        if self.leaks and self.severity == "none":
+            raise ValueError("leaks=True requires severity other than 'none'")
+        if not self.leaks and self.severity != "none":
+            raise ValueError("leaks=False requires severity 'none'")
+        return self
+
+
+class ImageLeakAuditEntry(BaseModel):
+    """One card's image-leak-gate outcome, serialized to the audit JSON.
+
+    Written for EVERY front-image card the gate sees, so a run is fully
+    auditable: ``clean`` passed first time, ``rewritten`` needed one or more
+    answer-blind regenerations, ``unresolved`` still leaked after the attempt
+    budget (kept, fail-open, and worth a human look), ``judge_failed`` could not
+    be assessed.
+    """
+
+    card_id: str
+    verdict: Literal["clean", "rewritten", "unresolved", "judge_failed"]
+    attempts: int
+    severity_before: str
+    severity_after: str
+    what_leaked: str
+    reasoning: str
+    original_description: str
+    final_description: str

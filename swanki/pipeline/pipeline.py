@@ -1977,6 +1977,35 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             )
         return kept
 
+    def _apply_image_leak_gate(
+        self, cards: list[PlainCard], output_dir: Path
+    ) -> list[PlainCard]:
+        """Judge and repair front-image descriptions that give away their answer.
+
+        No-op (returns ``cards`` unchanged) when ``image_leak_gate.enabled`` is
+        false or no card carries a front image. Descriptions are repaired in
+        place; no card is ever dropped. Writes the per-card audit to
+        ``image-leak-assessment.json``.
+        """
+        gate_cfg = self.config.get("image_leak_gate", {}).get("image_leak_gate", {})
+        if not gate_cfg.get("enabled", False) or not cards:
+            return cards
+
+        from .image_leak_gate import run_image_leak_gate, write_audit
+
+        llm_config = self.config.get("models", {}).get("models", {}).get("llm", {})
+        model_string = gate_cfg.get("model") or get_model_string(llm_config)
+        cards, audit = run_image_leak_gate(
+            cards,
+            model_string,
+            self.output_base,
+            max_workers=gate_cfg.get("max_workers", 8),
+            max_attempts=gate_cfg.get("max_attempts", 2),
+        )
+        if audit:
+            write_audit(audit, output_dir / "image-leak-assessment.json")
+        return cards
+
     def generate_outputs(
         self, cards: list[PlainCard], summary: DocumentSummary, output_dir: Path
     ) -> tuple[dict[str, Path], list[PlainCard]]:
@@ -2019,6 +2048,12 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
         # is written, so the filtered kept-list drives every downstream writer
         # and the position-keyed artifacts stay consistent.
         cards = self._apply_correctness_gate(cards, summary, output_dir)
+
+        # Image-leak gate (opt-out): the front description is written before any
+        # card exists, so it cannot know what the card asks. Judge it against the
+        # card's own answer now that both are final, and rewrite question-aware.
+        # Runs after the correctness gate so dropped cards are never assessed.
+        cards = self._apply_image_leak_gate(cards, output_dir)
 
         # Get output config
         output_config = self.config.get("output", {}).get("output", {})

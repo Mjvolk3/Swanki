@@ -147,3 +147,18 @@ brace damage as "formatting/notation" ([[project_card_correctness_gate]]).
 
 Regression tests in [[tests.test_models_validation]] (`TestLatexNotCorruptedByValidator`)
 carry the exact live expressions; 15 of them fail on the pre-fix validator.
+
+## 2026.08.10 - ImageLeakVerdict + ImageLeakAuditEntry
+
+Output models for the image-leak gate ([[swanki.pipeline.image_leak_gate]]).
+`ImageLeakVerdict` is the judge's per-description verdict: `leaks`, a
+`severity` of none/minor/moderate/severe, `what_leaks` (the concept given away,
+named as an idea rather than as shared words) and `reasoning`. A
+`@model_validator` requires `severity == "none"` exactly when `leaks` is False,
+so the gate can branch on either field without them contradicting each other; an
+inconsistent LLM response triggers the pydantic-ai retry.
+
+`ImageLeakAuditEntry` is the audit record written for every assessed card:
+`clean`, `rewritten`, `unresolved` (still leaking after the attempt budget --
+kept, fail-open) or `judge_failed`. It carries both the original and final
+description so a run is reviewable without re-deriving anything.
