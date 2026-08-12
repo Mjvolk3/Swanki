@@ -4,6 +4,19 @@ models:
     model: gpt-5.6-sol
     temperature: 0.7
     max_retries: 3
+    # Utility tier: mechanical text transformation only -- card->spoken
+    # transcripts and reading-chunk transcripts, which are copy-with-cleanup
+    # (expand LaTeX and acronyms, insert pauses) and provably need no
+    # reasoning: a measured run recorded ZERO reasoning tokens across 32
+    # transcript calls. luna is 25x cheaper than sol on both input and output
+    # ($0.20/$1.20 vs $5.00/$30.00 per 1M) and is the same gpt-5.6 family on the
+    # same openai-responses provider, so this is a swap within a family rather
+    # than a cross-family downgrade. Generation, both correctness gates and
+    # lecture critique stay on models.llm.model above. Unset -> reuses the
+    # generation model, so removing this block is a safe rollback.
+    utility:
+      provider: openai-responses
+      model: gpt-5.6-luna
   tts:
     provider: fish_speech
     server_url: http://localhost:8080

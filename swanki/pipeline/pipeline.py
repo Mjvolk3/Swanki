@@ -58,7 +58,7 @@ from ..utils.content import (
     detect_math_content,
     extract_images_from_markdown,
 )
-from .run_agent import GENERATION, run_agent
+from .run_agent import GENERATION, configure_tiers, run_agent
 from .segmenter import (
     build_segment_to_page_map,
     combine_markdown_files,
@@ -249,6 +249,9 @@ class Pipeline:
 
         # Log output directory for easy navigation
         logger.info(f"Output directory: {self.output_base.absolute()}")
+
+        # Register which model serves each tier for this run, and log both.
+        configure_tiers(self.config.get("models", {}).get("models", {}))
 
         # Remember the source PDF for OCR providers (mineru) that consume the
         # whole document rather than the per-page split.

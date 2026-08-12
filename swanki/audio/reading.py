@@ -14,7 +14,7 @@ from typing import Any
 import tiktoken
 
 from ..llm.agents import text_agent
-from ..pipeline.run_agent import GENERATION, run_agent
+from ..pipeline.run_agent import UTILITY, run_agent
 from ..processing.reading_reorder import (
     reorder_figures_to_referencing_section,
     strip_reference_cruft,
@@ -134,7 +134,7 @@ def _pass2_chunk_with_completeness(
             instructions=instructions,
             model=model,
             model_settings={"max_tokens": 8000},
-            tier=GENERATION,
+            tier=UTILITY,
             label="reading Pass-2 chunk",
         )
         candidate = result.output.strip()

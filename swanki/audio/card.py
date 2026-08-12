@@ -17,7 +17,7 @@ import tiktoken
 
 from ..llm.agents import text_agent
 from ..models.cards import PlainCard
-from ..pipeline.run_agent import GENERATION, run_agent
+from ..pipeline.run_agent import UTILITY, run_agent
 from ..utils.formatting import humanize_card_text_for_tts, humanize_citation_key
 from ._common import (
     DEFAULT_VOICE_ID,
@@ -243,7 +243,7 @@ def generate_card_transcript(
                 instructions=system_content,
                 model=model,
                 model_settings={"max_tokens": 2000},
-                tier=GENERATION,
+                tier=UTILITY,
                 label="card transcript",
             )
             response_content = result.output.strip()

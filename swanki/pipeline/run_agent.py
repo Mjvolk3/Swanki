@@ -38,6 +38,36 @@ GENERATION = "generation"
 UTILITY = "utility"
 TIERS = (GENERATION, UTILITY)
 
+_TIER_MODELS: dict[str, str] = {}
+"""Resolved model per tier, registered once at pipeline start.
+
+Populated by :func:`configure_tiers`. Empty until then, in which case every
+call falls back to the model string its caller passed -- so an unconfigured run
+(a script, a test, a partial rerun) behaves exactly as it did before tiering.
+Written once during setup and read-only afterwards, so the thread pools on this
+path need no lock.
+"""
+
+
+def configure_tiers(models_config: dict[str, Any]) -> dict[str, str]:
+    """Register the tier models for this run and log what each resolved to.
+
+    Logging the resolution once at startup is the guard against a silent
+    mis-tier: pydantic-ai accepts an unknown model name and falls back to a
+    generic profile, so a typo would otherwise run happily on the wrong model.
+
+    Args:
+        models_config: The inner ``models`` mapping.
+
+    Returns:
+        The registered tier-to-model mapping.
+    """
+    _TIER_MODELS.clear()
+    _TIER_MODELS.update(resolve_tier_models(models_config))
+    for tier, model in _TIER_MODELS.items():
+        logger.info(f"llm tier {tier}: {model}")
+    return dict(_TIER_MODELS)
+
 
 def resolve_tier_models(models_config: dict[str, Any]) -> dict[str, str]:
     """Resolve both tiers to pydantic-ai model strings.
@@ -120,16 +150,19 @@ def run_agent(
         The agent's full ``RunResult``; callers use ``.output``.
     """
     validate_tier(tier)
+    # The registered tier model wins; the caller's string is the fallback for
+    # runs that never called configure_tiers.
+    effective_model = _TIER_MODELS.get(tier) or model
     result = with_safety_retry(
         agent,
         user_message,
         instructions=instructions,
-        model=model,
+        model=effective_model,
         model_settings=model_settings,
         max_safety_retries=max_safety_retries,
         label=label,
     )
-    record_result(result, label=label, tier=tier, model=model, ledger=ledger)
+    record_result(result, label=label, tier=tier, model=effective_model, ledger=ledger)
     return result
 
 

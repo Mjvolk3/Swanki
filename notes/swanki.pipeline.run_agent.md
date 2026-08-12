@@ -51,3 +51,38 @@ its sibling ledger, never `pipeline.py`.
 
 See [[swanki.pipeline.usage_ledger]] and
 [[plan.split-generation-and-utility-models.2026.08.11]].
+
+## 2026.08.11 - Tier registry, and transcripts/reading moved to luna
+
+`configure_tiers` registers the resolved model per tier once at pipeline start;
+`run_agent` then selects by tier with the caller's model string as fallback.
+This avoids threading a second model through ~20 signatures -- the audio modules
+all take `model: str` as a function parameter and never see config, so the
+alternative was a mechanical edit of every caller in the chain.
+
+Semantics, pinned by tests: **the registered tier model wins, the caller's
+string is the fallback.** A run that never calls `configure_tiers` (a script, a
+test, a partial rerun) behaves exactly as it did before tiering. The registry is
+written once during setup and read-only afterwards, so the four thread pools on
+this path need no lock -- but it is module-global, so tests clear it via an
+autouse fixture or they pollute each other into false passes.
+
+**Moved to the utility tier: card->spoken transcripts (`audio/card.py`) and
+reading Pass-2 chunks (`audio/reading.py`).** Both are copy-with-cleanup --
+expand LaTeX and acronyms, insert pause tags -- and the evidence they need no
+reasoning is direct rather than inferred: the first instrumented run recorded
+**zero reasoning tokens across 32 transcript calls**, averaging 498 input / 33
+output. The model already declines to reason there, so sol's rate bought
+nothing.
+
+The reading path is additionally pre-defended against the one failure a weaker
+model could introduce: `_PASS2_CHUNK_MIN_RATIO = 0.85` retries a short chunk
+three times and then falls back to the humanized input verbatim, so dropped
+prose cannot reach the transcript. The card path has **no** equivalent guard --
+its safety argument is the small single-card input, not a mechanism, so a sample
+read of the first regenerated fronts and backs is the check.
+
+Measured saving on the one available run is only 12%, but that run
+(`kasserPhilosophyScience_L01`) is `audio=complementary` and produced **zero**
+reading chunks. On a full `audio=all` chapter, reading Pass-2 is ~315 of ~800
+calls, so the real share is much larger -- pending measurement.

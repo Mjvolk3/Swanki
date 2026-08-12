@@ -19,6 +19,14 @@ from swanki.pipeline.usage_ledger import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _clean_tier_registry():
+    """The tier registry is module-global; a leak between tests is a false pass."""
+    ra._TIER_MODELS.clear()
+    yield
+    ra._TIER_MODELS.clear()
+
+
 def _usage(inp=0, out=0, reasoning=0, cache=0, requests=1, tool_calls=0):
     details = {"reasoning_tokens": reasoning} if reasoning else {}
     return SimpleNamespace(
@@ -219,9 +227,99 @@ class TestRunAgent:
             model_settings={"max_tokens": 8000},
             ledger=UsageLedger(),
         )
-        assert seen["model"] == "openai-responses:m"
+        assert seen["model"] == "openai-responses:m"  # no registry -> caller's model
         assert seen["model_settings"] == {"max_tokens": 8000}
         assert seen["instructions"] == "sys"
+
+
+class TestTierRegistry:
+    """configure_tiers decides which model serves a tier; the caller's string is a fallback."""
+
+    def test_registered_tier_model_overrides_the_caller_string(self, monkeypatch):
+        seen = {}
+
+        def fake(agent, msg, **kw):
+            seen.update(kw)
+            return SimpleNamespace(output="x", usage=lambda: _usage())
+
+        monkeypatch.setattr(ra, "with_safety_retry", fake)
+        ra.configure_tiers(
+            {
+                "llm": {
+                    "provider": "openai-responses",
+                    "model": "gpt-5.6-sol",
+                    "utility": {
+                        "provider": "openai-responses",
+                        "model": "gpt-5.6-luna",
+                    },
+                }
+            }
+        )
+        ra.run_agent(
+            object(),
+            "m",
+            model="openai-responses:gpt-5.6-sol",
+            label="card transcript",
+            tier=ra.UTILITY,
+            ledger=UsageLedger(),
+        )
+        assert seen["model"] == "openai-responses:gpt-5.6-luna"
+
+    def test_unconfigured_run_falls_back_to_the_caller_string(self, monkeypatch):
+        """A script or partial rerun that never calls configure_tiers must behave as before."""
+        seen = {}
+        monkeypatch.setattr(
+            ra,
+            "with_safety_retry",
+            lambda a, m, **kw: (
+                seen.update(kw),
+                SimpleNamespace(output="x", usage=lambda: _usage()),
+            )[1],
+        )
+        ra.run_agent(
+            object(),
+            "m",
+            model="openai-responses:gpt-5.6-sol",
+            label="l",
+            tier=ra.UTILITY,
+            ledger=UsageLedger(),
+        )
+        assert seen["model"] == "openai-responses:gpt-5.6-sol"
+
+    def test_the_ledger_records_the_model_that_actually_served(self):
+        led = UsageLedger()
+        ra.configure_tiers(
+            {
+                "llm": {
+                    "provider": "openai-responses",
+                    "model": "gpt-5.6-sol",
+                    "utility": {
+                        "provider": "openai-responses",
+                        "model": "gpt-5.6-luna",
+                    },
+                }
+            }
+        )
+        import unittest.mock as mock
+
+        with mock.patch.object(
+            ra,
+            "with_safety_retry",
+            return_value=SimpleNamespace(
+                output="x", usage=lambda: _usage(inp=1000, out=100)
+            ),
+        ):
+            ra.run_agent(
+                object(),
+                "m",
+                model="openai-responses:gpt-5.6-sol",
+                label="card transcript",
+                tier=ra.UTILITY,
+                ledger=led,
+            )
+        (row,) = led.rows()
+        assert row.model == "openai-responses:gpt-5.6-luna"
+        assert row.cost_usd == pytest.approx((1000 * 0.20 + 100 * 1.20) / 1e6)
 
 
 class TestPricing:
