@@ -32,9 +32,7 @@ def _setup(tmp_path: Path, *, source: str = "factor & years \\\\ 2 & 17 \\\\") -
 def _mock_llm(text: str):
     out = MagicMock()
     out.output = text
-    return patch(
-        "swanki.processing.table_processor.with_safety_retry", return_value=out
-    )
+    return patch("swanki.processing.table_processor.run_agent", return_value=out)
 
 
 def test_fills_placeholder_with_one_sentence(tmp_path):
@@ -74,7 +72,7 @@ def test_idempotent_uses_cache_no_second_llm_call(tmp_path):
     # cache now exists; a second run must NOT call the LLM (placeholder gone,
     # and even if present the cache would be reused)
     with patch(
-        "swanki.processing.table_processor.with_safety_retry",
+        "swanki.processing.table_processor.run_agent",
         side_effect=AssertionError("LLM must not be called on rerun"),
     ):
         results = TableProcessor(tmp_path, "fake:model").process_all_tables()
@@ -86,7 +84,7 @@ def test_cache_reused_when_placeholder_present(tmp_path):
     _setup(tmp_path)
     (tmp_path / "table-summaries" / "page-4_0.md").write_text("Pre-seeded summary.")
     with patch(
-        "swanki.processing.table_processor.with_safety_retry",
+        "swanki.processing.table_processor.run_agent",
         side_effect=AssertionError("LLM must not be called when cache exists"),
     ):
         TableProcessor(tmp_path, "fake:model").process_all_tables()
@@ -102,7 +100,7 @@ def test_missing_source_leaves_placeholder(tmp_path):
     page.write_text(landmark_block("Table", table_placeholder("page-9", 0)))
     # no source.txt stashed -> cannot summarize
     with patch(
-        "swanki.processing.table_processor.with_safety_retry",
+        "swanki.processing.table_processor.run_agent",
         side_effect=AssertionError("LLM must not be called without source"),
     ):
         results = TableProcessor(tmp_path, "fake:model").process_all_tables()

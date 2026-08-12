@@ -16,8 +16,8 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from ..llm.agents import image_description_agent
-from ..llm.safety import with_safety_retry
 from ..models.document import PERCEPTUAL_MAX_WORDS, ImageDescription
+from ..pipeline.run_agent import GENERATION, run_agent
 
 logger = logging.getLogger(__name__)
 
@@ -278,11 +278,12 @@ Context around the image: {image_info["context"]}
         # educational-context preamble to the text element on retry; image
         # left untouched). Without this wrap, qu died at 67 seconds on its
         # first CRISPR figure.
-        result = with_safety_retry(
+        result = run_agent(
             image_description_agent,
             [prompt, image_content],
             model=self.model,
             model_settings={"max_tokens": 8000, "temperature": 0.3},
+            tier=GENERATION,
             label="image description",
         )
         desc: ImageDescription = result.output

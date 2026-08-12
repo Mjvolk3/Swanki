@@ -14,7 +14,7 @@ from typing import Any
 import tiktoken
 
 from ..llm.agents import text_agent
-from ..llm.safety import with_safety_retry
+from ..pipeline.run_agent import GENERATION, run_agent
 from ..processing.reading_reorder import (
     reorder_figures_to_referencing_section,
     strip_reference_cruft,
@@ -128,12 +128,13 @@ def _pass2_chunk_with_completeness(
         # preamble attempts so the chunk-level token-ratio fallback below
         # only engages on legit short outputs, not biosec refusals (those
         # mean the content is unrenderable, not under-tokenized).
-        result = with_safety_retry(
+        result = run_agent(
             text_agent,
             chunk,
             instructions=instructions,
             model=model,
             model_settings={"max_tokens": 8000},
+            tier=GENERATION,
             label="reading Pass-2 chunk",
         )
         candidate = result.output.strip()

@@ -22,8 +22,8 @@ import logging
 from pathlib import Path
 
 from ..llm.agents import text_agent
-from ..llm.safety import with_safety_retry
 from ..models.document import TableSummary
+from ..pipeline.run_agent import GENERATION, run_agent
 from .landmarks import (
     fill_table_placeholder,
     first_sentence,
@@ -108,11 +108,12 @@ class TableProcessor:
             return None
 
         body = source.read_text(encoding="utf-8").strip()
-        result = with_safety_retry(
+        result = run_agent(
             text_agent,
             _TABLE_SUMMARY_PROMPT.format(body=body),
             model=self.model,
             model_settings={"max_tokens": 4000, "temperature": 0.3},
+            tier=GENERATION,
             label="table summary",
         )
         summary = first_sentence(result.output.strip())

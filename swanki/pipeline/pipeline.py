@@ -65,6 +65,7 @@ from .segmenter import (
     split_into_segments,
     write_segment_files,
 )
+from .usage_ledger import write_usage
 
 logger = logging.getLogger(__name__)
 
@@ -620,6 +621,12 @@ class Pipeline:
                 audio_prefix=self.audio_prefix,
                 content_key=effective_key,
             )
+
+        # 12. Token accounting. Written to output_base rather than output_dir so
+        # it survives audio_only reruns, which skip generate_outputs entirely --
+        # exactly the runs whose cost this is meant to explain. Merges into any
+        # existing file so a rerun adds to the run record instead of erasing it.
+        write_usage(self.output_base / "llm-usage.json")
 
         self.state.outputs = outputs
         return outputs
