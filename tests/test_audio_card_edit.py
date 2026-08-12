@@ -238,7 +238,7 @@ def test_audit_writeback_and_cleanup(tts, _rs, _ctw, combine, tmp_path):
 @patch("swanki.audio.comment_edit.chunk_time_window", return_value=(0, 1000))
 @patch("swanki.audio.comment_edit.restitch_from_chunks")
 @patch("swanki.audio.comment_edit.text_to_speech")
-@patch("swanki.audio.comment_edit.with_safety_retry")
+@patch("swanki.audio.comment_edit.run_agent")
 def test_comment_path_agent_edit(safety, tts, _rs, _ctw, combine, tmp_path):
     safety.return_value = SimpleNamespace(
         output=ChunkEditResponse(

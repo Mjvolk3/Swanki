@@ -28,9 +28,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from ..llm.agents import card_correctness_agent
-from ..llm.safety import with_safety_retry
 from ..models.cards import CardAuditEntry, CardCorrectnessAssessment, PlainCard
 from ..models.document import DocumentSummary
+from .run_agent import GENERATION, run_agent
 
 logger = logging.getLogger(__name__)
 
@@ -120,11 +120,12 @@ def _assess_card(
     """
     prompt = _build_prompt(card, source_context, summary)
     try:
-        result = with_safety_retry(
+        result = run_agent(
             card_correctness_agent,
             prompt,
             instructions=GATE_INSTRUCTIONS,
             model=model_string,
+            tier=GENERATION,
             label=f"correctness {card.card_id}",
         )
     except Exception as e:

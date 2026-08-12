@@ -25,6 +25,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .pricing import cost_usd
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,6 +51,7 @@ class UsageRow:
     requests: int = 0
     tool_calls: int = 0
     failed_attempts: int = 0
+    cost_usd: float | None = None
 
 
 def row_from_usage(
@@ -88,6 +91,9 @@ def row_from_usage(
     reasoning = int(details.get("reasoning_tokens", 0) or 0)
     if reasoning:
         row.output_detail = {"reasoning_tokens": reasoning}
+    row.cost_usd = cost_usd(
+        model, row.input_tokens, row.cache_read_tokens, row.output_tokens
+    )
     return row
 
 
@@ -134,7 +140,7 @@ class UsageLedger:
         """
         rows = self.rows()
 
-        def _blank() -> dict[str, int]:
+        def _blank() -> dict[str, float]:
             return {
                 "calls": 0,
                 "input_tokens": 0,
@@ -142,10 +148,12 @@ class UsageLedger:
                 "output_tokens": 0,
                 "reasoning_tokens": 0,
                 "failed_attempts": 0,
+                "cost_usd": 0.0,
+                "unpriced_calls": 0,
             }
 
-        by_tier: dict[str, dict[str, int]] = {}
-        by_label: dict[str, dict[str, int]] = {}
+        by_tier: dict[str, dict[str, float]] = {}
+        by_label: dict[str, dict[str, float]] = {}
         totals = _blank()
         for r in rows:
             for bucket in (
@@ -159,6 +167,10 @@ class UsageLedger:
                 bucket["output_tokens"] += r.output_tokens
                 bucket["reasoning_tokens"] += r.output_detail.get("reasoning_tokens", 0)
                 bucket["failed_attempts"] += r.failed_attempts
+                if r.cost_usd is None:
+                    bucket["unpriced_calls"] += 1
+                else:
+                    bucket["cost_usd"] = round(bucket["cost_usd"] + r.cost_usd, 6)
         return {
             "totals": totals,
             "by_tier": by_tier,
@@ -206,6 +218,7 @@ def write_usage(path: Path, ledger: UsageLedger | None = None) -> dict[str, Any]
                 requests=int(c.get("requests", 0)),
                 tool_calls=int(c.get("tool_calls", 0)),
                 failed_attempts=int(c.get("failed_attempts", 0)),
+                cost_usd=c.get("cost_usd"),
             )
             for c in rows
         ]
@@ -220,6 +233,9 @@ def write_usage(path: Path, ledger: UsageLedger | None = None) -> dict[str, Any]
     t = payload["totals"]
     logger.info(
         f"llm usage: {t['calls']} calls, {t['input_tokens']} in / "
-        f"{t['output_tokens']} out ({t['reasoning_tokens']} reasoning) -> {path}"
+        f"{t['output_tokens']} out ({t['reasoning_tokens']} reasoning), "
+        f"${t['cost_usd']:.2f}"
+        + (f" [{t['unpriced_calls']} unpriced]" if t["unpriced_calls"] else "")
+        + f" -> {path}"
     )
     return payload

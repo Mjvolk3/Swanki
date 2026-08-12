@@ -113,7 +113,7 @@ def test_speech_only_rerolls_stored_text_verbatim(tts, restitch, _ctw, tmp_path)
 @patch("swanki.audio.comment_edit.chunk_time_window", return_value=(0, 1000))
 @patch("swanki.audio.comment_edit.restitch_from_chunks")
 @patch("swanki.audio.comment_edit.text_to_speech")
-@patch("swanki.audio.comment_edit.with_safety_retry")
+@patch("swanki.audio.comment_edit.run_agent")
 def test_comment_path_agent_edit_text(safety, tts, restitch, _ctw, tmp_path):
     safety.return_value = SimpleNamespace(
         output=ChunkEditResponse(
@@ -138,7 +138,7 @@ def test_comment_path_agent_edit_text(safety, tts, restitch, _ctw, tmp_path):
 @patch("swanki.audio.comment_edit.chunk_time_window", return_value=(0, 1000))
 @patch("swanki.audio.comment_edit.restitch_from_chunks")
 @patch("swanki.audio.comment_edit.text_to_speech")
-@patch("swanki.audio.comment_edit.with_safety_retry")
+@patch("swanki.audio.comment_edit.run_agent")
 def test_needs_section_regen_does_not_touch_audio(
     safety, tts, restitch, _ctw, tmp_path
 ):

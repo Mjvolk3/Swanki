@@ -17,8 +17,9 @@ from typing import Any
 import tiktoken
 
 from ..llm.agents import lecture_critic_agent, text_agent
-from ..llm.safety import SAFETY_REFUSAL_MARKERS, with_safety_retry
+from ..llm.safety import SAFETY_REFUSAL_MARKERS
 from ..models.cards import LectureTranscriptFeedback
+from ..pipeline.run_agent import GENERATION, run_agent
 from ..utils.formatting import humanize_citation_key
 from ._common import (
     DEFAULT_VOICE_ID,
@@ -68,13 +69,14 @@ def _gen_with_safety_retry(
     framing prepended to the user message before giving up on the section.
     """
     try:
-        result = with_safety_retry(
+        result = run_agent(
             text_agent,
             user_message,
             instructions=system_prompt,
             model=model,
             model_settings={"max_tokens": max_completion_tokens},
             max_safety_retries=max_safety_retries,
+            tier=GENERATION,
             label=f"Section '{section_title}'",
         )
         return result.output.strip()

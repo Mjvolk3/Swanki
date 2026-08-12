@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from pydub import AudioSegment
 
 from ..llm.agents import text_agent
+from ..pipeline.run_agent import GENERATION, run_agent
 
 logger = logging.getLogger(__name__)
 
@@ -2531,14 +2532,14 @@ def _humanize_chunk_with_completeness(chunk: str, model: str) -> str:
         # can pass this stage. with_safety_retry re-raises if all preamble
         # retries are also refused, which is the correct terminal -- this
         # chunk's CONTENT is unrenderable, not a token-count problem.
-        from ..llm.safety import with_safety_retry
 
-        result = with_safety_retry(
+        result = run_agent(
             text_agent,
             chunk,
             instructions=instructions,
             model=model,
             model_settings={"max_tokens": 10000},
+            tier=GENERATION,
             label="humanize_latex chunk",
         )
         candidate = result.output.strip()

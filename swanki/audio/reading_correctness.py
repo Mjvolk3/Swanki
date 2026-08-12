@@ -41,13 +41,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..llm.agents import lecture_factual_agent
-from ..llm.safety import with_safety_retry
 from ..models.cards import (
     AcronymDoubleEmitFinding,
     LectureFactualAssessment,
     LectureFactualEntry,
     ReadingChunkFidelity,
 )
+from ..pipeline.run_agent import GENERATION, run_agent
 from ._common import _ROMAN_NUMERAL_WORDS
 
 logger = logging.getLogger(__name__)
@@ -316,11 +316,12 @@ def _assess_lecture(
     """
     prompt = _lecture_context(summary_context, transcript)
     try:
-        result = with_safety_retry(
+        result = run_agent(
             lecture_factual_agent,
             prompt,
             instructions=LECTURE_FACTUAL_INSTRUCTIONS,
             model=model_string,
+            tier=GENERATION,
             label="lecture factual",
         )
     except Exception as e:

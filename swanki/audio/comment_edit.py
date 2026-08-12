@@ -23,8 +23,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from ..llm.agents import chunk_edit_agent
-from ..llm.safety import with_safety_retry
 from ..models.cards import ChunkEditResponse
+from ..pipeline.run_agent import GENERATION, run_agent
 from ._common import (
     append_chunk_pause,
     chunk_time_window,
@@ -103,11 +103,12 @@ def _agent_rewrite(
     # with_safety_retry types its agent param as Agent[None, str]; passing a
     # structured-output agent is the same accepted pattern used throughout
     # pipeline.py (a safety.py typing limitation, not a real mismatch).
-    result = with_safety_retry(
+    result = run_agent(
         chunk_edit_agent,  # type: ignore[arg-type]
         user_msg,
         instructions=_CHUNK_EDIT_INSTRUCTIONS,
         model=model,
+        tier=GENERATION,
         label=f"chunk edit {idx}",
     )
     return result.output

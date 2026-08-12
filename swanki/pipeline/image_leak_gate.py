@@ -27,9 +27,9 @@ from pathlib import Path
 from pydantic_ai import BinaryContent, ImageUrl
 
 from ..llm.agents import image_description_agent, image_leak_judge_agent
-from ..llm.safety import with_safety_retry
 from ..models.cards import ImageLeakAuditEntry, ImageLeakVerdict, PlainCard
 from ..models.document import ImageDescription
+from .run_agent import GENERATION, run_agent
 
 logger = logging.getLogger(__name__)
 
@@ -94,13 +94,14 @@ def _resolve_image(
 
 def _judge(card: PlainCard, spoken: str, model: str) -> ImageLeakVerdict:
     """Ask the judge whether ``spoken`` gives away this card's answer."""
-    res = with_safety_retry(
+    res = run_agent(
         image_leak_judge_agent,
         JUDGE_PROMPT.format(
             question=card.front.text, answer=card.back.text, spoken=spoken
         ),
         model=model,
         model_settings={"max_tokens": 2000},
+        tier=GENERATION,
         label="image leak judge",
     )
     return res.output
@@ -116,11 +117,12 @@ def _rewrite(
             f"\nA previous attempt was rejected for giving away: {previous}\n"
             "Do not repeat that.\n"
         )
-    res = with_safety_retry(
+    res = run_agent(
         image_description_agent,
         [REWRITE_PROMPT.format(question=card.front.text, extra=extra), image],
         model=model,
         model_settings={"max_tokens": 8000, "temperature": 0.3},
+        tier=GENERATION,
         label="image leak rewrite",
     )
     desc: ImageDescription = res.output

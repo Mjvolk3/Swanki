@@ -222,3 +222,59 @@ class TestRunAgent:
         assert seen["model"] == "openai-responses:m"
         assert seen["model_settings"] == {"max_tokens": 8000}
         assert seen["instructions"] == "sys"
+
+
+class TestPricing:
+    """Cost must come from a sourced table, and be visibly absent when unknown."""
+
+    def test_sol_and_luna_differ_by_the_published_ratio(self):
+        from swanki.pipeline.pricing import cost_usd
+
+        sol = cost_usd("openai-responses:gpt-5.6-sol", 1_000_000, 0, 1_000_000)
+        luna = cost_usd("openai-responses:gpt-5.6-luna", 1_000_000, 0, 1_000_000)
+        assert sol == pytest.approx(35.0)
+        assert luna == pytest.approx(1.4)
+        assert sol / luna == pytest.approx(25.0)
+
+    def test_cached_input_is_billed_at_the_cached_rate_not_added_on(self):
+        """input_tokens already includes the cached portion; billing both double-charges."""
+        from swanki.pipeline.pricing import cost_usd
+
+        all_fresh = cost_usd("gpt-5.6-sol", 1_000_000, 0, 0)
+        all_cached = cost_usd("gpt-5.6-sol", 1_000_000, 1_000_000, 0)
+        assert all_fresh == pytest.approx(5.0)
+        assert all_cached == pytest.approx(0.5)
+
+    def test_unknown_model_is_unpriced_not_guessed(self):
+        from swanki.pipeline.pricing import cost_usd, price_for
+
+        assert price_for("openai-responses:some-future-model") is None
+        assert cost_usd("some-future-model", 1000, 0, 1000) is None
+
+    def test_longest_prefix_wins_so_a_variant_beats_its_family(self):
+        from swanki.pipeline.pricing import price_for
+
+        assert price_for("gpt-5.4-nano").output == 1.25
+        assert price_for("gpt-5.4-mini").output == 4.50
+
+    def test_rollup_carries_cost_and_flags_unpriced_calls(self):
+        led = UsageLedger()
+        led.extend(
+            [
+                row_from_usage(
+                    _usage(inp=1_000_000, out=1_000_000),
+                    label="l",
+                    tier="generation",
+                    model="gpt-5.6-sol",
+                ),
+                row_from_usage(
+                    _usage(inp=10, out=10),
+                    label="l",
+                    tier="generation",
+                    model="mystery",
+                ),
+            ]
+        )
+        s = led.summary()
+        assert s["totals"]["cost_usd"] == pytest.approx(35.0)
+        assert s["totals"]["unpriced_calls"] == 1
