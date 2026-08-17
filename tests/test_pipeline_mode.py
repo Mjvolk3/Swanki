@@ -81,8 +81,10 @@ def mock_pipeline(base_config, tmp_path, stub_classifier):
     p.process_images = MagicMock(return_value=[])
     p.generate_document_summary = MagicMock()
     p.estimate_card_count = MagicMock(return_value=10)
-    p._generate_cards_for_segment = MagicMock(return_value=[])
-    p._generate_image_cards_for_page = MagicMock(return_value=[])
+    # Both return (cards, originating_excerpt) so the correctness gate can
+    # judge each card against the text it was generated from.
+    p._generate_cards_for_segment = MagicMock(return_value=([], ""))
+    p._generate_image_cards_for_page = MagicMock(return_value=([], ""))
     p.generate_outputs = MagicMock(return_value=({}, []))
     p.generate_audio = MagicMock()
     p.send_to_anki = MagicMock()

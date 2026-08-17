@@ -244,3 +244,19 @@ its own top-level key, so the Hydra override path is
 `image_leak_gate.image_leak_gate.enabled=false`, not `image_leak_gate.enabled`).
 Descriptions are repaired in place; the card list is returned unchanged in
 length because this gate never drops. See [[swanki.pipeline.image_leak_gate]].
+
+## 2026.08.16 - Per-card evidence map feeds the correctness gate
+
+`_read_source_context()` joined every `clean-md-singles/*.md` page and handed that one string to the gate for all N cards, so each card paid full chapter tokens. The window each card was actually written from already existed in `_generate_cards_for_segment` as `combined_content` and was discarded on return. Both card generators now return it alongside their cards: `_generate_cards_for_segment -> (cards, combined_content)` and `_generate_image_cards_for_page -> (cards, page_text)`, following the `(cards, sidecar)` precedent of `problem_set.run_solution_manual_override`. Rationale and the measured saving: [[swanki.pipeline.card_correctness]] 2026.08.16.
+
+**Lifecycle.** `self._card_evidence: dict[str, str]` is initialised in `__init__`, populated by `_record_card_evidence` at the two pooling sites in `process_full` (text cards, then per-page image cards), and read exactly once by `_apply_correctness_gate`, which resolves `_read_source_context()` a single time as the fallback and passes both into `run_correctness_gate`. The map is fully populated before the gate's `ThreadPoolExecutor` starts and is never written during the gate, so concurrent reads need no lock; resolution happens on the submitting thread so no worker ever touches the filesystem.
+
+**Why the pooling sites and nowhere else.** Every step that reconstructs cards mints fresh `card_id` values -- `_self_refine_cards` most of all -- and all of them run upstream of pooling. Stamping at pooling is therefore correct today and is a **latent invariant**: moving refinement or dedup to after pooling would silently invalidate every key, and the symptom is not an error but a 100% fallback rate. A comment at the stamp site says so. Keying by `card_id` rather than list position is also load-bearing, because the biosec skip-with-log drops a whole segment's cards mid-loop, so `seg_idx` and list position diverge.
+
+**Fallback is per card, never per run.** `generate_outputs` is reached from four call sites and two of them -- `mode=solution_manual` and `mode=glossary` -- never call `_generate_cards_for_segment`, so they legitimately arrive with an empty map. Problem-set cards (~4.8% of gate traffic) stay unmapped by choice: their context lives inside `problem_set.py` and threading it out is new coupling for a rounding error. A guard shaped like `if self._card_evidence:` would be wrong for a full run that mixes mapped segment cards with unmapped problem-set cards, and only accidentally right when the map is empty.
+
+**Image cards are mapped too, and that is where a third of the saving is.** Gate traffic by subtype across 85 audits / 3599 cards: regular 58.9%, image 36.3%, problem_main 4.8%. Mapping only text cards would cap realized saving near 42%. Image cards get the single page `_generate_image_cards_for_page` already reads -- a tighter excerpt than a segment window, reached by the same "record what generation saw" rule rather than a second policy.
+
+**One honest exception to "identical evidence".** `_read_source_context` reads every cleaned page including classifier-rejected front/back matter (TOC, copyright, index), while segments are built only from classifier-accepted `main_files`. So on a document whose window already spans the whole corpus the change still alters what the judge sees -- slightly, and favourably, since the rejected material was never evidence for any card. Named here rather than buried, because "the judge sees what the writer saw" is the change's central claim and this is its one caveat.
+
+Plan: [[plan.scope-correctness-gate-to-generating-segment.2026.08.16]].

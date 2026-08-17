@@ -149,6 +149,12 @@ class Pipeline:
         self.config = config
         self.state: ProcessingState | None = None
 
+        # Originating excerpt per card, keyed by card_id, populated at the
+        # pooling sites in process_full and consumed once by the correctness
+        # gate. Cards from paths that never segment (problem-set, glossary)
+        # are legitimately absent and fall back to the whole chapter.
+        self._card_evidence: dict[str, str] = {}
+
         # Load environment variables
         load_dotenv()
         self.data_dir = Path(os.getenv("SWANKI_DATA", "swanki-out"))
@@ -469,7 +475,7 @@ class Pipeline:
                     # Skip-with-log so the rest of the paper still lands;
                     # other failure modes still raise.
                     try:
-                        seg_cards = self._generate_cards_for_segment(
+                        seg_cards, seg_context = self._generate_cards_for_segment(
                             seg_idx,
                             text_card_files,
                             doc_summary,
@@ -490,12 +496,16 @@ class Pipeline:
                             continue
                         raise
                     all_cards.extend(seg_cards)
+                    self._record_card_evidence(seg_cards, seg_context)
 
                     if image_cards_enabled:
                         pages_for_seg = segment_to_pages[seg_idx]
                         for page_idx in pages_for_seg:
                             if page_idx > last_image_page:
-                                page_image_cards = self._generate_image_cards_for_page(
+                                (
+                                    page_image_cards,
+                                    page_context,
+                                ) = self._generate_image_cards_for_page(
                                     cleaned_files[page_idx],
                                     doc_summary,
                                     image_summaries,
@@ -519,6 +529,9 @@ class Pipeline:
                                     ),
                                 )
                                 all_cards.extend(page_image_cards)
+                                self._record_card_evidence(
+                                    page_image_cards, page_context
+                                )
                                 last_image_page = page_idx
 
             # ── review_exercises path: problem-set pipeline ──
@@ -982,11 +995,15 @@ Image summaries:
         doc_summary: DocumentSummary,
         context_radius: int,
         num_cards: int,
-    ) -> list[PlainCard]:
+    ) -> tuple[list[PlainCard], str]:
         """Generate cards for a single segment with context from surrounding segments.
 
         Works identically for page-mode segments (clean-md-singles) and
         char-mode segments (segments/).
+
+        Returns the windowed context alongside the cards so the correctness
+        gate can judge each card against the same excerpt that produced it
+        rather than the whole chapter.
 
         Parameters
         ----------
@@ -1003,8 +1020,9 @@ Image summaries:
 
         Returns:
         -------
-        List[PlainCard]
-            Generated cards for this segment
+        tuple[List[PlainCard], str]
+            Generated cards for this segment, and the windowed context they
+            were generated from
         """
         # Determine context window
         start_idx = max(0, seg_idx - context_radius)
@@ -1269,7 +1287,7 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
                 f"{len(ref_cards)} cards contain references that should have been removed"
             )
 
-        return all_cards
+        return all_cards, combined_content
 
     def _generate_image_cards_for_page(
         self,
@@ -1282,11 +1300,16 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
         require_math: bool = False,
         placement_strategy: str = "smart",
         front_back_ratio: float = 0.5,
-    ) -> list[PlainCard]:
+    ) -> tuple[list[PlainCard], str]:
         """Generate image cards for a single page.
 
         This is a helper method that processes images from one page at a time,
         used by the main pipeline to interleave text and image cards.
+
+        Returns the page text alongside the cards for the same reason
+        :meth:`_generate_cards_for_segment` does: the correctness gate judges
+        each card against the excerpt that produced it. A page is a tighter
+        excerpt than a segment window, arrived at by the same rule.
 
         Parameters
         ----------
@@ -1311,8 +1334,9 @@ Generate {adjusted_cloze_cards} cloze cards now. Focus on key definitions, formu
 
         Returns:
         -------
-        List[PlainCard]
-            Generated image cards for this page
+        tuple[List[PlainCard], str]
+            Generated image cards for this page, and the page text they were
+            generated from
         """
         image_cards = []
 
@@ -1568,7 +1592,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
                 )
                 continue
 
-        return image_cards
+        return image_cards, content
 
     def generate_image_cards(
         self,
@@ -1944,13 +1968,47 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
         return total_estimated
 
+    def _record_card_evidence(self, cards: list[PlainCard], evidence: str) -> None:
+        """Record the excerpt ``cards`` were generated from, keyed by card_id.
+
+        Called at the pooling sites in :meth:`process_full`, which is the only
+        correct place: every step that reconstructs cards -- self-refine most of
+        all -- mints fresh ``card_id`` values and runs upstream of pooling.
+        Moving refinement or dedup to after pooling would silently invalidate
+        every key here, and the symptom is not an error but a 100% fallback rate
+        to whole-chapter context.
+
+        First writer wins. ``card_id`` is model-settable, so an LLM could in
+        principle emit a duplicate; that has never been observed, and a
+        collision costs one card slightly-wrong-but-real evidence rather than
+        correctness, so it warns rather than raises.
+
+        Args:
+            cards: Cards just appended to the run's card list.
+            evidence: The excerpt those cards were generated from.
+        """
+        for card in cards:
+            key = card.card_id or ""
+            if not key:
+                continue
+            if key in self._card_evidence:
+                logger.warning(
+                    "duplicate card_id %s; keeping the first excerpt mapped to it",
+                    key,
+                )
+                continue
+            self._card_evidence[key] = evidence
+
     def _read_source_context(self) -> str:
         """Concatenate the cleaned source markdown for correctness assessment.
 
+        This is the whole-document fallback for cards with no mapped excerpt --
+        problem-set and glossary cards, which never pass through segment
+        generation. Cards that do carry an excerpt are judged against it
+        instead; see :meth:`_record_card_evidence`.
+
         Returns:
-            All ``clean-md-singles/*.md`` page text joined in page order. This
-            is the source the cards were generated from; the gate judges each
-            card against it plus the document summary.
+            All ``clean-md-singles/*.md`` page text joined in page order.
         """
         clean_dir = self.output_base / "clean-md-singles"
         pages = sorted(clean_dir.glob("*.md"))
@@ -1963,9 +2021,13 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
 
         No-op (returns ``cards`` unchanged) unless
         ``card_correctness_gate.enabled`` is set. When enabled, writes the
-        per-card audit to ``correctness-assessment.yaml`` and returns the
+        per-card audit to ``correctness-assessment.json`` and returns the
         filtered kept-list; fixed cards carry corrected text, dropped cards are
         excluded, unassessable cards are kept fail-open.
+
+        Each card is judged against the excerpt it was generated from, with the
+        whole cleaned chapter resolved once here as the fallback for cards that
+        never passed through segment generation.
         """
         gate_cfg = self.config.get("card_correctness_gate", {}).get(
             "card_correctness_gate", {}
@@ -1984,6 +2046,7 @@ The graph demonstrates that smaller learning rates lead to slower but more stabl
             source_context,
             model_string,
             max_workers=gate_cfg.get("max_workers", 8),
+            card_evidence=self._card_evidence,
         )
         write_audit(audit, output_dir / "correctness-assessment.json")
         if not kept:

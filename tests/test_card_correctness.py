@@ -315,3 +315,98 @@ def test_dropped_card_emits_warning_with_reason(monkeypatch, summary, caplog):
         "DROPPED" in r.message and "contradicts established chemistry" in r.getMessage()
         for r in caplog.records
     )
+
+
+# ── per-card originating excerpt ───────────────────────────────────────
+
+
+def _context_recorder() -> tuple[dict[str, str], object]:
+    """Return (seen, fake_assess) recording the context each card was judged on."""
+    seen: dict[str, str] = {}
+
+    def fake(card, source_context, doc_summary, model_string):
+        seen[card.front.text] = source_context
+        return CardCorrectnessAssessment(verdict="pass", reason="ok")
+
+    return seen, fake
+
+
+def test_mapped_card_is_judged_against_its_own_excerpt(monkeypatch, summary):
+    """A card present in card_evidence sees its excerpt, never the fallback."""
+    seen, fake = _context_recorder()
+    monkeypatch.setattr(card_correctness, "_assess_card", fake)
+
+    card = _card("Q")
+    run_correctness_gate(
+        [card],
+        summary,
+        "WHOLE CHAPTER",
+        "m",
+        card_evidence={card.card_id or "": "SEGMENT SEVEN"},
+    )
+    assert seen["Q"] == "SEGMENT SEVEN"
+
+
+def test_fallback_is_per_card_not_per_run(monkeypatch, summary):
+    """A mixed list sends the chapter for exactly the unmapped cards.
+
+    Guards the shape `if self._card_evidence: use scoped path`, which is only
+    accidentally right when the map is empty: solution_manual and glossary runs
+    never segment, so they reach the gate with legitimately empty maps while a
+    full run can mix mapped segment cards with unmapped problem-set cards.
+    """
+    seen, fake = _context_recorder()
+    monkeypatch.setattr(card_correctness, "_assess_card", fake)
+
+    mapped, unmapped = _card("mapped"), _card("unmapped")
+    run_correctness_gate(
+        [mapped, unmapped],
+        summary,
+        "WHOLE CHAPTER",
+        "m",
+        card_evidence={mapped.card_id or "": "ITS OWN SEGMENT"},
+    )
+    assert seen["mapped"] == "ITS OWN SEGMENT"
+    assert seen["unmapped"] == "WHOLE CHAPTER"
+
+
+def test_empty_evidence_map_is_byte_identical_to_before(monkeypatch, summary):
+    """With no map at all, every card gets the whole-chapter context."""
+    seen, fake = _context_recorder()
+    monkeypatch.setattr(card_correctness, "_assess_card", fake)
+
+    run_correctness_gate([_card("a"), _card("b")], summary, "WHOLE CHAPTER", "m")
+    assert set(seen.values()) == {"WHOLE CHAPTER"}
+
+
+def test_evidence_routing_holds_under_concurrency(monkeypatch, summary):
+    """Each card keeps its own excerpt, and the audit stays in input order."""
+    seen, fake = _context_recorder()
+    monkeypatch.setattr(card_correctness, "_assess_card", fake)
+
+    cards = [_card(f"q{i}") for i in range(12)]
+    evidence = {c.card_id or "": f"segment for q{i}" for i, c in enumerate(cards)}
+    kept, audit = run_correctness_gate(
+        cards, summary, "WHOLE CHAPTER", "m", max_workers=4, card_evidence=evidence
+    )
+
+    assert len(audit) == len(cards)
+    assert [e.original_front for e in audit] == [f"q{i}" for i in range(12)]
+    assert all(seen[f"q{i}"] == f"segment for q{i}" for i in range(12))
+    assert len(kept) == 12
+
+
+def test_record_card_evidence_first_writer_wins_and_warns(caplog):
+    """A duplicate card_id keeps the first excerpt and warns rather than raising."""
+    from swanki.pipeline.pipeline import Pipeline
+
+    p = Pipeline({})
+    first, second = _card("a"), _card("b")
+    second.card_id = first.card_id
+
+    p._record_card_evidence([first], "FIRST SEGMENT")
+    with caplog.at_level(logging.WARNING, logger="swanki.pipeline.pipeline"):
+        p._record_card_evidence([second], "SECOND SEGMENT")
+
+    assert p._card_evidence[first.card_id or ""] == "FIRST SEGMENT"
+    assert any("duplicate card_id" in r.message for r in caplog.records)

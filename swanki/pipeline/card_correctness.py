@@ -5,9 +5,13 @@ https://github.com/Mjvolk3/Swanki/tree/main/swanki/pipeline/card_correctness.py
 Test file: tests/test_card_correctness.py
 
 Post-generation LLM correctness gate. Each generated card is assessed against
-its source context and the document summary by the configured model; correct
-cards pass, clearly-fixable cards are repaired in place, and unfixable cards are
-quarantined out of the deck. The gate screens for FACTUAL errors only -- never
+the originating excerpt it was written from -- the same windowed segment text
+card generation saw, supplied per card by the caller -- plus the document
+summary; correct cards pass, clearly-fixable cards are repaired in place, and
+unfixable cards are quarantined out of the deck. A card with no mapped excerpt
+(problem-set and glossary cards, which never pass through segment generation)
+falls back to the whole cleaned chapter, which is what every card received
+before 2026.08.16. The gate screens for FACTUAL errors only -- never
 style, tone, or terseness -- with a deliberately high acceptance rate: the
 source is trusted, so it errs toward keeping borderline cards and reserves fix
 and drop for unambiguous, high-confidence factual errors. It is ON by default;
@@ -37,9 +41,14 @@ logger = logging.getLogger(__name__)
 
 GATE_INSTRUCTIONS: str = (
     "You are a careful subject-matter fact-checker for spaced-repetition "
-    "flashcards. You are given the SOURCE TEXT a card was generated from, a "
-    "DOCUMENT SUMMARY for context, and one FLASHCARD (front = prompt, "
+    "flashcards. You are given the ORIGINATING EXCERPT a card was generated "
+    "from, a DOCUMENT SUMMARY for context, and one FLASHCARD (front = prompt, "
     "back = answer).\n\n"
+    "The excerpt is the passage the card was written from, NOT the whole "
+    "document. It is normal for a card to reference something the excerpt does "
+    "not restate. Absence of supporting text in the excerpt is NEVER grounds "
+    "for 'fixed' or 'dropped' -- judge only what the excerpt positively "
+    "contradicts. If the excerpt simply does not cover the claim, pass.\n\n"
     "Your ONLY job is to catch clear FACTUAL errors. The source is trusted and "
     "the acceptance rate must be VERY HIGH: when in any doubt, 'pass'. It is "
     "far better to let a borderline card through than to remove a good one. Do "
@@ -94,11 +103,16 @@ def _card_block(card: PlainCard) -> str:
 def _build_prompt(
     card: PlainCard, source_context: str, summary: DocumentSummary
 ) -> str:
-    """Assemble the per-card correctness-assessment prompt."""
+    """Assemble the per-card correctness-assessment prompt.
+
+    ``source_context`` is the card's originating excerpt when one was mapped,
+    and the whole cleaned chapter otherwise; the header names it an excerpt
+    either way so the judge never reads a gap in it as a factual error.
+    """
     return (
         "DOCUMENT SUMMARY\n"
         f"{_summary_context(summary)}\n\n"
-        "SOURCE TEXT\n"
+        "ORIGINATING EXCERPT\n"
         f"{source_context}\n\n"
         "FLASHCARD\n"
         f"{_card_block(card)}"
@@ -212,21 +226,30 @@ def run_correctness_gate(
     model_string: str,
     *,
     max_workers: int = 8,
+    card_evidence: dict[str, str] | None = None,
 ) -> tuple[list[PlainCard], list[CardAuditEntry]]:
     """Assess every card concurrently and return (kept_cards, audit).
 
-    Each card is judged independently by ``model_string`` against
-    ``source_context`` and ``doc_summary``. Passed and fail-open cards are kept
+    Each card is judged independently by ``model_string`` against its
+    originating excerpt and ``doc_summary``. Passed and fail-open cards are kept
     unchanged, fixed cards are kept with corrected text, dropped cards are
     excluded. The audit has exactly one entry per input card, in input order.
+
+    The excerpt is resolved per card, not per run: a card mapped in
+    ``card_evidence`` is judged against the window its generator saw, and any
+    unmapped card falls back to ``source_context``. Resolution happens on the
+    submitting thread so the workers only ever read an already-complete mapping.
 
     Args:
         cards: Generated cards to assess.
         doc_summary: Document summary supplying topical context.
-        source_context: Cleaned source text the cards were generated from.
+        source_context: Whole-document fallback for cards with no mapped
+            excerpt, already resolved by the caller.
         model_string: Resolved pydantic-ai model string (e.g.
             ``"openai:gpt-5.5"``).
         max_workers: Concurrency bound for per-card assessment calls.
+        card_evidence: Per-card originating excerpt keyed by ``card_id``.
+            Legitimately empty for card paths that never segment.
 
     Returns:
         A tuple of the kept-card list (drives every downstream writer) and the
@@ -235,11 +258,16 @@ def run_correctness_gate(
     if not cards:
         return [], []
 
+    evidence = card_evidence or {}
     assessments: list[CardCorrectnessAssessment | None] = [None] * len(cards)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_index = {
             executor.submit(
-                _assess_card, card, source_context, doc_summary, model_string
+                _assess_card,
+                card,
+                evidence.get(card.card_id or "") or source_context,
+                doc_summary,
+                model_string,
             ): i
             for i, card in enumerate(cards)
         }
