@@ -40,3 +40,19 @@ editor-fallback, other-types-ignored.
 Note the blank-author state is self-healing on the next `finalize-abs` once the
 item has any creators, because the author PATCH is deliberately not idempotency-
 gated (unlike covers) -- it rewrites the same value every pass.
+
+## 2026.08.20 - Inherit an existing cover before rendering the PDF
+
+A new projection's item folders start bare, so the `cover.jpg`-exists
+idempotency guard fell straight through to `render_cover`, which renders page
+1 of the Zotero PDF. For `hammingArtDoingScience2020` that is the
+CRC/Routledge scan ("Also available as a printed book" across the bottom),
+while `michaelvolk` and `mv-ra` have carried the curated Stripe Press cover
+since April -- so MV-RP showed a visibly different edition of the same book
+and read as a duplicate in the ABS clients.
+
+`inherit_cover` now globs `abs_root/*/Swanki-*/<group>/cover.jpg` and copies
+the first match before the PDF path is reached; rendering is the fallback for
+a book no projection has a cover for yet. Counted separately in the summary
+line (`N covers generated, M inherited`). The existing skip-if-present rule
+still runs first, so an inherited cover is written once and never re-copied.

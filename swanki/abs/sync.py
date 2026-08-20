@@ -27,6 +27,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, Field
 from pyzotero import zotero
 
 from swanki.abs.projections import (
@@ -86,19 +87,33 @@ def replace_stale(target_dir: Path, key: str, audio_type: str, keep: str) -> Non
             print(f"  - {stale.relative_to(target_dir.parents[2])} (replaced)")
 
 
+class ExtractResult(BaseModel):
+    """Outcome of extracting one Zotero zip."""
+
+    written: int = Field(default=0, description="New mp3s written to disk")
+    found: set[str] = Field(
+        default_factory=set,
+        description="Audio types the zip carried, before the audiotype filter",
+    )
+
+
 def extract_audio(
     zip_bytes: bytes,
     audiotypes: set[str],
     dest_root: Path,
     kind: str,
     group: str,
-) -> int:
+) -> ExtractResult:
     """Extract matching mp3s from one Zotero zip into the library tree.
 
     Returns:
-        Count of new mp3s written (existing filenames are skipped).
+        ``written`` counts new mp3s (existing filenames are skipped);
+        ``found`` reports every audio type present in the zip regardless of
+        the projection's filter, so callers can tell "this bundle has no
+        audio at all" (a cards-only re-run) from "this bundle's audio is
+        filtered out by this projection".
     """
-    count = 0
+    result = ExtractResult()
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
         for name in zf.namelist():
             if not name.lower().endswith(".mp3"):
@@ -107,6 +122,7 @@ def extract_audio(
             if not m:
                 continue
             audio_type = m.group("type")
+            result.found.add(audio_type)
             if audio_type not in audiotypes:
                 continue
             lib = f"Swanki-{kind}-{audio_type.capitalize()}"
@@ -118,15 +134,15 @@ def extract_audio(
             replace_stale(target_dir, m.group("key"), audio_type, target.name)
             target.write_bytes(zf.read(name))
             print(f"  + {target.relative_to(dest_root.parent)}")
-            count += 1
-    return count
+            result.written += 1
+    return result
 
 
 def sync_projection(
     name: str, cfg: dict[str, Any], abs_root: Path, api_key: str
 ) -> None:
     """Sync audio mp3s for one projection, unless ``push_audio`` is false."""
-    from swanki.delivery.artifacts import latest_zips
+    from swanki.delivery.artifacts import zips_by_prefix
 
     if not cfg.get("push_audio", True):
         print(f"\n=== Projection: {name} -- push_audio=false, skipping audio ===")
@@ -149,18 +165,27 @@ def sync_projection(
         if not ckey:
             continue
         group = group_key(ckey, kind)
-        for att in latest_zips(zot, item["key"]):
-            try:
-                content = zot.file(att["key"])
-            except Exception as e:
-                # Stale attachment metadata pointing to a missing file; skip
-                # it instead of aborting the whole sync.
-                print(
-                    f"  warn: skipping {att.get('data', {}).get('filename', '?')} "
-                    f"(key={att.get('key', '?')}): {e}"
-                )
-                continue
-            total += extract_audio(content, audiotypes, dest_root, kind, group)
+        for prefix, attachments in zips_by_prefix(zot, item["key"]).items():
+            # Newest first, falling through cards-only zips (an .apkg-only
+            # re-run) to the newest bundle that actually carries audio.
+            for att in attachments:
+                try:
+                    content = zot.file(att["key"])
+                except Exception as e:
+                    # Stale attachment metadata pointing to a missing file;
+                    # skip it instead of aborting the whole sync.
+                    print(
+                        f"  warn: skipping "
+                        f"{att.get('data', {}).get('filename', '?')} "
+                        f"(key={att.get('key', '?')}): {e}"
+                    )
+                    continue
+                result = extract_audio(content, audiotypes, dest_root, kind, group)
+                total += result.written
+                if result.found:
+                    break
+            else:
+                print(f"  warn: no audio-bearing zip for {prefix}")
     print(f"  extracted {total} new mp3(s)")
 
 

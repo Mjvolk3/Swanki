@@ -17,6 +17,7 @@ Path translation: ABS reports item paths in its container view
 (``/audiobooks/...``); the host view is ``$SWANKI_ABS_ROOT``.
 """
 
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -115,6 +116,29 @@ def render_cover(pdf_bytes: bytes, dest: Path) -> None:
         produced.rename(dest)
 
 
+def inherit_cover(abs_root: Path, group: str, dest: Path) -> bool:
+    """Copy an existing ``cover.jpg`` for the same group from any projection.
+
+    A new projection's item folders start bare, so ``render_cover`` would
+    reach for page 1 of the Zotero PDF -- which is the publisher's scan, not
+    the cover already curated for that book elsewhere in the tree. Prefer an
+    existing one so every projection shows the same art.
+
+    Args:
+        abs_root: On-disk ABS library root.
+        group: Item folder name (citation key, or group key for books).
+        dest: The ``cover.jpg`` to write.
+
+    Returns:
+        True when a cover was inherited.
+    """
+    for candidate in sorted(abs_root.glob(f"*/Swanki-*/{group}/cover.jpg")):
+        if candidate != dest:
+            shutil.copyfile(candidate, dest)
+            return True
+    return False
+
+
 def container_to_host(container_path: str, abs_root: Path) -> Path:
     """Rewrite an ABS container path (``/audiobooks/...``) to the host view."""
     if not container_path.startswith(CONTAINER_PREFIX):
@@ -154,6 +178,7 @@ def enrich_metadata(
         ]
         author_updates = 0
         cover_updates = 0
+        covers_inherited = 0
         for library_id in proj_lib_ids:
             for item in client.library_items(library_id):
                 title = item.get("media", {}).get("metadata", {}).get(
@@ -175,6 +200,10 @@ def enrich_metadata(
                 cover = host_folder / "cover.jpg"
                 if cover.exists():
                     continue
+                if inherit_cover(abs_root, host_folder.name, cover):
+                    covers_inherited += 1
+                    print(f"  cover (inherited): {title}")
+                    continue
                 pdf_att = get_pdf_attachment(zot, zot_item["key"])
                 if not pdf_att:
                     continue
@@ -183,4 +212,7 @@ def enrich_metadata(
                 cover_updates += 1
                 print(f"  cover: {title}")
 
-        print(f"  {author_updates} author updates, {cover_updates} covers generated")
+        print(
+            f"  {author_updates} author updates, {cover_updates} covers "
+            f"generated, {covers_inherited} inherited"
+        )

@@ -80,6 +80,37 @@ def latest_zips(zot: zotero.Zotero, item_key: str) -> list[dict[str, Any]]:
     return _latest_artifact(zot, item_key, ZIP_PATTERN)
 
 
+def zips_by_prefix(
+    zot: zotero.Zotero, item_key: str
+) -> dict[str, list[dict[str, Any]]]:
+    """Every ``.zip`` attachment grouped by content-prefix, newest first.
+
+    ``latest_zips`` keeps only the newest zip per prefix, which is wrong for
+    consumers that need audio: a cards-only re-run (correctness gate, no TTS)
+    emits a zip holding just the ``.apkg``, and it outranks the older bundle
+    that actually carries the mp3s. Callers walk this newest-first list until
+    they hit an audio-bearing bundle.
+
+    Args:
+        zot: A configured ``pyzotero.zotero.Zotero`` client.
+        item_key: The Zotero parent item key whose children to scan.
+
+    Returns:
+        ``{content_prefix: [attachment, ...]}`` sorted newest timestamp first.
+    """
+    by_prefix: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    for child in zot.children(item_key):
+        name = child.get("data", {}).get("filename", "")
+        m = ZIP_PATTERN.match(name)
+        if not m:
+            continue
+        by_prefix.setdefault(m.group("key"), []).append((m.group("ts"), child))
+    return {
+        prefix: [c for _, c in sorted(entries, key=lambda e: e[0], reverse=True)]
+        for prefix, entries in by_prefix.items()
+    }
+
+
 def latest_zip(zot: zotero.Zotero, item_key: str) -> dict[str, Any] | None:
     """Single newest ``.zip`` attachment across all prefixes (back-compat).
 
